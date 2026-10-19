@@ -12,6 +12,8 @@ import tarfile
 ROLES = {'controller', 'l2tp', 'xauth', 'application'}
 DIGEST = re.compile(r'sha256:[0-9a-f]{64}')
 OCI = 'application/vnd.oci.image.'
+# Keep Docker's template literal intact when Lima embeds this file as data.
+DOCKER_JSON_FORMAT = '{' + '{json .}' + '}'
 
 
 class InstallError(Exception):
@@ -145,6 +147,8 @@ def verify(bundle):
         raise InstallError('invalid release identity')
     if data.get('binary_version') != data['version'] + '+git.' + data['revision'][:12]:
         raise InstallError('release binary identity does not match')
+    if not isinstance(data, dict):
+        raise InstallError('invalid registry release manifest')
     images = data.get('images')
     if not isinstance(images, dict) or set(images) != ROLES:
         raise InstallError('release image set is incomplete')
@@ -200,7 +204,7 @@ def inspect_optional(ref):
 
 def install(bundle):
     data = verify(bundle)
-    info = json.loads(docker('info', '--format', '{{json .}}'))
+    info = json.loads(docker('info', '--format', DOCKER_JSON_FORMAT))
     arch = {'aarch64': 'arm64', 'x86_64': 'amd64', 'arm64': 'arm64', 'amd64': 'amd64'}.get(info.get('Architecture'))
     if info.get('OSType') != 'linux' or arch != data['arch']:
         raise InstallError('bundle architecture does not match the Linux Docker engine')
@@ -222,15 +226,50 @@ def install(bundle):
     print(json.dumps({'schema_version': 1, 'ok': True, 'version': actual, 'controller_image': local.pop('controller'), 'backend_images': local, 'activated': False}))
 
 
+def install_registry(manifest):
+    if manifest.stat().st_size > 4096:
+        raise InstallError('registry release manifest is too large')
+    data = json.loads(manifest.read_text())
+    images = data.get('images')
+    if data.get('schema_version') != 1 or data.get('os') != 'linux' or data.get('arch') not in ('arm64', 'amd64') or not isinstance(images, dict) or set(images) != ROLES:
+        raise InstallError('invalid registry release manifest')
+    if not isinstance(data.get('binary_version'), str) or not data['binary_version']:
+        raise InstallError('missing registry release version')
+    for role, ref in images.items():
+        if not isinstance(ref, str) or not re.fullmatch(r'ghcr\.io/derrickhayashi/vpn-sidecars-next/' + role + r'@sha256:[0-9a-f]{64}', ref):
+            raise InstallError('registry images must use published GHCR digests')
+    info = json.loads(docker('info', '--format', DOCKER_JSON_FORMAT))
+    arch = {'aarch64': 'arm64', 'x86_64': 'amd64', 'arm64': 'arm64', 'amd64': 'amd64'}.get(info.get('Architecture'))
+    if info.get('OSType') != 'linux' or arch != data['arch']:
+        raise InstallError('registry release architecture does not match the Linux Docker engine')
+    docker('compose', 'version')
+    local = {}
+    for role, ref in images.items():
+        actual = inspect_optional(ref)
+        if actual is None:
+            docker('pull', ref)
+            actual = json.loads(docker('image', 'inspect', ref))[0]
+        if actual.get('Architecture') != data['arch'] or actual.get('Os') != 'linux' or not DIGEST.fullmatch(actual.get('Id', '')):
+            raise InstallError('pulled image does not match release architecture')
+        local[role] = actual['Id']
+    actual = docker('run', '--rm', '--pull=never', '--network', 'none', local['controller'], 'version')
+    if actual != data['binary_version']:
+        raise InstallError('controller version does not match registry release')
+    print(json.dumps({'schema_version': 1, 'ok': True, 'version': actual, 'controller_image': local.pop('controller'), 'backend_images': local, 'activated': False}))
+
+
 def main():
-    if len(sys.argv) != 1:
-        raise InstallError('run install-vm.py without arguments in its extracted bundle')
-    install(Path(__file__).resolve().parent)
+    if len(sys.argv) == 3 and sys.argv[1] == '--registry':
+        install_registry(Path(sys.argv[2]))
+    elif len(sys.argv) == 1:
+        install(Path(__file__).resolve().parent)
+    else:
+        raise InstallError('use install-vm.py [--registry REGISTRY_RELEASE.json]')
 
 
 if __name__ == '__main__':
     try:
         main()
     except (InstallError, OSError, ValueError, KeyError, TypeError, tarfile.TarError):
-        print('VM image installation failed; verify bundle integrity, architecture and Docker prerequisites', file=sys.stderr)
+        print('VM image installation failed; check release files, registry login, architecture and Docker prerequisites', file=sys.stderr)
         sys.exit(1)

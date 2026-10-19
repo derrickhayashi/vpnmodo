@@ -30,6 +30,17 @@ portForwards:
     proto: any
     ignore: true
 provision:
+  # Keep these inputs beside the consumer copy of this YAML, outside Git.
+  - mode: data
+    path: /root/.docker/config.json
+    file: ghcr-config.json
+    permissions: 600
+  - mode: data
+    path: /etc/vpnmodo/registry-release.json
+    file: registry-release.json
+  - mode: data
+    path: /usr/local/lib/vpnmodo/install-vm.py
+    file: install-vm.py
   - mode: system
     script: |
       #!/bin/bash
@@ -46,9 +57,14 @@ provision:
       done
       printf '%s\n' xfrm_user esp4 ppp_generic ppp_async > /etc/modules-load.d/vpnmodo.conf
       test -c /dev/ppp
+      install -d -m 755 /var/lib/vpnmodo
+      python3 /usr/local/lib/vpnmodo/install-vm.py --registry /etc/vpnmodo/registry-release.json \
+        > /var/lib/vpnmodo/installed-release.json.tmp
+      chmod 644 /var/lib/vpnmodo/installed-release.json.tmp
+      mv /var/lib/vpnmodo/installed-release.json.tmp /var/lib/vpnmodo/installed-release.json
 probes:
   - mode: readiness
-    description: Rootful Docker, Compose, Python and PPP are ready
+    description: Docker, PPP and the vpnmodo release images are ready
     script: |
       #!/bin/sh
       set -eu
@@ -56,3 +72,4 @@ probes:
       sudo -n docker --host unix:///var/run/docker.sock info >/dev/null
       sudo -n docker compose version
       test -c /dev/ppp
+      test -s /var/lib/vpnmodo/installed-release.json

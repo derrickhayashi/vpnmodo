@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build private release artifacts from committed source; never publish them."""
+"""Build private release artifacts; optionally publish VM images to private GHCR."""
 import argparse
 import gzip
 import hashlib
@@ -133,7 +133,7 @@ def cli(source, output, metadata, temporary):
 def docker(*args):
     # Explicitly target the local rootful VM engine, never a workstation context.
     command = ['docker', '--host', 'unix:///var/run/docker.sock', *args]
-    if args[0] in ('build', 'pull', 'save'):
+    if args[0] in ('build', 'pull', 'save', 'push'):
         subprocess.run(command, check=True)
         return ''
     return run(command)
@@ -182,12 +182,33 @@ def vm(source, output, metadata, temporary):
     return 'linux-' + arch
 
 
+def publish(manifest, output):
+    data = json.loads(manifest.read_text())
+    prefix = 'ghcr.io/derrickhayashi/vpn-sidecars-next/'
+    refs = {}
+    for role in sorted(data['images']):
+        repository = prefix + role
+        tag = repository + ':' + data['version'] + '-' + data['arch']
+        docker('tag', data['images'][role]['id'], tag)
+        docker('push', tag)
+        digests = json.loads(docker('image', 'inspect', '--format', '{{json .RepoDigests}}', tag))
+        candidates = [ref for ref in digests if ref.startswith(repository + '@sha256:')]
+        if len(candidates) != 1:
+            raise RuntimeError('published image did not return one registry digest')
+        refs[role] = candidates[0]
+    release = {key: data[key] for key in ('version', 'binary_version', 'os', 'arch')}
+    write_json(output / 'registry-release.json', dict(release, schema_version=1, images=refs))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('kind', choices=('cli', 'vm'))
     parser.add_argument('--version', required=True)
+    parser.add_argument('--publish', action='store_true', help='publish VM images to private GHCR (requires Docker login)')
     parser.add_argument('--output', type=Path, required=True, help='new directory outside the source checkout')
     args = parser.parse_args()
+    if args.publish and args.kind != 'vm':
+        parser.error('--publish applies only to VM image builds')
     if not VERSION.fullmatch(args.version):
         parser.error('use a version such as v0.1.0-rc.1')
     root = Path(__file__).resolve().parents[1]
@@ -199,6 +220,10 @@ def main():
             source, metadata = source_snapshot(root, Path(directory), args.version)
             output.mkdir(parents=True)
             kind = globals()[args.kind](source, output, metadata, Path(directory))
+            if args.publish:
+                publish(Path(directory) / 'vm/release.json', output)
+                shutil.copyfile(source / 'scripts/release/install-vm.py', output / 'install-vm.py')
+                shutil.copyfile(source / 'examples/lima/vpnmodo.yaml', output / 'lima.yaml')
             lines = [digest(path) + '  ' + path.name + '\n' for path in sorted(output.iterdir()) if path.is_file()]
             (output / ('SHA256SUMS-' + kind)).write_text(''.join(lines))
         print(str(output))

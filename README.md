@@ -76,7 +76,8 @@ software policy. The installer does not change Gatekeeper settings.
 ## 2. Prepare the Ubuntu VM and SSH access
 
 For a local VM on Apple Silicon, [the Lima setup guide](docs/lima.md) creates
-and prepares Ubuntu automatically using Lima's SSH configuration.
+and prepares Ubuntu and pulls the release images automatically using Lima's SSH
+configuration. The existing host setup command then starts the controller.
 
 For an existing VM, follow [prepare an Ubuntu VM](docs/vm-setup.md) to establish verified SSH and run
 the dedicated `vpn_sidecar.client.vm_prepare` Ansible role from your Mac. You
