@@ -118,7 +118,8 @@ the management process; status separately reports Docker readiness.
 input/error handling, bridge EOF, service lifetime, registry updates and secret
 handling. Bootstrap unit tests fake Docker and never touch live resources.
 
-The `Controller SSH acceptance` workflow uses a fresh Ubuntu runner. It generates
+The [local Ubuntu lab](../../tests/local-lab/README.md) uses an existing VM and a
+disposable nested Docker daemon. Hosted Actions remains disabled. It generates
 ephemeral SSH keys outside the checkout, pins its own server key, rejects unknown
 keys, creates the controller through actual SSH/Compose, checks private mounts and
 permissions, repairs a stopped controller, recreates it with state retained, and

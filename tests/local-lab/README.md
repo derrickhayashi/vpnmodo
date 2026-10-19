@@ -93,6 +93,24 @@ handling and the full real IKEv1/IPsec/L2TP/PPP/TCP/DNS suite, including endpoin
 outage, namespace repair, tunnel-loss recovery, failed recovery, explicit
 stop/reconnect, controller recreation and credential disposal.
 
+The XAuth suite also passes real aggressive PSK/XAUTH_PASSCODE over NAT-T,
+private TCP/DNS, authenticated CHILD rekey and quiet sessions. Physical-veth
+positive controls observe 2 unprivileged IKE-port probes before login, 4 ordinary
+plaintext probes, and 10 packets after policy/routing loss with enforcement
+intentionally opened. Every protected phase observes zero client plaintext,
+including existing TCP/UDP flows with SAs/policies removed while the controller
+and client are suspended. Kernel counters also require zero received plaintext
+and no dropped capture packets. The suite covers IPv6/Docker DNS bypass refusal,
+SO_MARK forgery refusal, expired/incorrect/repeated MFA, actual controller-process
+crash, hidden terminal input, session-preserving recreation and credential cleanup.
+
+Application repair now uses a separate application-only manifest pinned to the
+verified VPN container ID. It cannot start/recreate a VPN through Compose
+service-dependency reconciliation. The L2TP namespace test waits for its external
+replacement to become healthy before resuming the controller, then requires
+application-only repair. The full real L2TP suite and three stop/reconnect cycles
+pass with that precondition and without external namespace monitors.
+
 A foreground idle sleep deferred the VPN shell's TERM handler beyond Docker's
 two-second stop limit. The container could be force-killed before telling the
 peer to close its session. The idle wait is now interruptible. The regression

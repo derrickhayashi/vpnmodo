@@ -110,7 +110,12 @@ in the outer lab's stable namespace on the host side of the VPN veth, before
 bridge routing. It sees physical egress after encryption, so an IPsec route via
 the gateway cannot hide plaintext from it. Deliberate positive controls both
 before login and after policy removal must demonstrate detection. The observer
-holds no VPN namespace descriptor and is stopped/reaped after each phase. The
+holds no VPN namespace descriptor and is stopped/reaped after each phase.
+Immediate capture avoids buffering away short UDP probes. A kernel BPF source-MAC
+filter limits counters to client egress; both processed and kernel-received
+plaintext must be zero, with no kernel packet loss. Before VPN startup, a
+capability-free workload that can bind ports 500/4500 must still be blocked from
+using the root IKE exceptions. The
 suite exercises pending MFA, private TCP/DNS, quiet sessions, CHILD rekey, active
 flows with SAs/policies removed while controller and client are suspended,
 recreation, expiry, wrong/repeated codes and controller restart. Zero observed

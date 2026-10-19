@@ -21,8 +21,9 @@ vpnmodo operation watch op-0123456789abcdef0123456789abcdef --host my-vm --json
 vpnmodo operation cancel op-0123456789abcdef0123456789abcdef --host my-vm --json
 ```
 
-L2TP ensure/disconnect use the real adapter in the production image. XAuth remains
-backend-unavailable. Tests can inject a separate synthetic adapter. `ensure`/`disconnect` return a queued operation snapshot; they
+L2TP and XAuth ensure/disconnect use real managed adapters in the production
+image. XAuth uses the [secure MFA interface](006-managed-xauth.md). Tests can
+inject a separate synthetic adapter. `ensure`/`disconnect` return a queued operation snapshot; they
 do not claim that a connection is ready. `--wait` subscribes until terminal state.
 Watch output with `--json` is one JSON snapshot per line. Failed/cancelled watches
 exit nonzero after printing the final snapshot. Closing SSH/the watcher does not
@@ -145,12 +146,14 @@ expiry/repeated prompts, deadlines, bounded observers/history, restart, and jour
 failures before/after publication and after a new connection starts. RPC tests
 cover reconnect, ordered snapshots/notifications and disabled production backends.
 
-The isolated Ubuntu SSH workflow first validates the production controller, then
-builds a separate synthetic test-binary image in a binary-only Docker context. It
+The [local Ubuntu lab](../../tests/local-lab/README.md) first validates the
+production controller, then builds a separate synthetic test-binary image in a
+binary-only Docker context. Hosted Actions remains disabled. It
 verifies operations after the initiating SSH exits, concurrent callers, CLI watch,
 MFA submission/replay, cancellation, controller restart, established-session reuse,
 interrupted MFA without retry, persisted disconnect intent and secret-free journal
-bytes. It never logs into a VPN or changes a customer deployment. Synthetic success
-does not establish VPN interoperability or XAuth packet isolation.
+bytes. That synthetic suite never logs into a VPN or changes a customer
+deployment. Separate real L2TP and XAuth suites provide protocol and packet
+evidence; synthetic success alone does not establish either.
 
 Reference: [bbolt v1.5.0](https://pkg.go.dev/go.etcd.io/bbolt@v1.5.0).
