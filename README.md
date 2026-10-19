@@ -75,10 +75,17 @@ software policy. The installer does not change Gatekeeper settings.
 
 ## 2. Prepare the Ubuntu VM and SSH access
 
-For a fresh VM, follow [prepare an Ubuntu VM](docs/vm-setup.md) to install SSH,
-Python 3, rootful Docker Engine and Compose v2, and prepare kernel support. The
-same guide explains host-key verification. `vpnmodo host setup` installs the
-controller; it does not create a VM or install those prerequisites.
+Follow [prepare an Ubuntu VM](docs/vm-setup.md) to establish verified SSH and run
+the dedicated `vpn_sidecar.client.vm_prepare` Ansible role from your Mac. You
+supply an existing Ubuntu 24.04 ARM64 VM with Python 3 and administrative access.
+The role prepares rootful Docker Engine, Compose, utilities, management-account
+access and kernel support without VPN settings or credentials. Ansible host
+preparation does not need Docker Desktop on the Mac.
+
+The guide pins the preparation collection separately from the runtime candidate:
+runtime commit `990dc2fe7caec4e1b68cf2b54788b996937e66c5` predates the new role.
+Preparation does not create a profile or start a controller or VPN. Continue here
+after it succeeds; `vpnmodo host setup` installs the controller later.
 
 On the **Mac**, add a VM alias to `~/.ssh/config`, replacing the uppercase values
 and choosing your existing SSH identity:
