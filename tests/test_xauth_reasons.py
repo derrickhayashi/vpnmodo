@@ -39,7 +39,11 @@ printf 'PIN: '; IFS= read -r value
             source = Path(__file__).resolve().parents[1] / 'containers/ipsec-xauth/managed/vpn-xauth-expect'
             script = source.read_text().replace('/run/vpn', str(root / 'run/vpn')).replace('/run/secrets', str(root / 'secrets'))
             if outcome == 'timeout':
-                script = script.replace('set deadline [expr {[clock seconds] + 90}]', 'set deadline [expr {[clock seconds] + 1}]')
+                # Shorten only the post-submission deadline. Shortening startup
+                # too can expire before the synthetic MFA prompt is reached.
+                before, marker, after = script.rpartition('set deadline [expr {[clock seconds] + 90}]')
+                self.assertTrue(marker)
+                script = before + 'set deadline [expr {[clock seconds] + 1}]' + after
             harness = root / 'harness.exp'
             harness.write_text(script)
             process = subprocess.Popen(['expect', str(harness)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
