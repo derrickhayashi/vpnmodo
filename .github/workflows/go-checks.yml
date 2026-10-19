@@ -1,0 +1,37 @@
+name: Go checks
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Check formatting
+        shell: bash
+        run: test -z "$(gofmt -l internal)"
+      - name: Vet
+        run: go vet ./...
+      - name: Race and unit tests
+        run: go test -race ./...
+      - name: Compile packages for target architectures
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64; do
+            IFS=/ read -r build_os build_arch <<< "$target"
+            GOOS="$build_os" GOARCH="$build_arch" CGO_ENABLED=0 go build ./...
+          done

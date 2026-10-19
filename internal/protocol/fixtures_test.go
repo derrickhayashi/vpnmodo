@@ -1,0 +1,3 @@
+package protocol
+
+const xauthProfile = `{"schema_version":1,"name":"example","backend":{"type":"ipsec-xauth","config":{"server":"203.0.113.10"}},"health":{"host":"192.0.2.10","port":22}}`
