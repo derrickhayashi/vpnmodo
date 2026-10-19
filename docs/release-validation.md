@@ -76,10 +76,25 @@ updated Expect script layered on the previously verified production base images.
 It completed managed XAuth login and private TCP checks, then authenticated SSH
 through the public proxy. A protected-route MTU/MSS workaround was required for
 the larger SSH exchange; lowering only the namespace interface MTU did not help.
-This is tracked by #21 and is not yet persisted across fresh login/rekey. These
+Follow-up isolation reproduced the stall with synthetic ESP/NAT-T across a
+1280-byte bottleneck: the managed INPUT filter dropped related ICMP
+fragmentation-needed errors. A narrow RELATED/type-3-code-4 exception restores
+256 KiB transfers each way without route MTU/MSS overrides. Unrelated ICMP and
+plaintext/post-policy probes remain blocked. A fresh native ARM64 trial login
+with this correction also passes authenticated SSH and 256 KiB uploads/downloads
+on both configured targets, with a 1500-byte container interface and no route
+MTU/MSS override. Issue #21 retains the authenticated rekey application gate.
+The focused packet fixture passes; the full protocol/lifetime suite has not
+been rerun for this correction. These
 patched trial images are not a new full production-Dockerfile release bundle.
 
 PR #20 remains draft. Issue #9 stays open for #21, fresh schema-2 bundle acceptance,
 legacy cutover/rollback with fresh MFA, and the remaining native amd64 matrix.
 No raw deployment settings, credentials, transcripts or packet metadata belong
 in this record. GitHub Actions remains disabled.
+
+One preceding fresh trial attempt exited after MFA with fixed diagnostic 27.
+The explicitly authorized next attempt succeeded. That diagnostic identifies
+the stage, not the peer-side cause or code validity. Earlier spontaneous loss of
+kernel IPsec state remains unexplained; short application success does not
+establish that the PMTU correction addresses session lifetime.

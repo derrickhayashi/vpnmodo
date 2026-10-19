@@ -75,6 +75,16 @@ MFA failure/expiry/repetition and controller restart. Only the test binary short
 the MFA window to 45 seconds; production keeps its normal deadline. The quiet
 session interval exceeds 90 seconds while controller probes are paused.
 
+A separate packet regression creates fresh kernel ESP/NAT-T peers across a
+1280-byte routed bottleneck. It compares the legacy unfiltered path, a managed
+filter missing PMTU feedback, the locked-route workaround, and the corrected
+filter with and without a route MTU override. Each working path must transfer
+256 KiB in both directions. Counter checks require conntrack-related ICMP
+fragmentation-needed feedback to arrive and be accepted by the correction.
+Unrelated forged ICMP remains dropped. Plaintext TCP/UDP, unprivileged IKE-port
+UDP and traffic after IPsec policy loss remain blocked, with reachable unfiltered
+positive controls. No customer profiles or packet payload captures are used.
+
 The synthetic observer runs the tcpdump binary under a lab-specific executable
 path. Ubuntu's host tcpdump AppArmor attachment otherwise prevents the nested
 container's helper from signalling it, even with a container unconfined setting.
@@ -180,3 +190,11 @@ observer is stopped and reaped after its phase; it holds no VPN namespace
 reference. Avoid external nsenter captures in a dynamic VPN namespace: they can
 retain a retired namespace and change reconnect behavior. Keep all captures and
 runtime diagnostics outside the checkout.
+
+The focused PMTU regression passes on Ubuntu 24.04 ARM64: removing the ICMP
+exception causes an eight-second transfer timeout and drops all 16 observed
+fragmentation-needed errors. The correction accepts the related feedback and
+completes 256 KiB each way without a route MTU or MSS override. The locked-route
+workaround also passes. Unrelated ICMP and every protected plaintext/post-policy
+probe remain blocked. This packet fixture does not authenticate to a real VPN or
+establish that a full protocol/lifetime suite passed at this revision.
