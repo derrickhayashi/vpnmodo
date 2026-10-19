@@ -1,0 +1,283 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"time"
+
+	assets "github.com/derrickhayashi/vpn-sidecars-next"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/controller"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/credentialinput"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+)
+
+func setupCommand(base context.Context, registry string, args []string, out io.Writer) error {
+	flags := flag.NewFlagSet("setup", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	name := flags.String("name", "vpn-vm", "")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(out, "Usage: vpnmodo [--config FILE] setup [--name vpn-vm]\nCreates a local Lima VM, provisions release images and starts the controller.")
+			return nil
+		}
+		return errors.New("invalid setup options")
+	}
+	if flags.NArg() != 0 || (host.Host{Name: *name, SSH: "lima-" + *name}).Validate() != nil {
+		return errors.New("supply a valid Lima VM name with --name")
+	}
+	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
+		return errors.New("local setup requires an Apple Silicon Mac; use host add/setup for an existing VM")
+	}
+	if registry == "" {
+		var err error
+		registry, err = host.DefaultRegistry()
+		if err != nil {
+			return err
+		}
+	}
+	if !filepath.IsAbs(registry) {
+		return host.ErrRegistry
+	}
+	ctx, cancel := context.WithTimeout(base, 30*time.Minute)
+	defer cancel()
+	if _, err := exec.LookPath("limactl"); err != nil {
+		if _, err := exec.LookPath("brew"); err != nil {
+			return errors.New("install Homebrew from https://brew.sh, then run vpnmodo setup again")
+		}
+		fmt.Fprintln(out, "Installing Lima with Homebrew...")
+		if err := setupRun(ctx, out, "brew", "install", "lima"); err != nil {
+			return err
+		}
+	}
+	h, release, err := provisionLima(ctx, registry, *name, out)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Starting the controller...")
+	activation, stop := context.WithTimeout(ctx, 4*time.Minute)
+	_, err = host.Setup(activation, h, host.SetupParams{Image: release.ControllerImage, BackendImages: release.BackendImages})
+	stop()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(out, "Checking controller readiness...")
+	if err := waitSetupReady(ctx, h, release.Version); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Ready: %s (%s).\nNext: vpnmodo profile create work --host %s --file PROFILE.json\n", h.Name, release.Version, h.Name)
+	return nil
+}
+
+func setupRun(ctx context.Context, out io.Writer, program string, args ...string) error {
+	cmd := exec.CommandContext(ctx, program, args...)
+	cmd.Stdout, cmd.Stderr = out, out
+	if cmd.Run() != nil {
+		return fmt.Errorf("%s failed; check the output above, then run setup again", program)
+	}
+	return nil
+}
+
+type limaInstance struct {
+	Name      string `json:"name"`
+	SSHConfig string `json:"sshConfigFile"`
+	Status    string `json:"status"`
+}
+
+func findLima(ctx context.Context, name string) (limaInstance, error) {
+	data, err := exec.CommandContext(ctx, "limactl", "list", "--json").Output()
+	if err != nil {
+		return limaInstance{}, errors.New("cannot list Lima instances")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	for {
+		var instance limaInstance
+		if err := decoder.Decode(&instance); errors.Is(err, io.EOF) {
+			return limaInstance{}, nil
+		} else if err != nil {
+			return limaInstance{}, errors.New("Lima returned invalid instance information")
+		}
+		if instance.Name == name {
+			if !filepath.IsAbs(instance.SSHConfig) {
+				return limaInstance{}, errors.New("Lima returned an invalid SSH config path")
+			}
+			return instance, nil
+		}
+	}
+}
+
+func limaSSHConfig(ctx context.Context, name string) (string, error) {
+	instance, err := findLima(ctx, name)
+	return instance.SSHConfig, err
+}
+
+// provisionLima uses native Lima and SCP; activation reuses host.Setup above.
+func provisionLima(ctx context.Context, registry, name string, out io.Writer) (host.Host, host.InstalledRelease, error) {
+	var empty host.InstalledRelease
+	h := host.Host{Name: name, SSH: "lima-" + name, Sudo: true}
+	if h.Validate() != nil || !filepath.IsAbs(registry) {
+		return h, empty, host.ErrRegistry
+	}
+	dir := filepath.Join(filepath.Dir(registry), "setup", name)
+	if err := privatefile.Dir(dir); err != nil {
+		return h, empty, err
+	}
+	unlock, err := privatefile.Lock(ctx, filepath.Join(dir, "setup.lock"))
+	if err != nil {
+		return h, empty, err
+	}
+	defer unlock()
+	registered, err := host.Read(registry)
+	if err != nil {
+		return h, empty, err
+	}
+	config, err := limaSSHConfig(ctx, name)
+	if err != nil {
+		return h, empty, err
+	}
+	for _, existing := range registered.Hosts {
+		if existing.Name == name && (existing.SSH != h.SSH || !existing.Sudo || config != "" && existing.SSHConfig != config) {
+			return h, empty, errors.New("host name is already registered with different SSH settings; choose another --name")
+		}
+	}
+	yaml := filepath.Join(dir, "lima.yaml")
+	if config != "" {
+		if _, err := privatefile.Read(yaml, 64*1024); err != nil {
+			return h, empty, errors.New("Lima instance already exists outside this setup; choose another --name or use host add/setup")
+		}
+	}
+	if err := ensureRegistryAuth(ctx, filepath.Join(dir, "ghcr-config.json"), out); err != nil {
+		return h, empty, err
+	}
+	if config == "" {
+		for name, data := range map[string][]byte{"lima.yaml": assets.LimaYAML, "registry-release.json": assets.RegistryRelease, "install-vm.py": assets.VMInstaller} {
+			if _, err := privatefile.Write(filepath.Join(dir, name), data); err != nil {
+				return h, empty, err
+			}
+		}
+		fmt.Fprintln(out, "Creating and provisioning the Lima VM...")
+		err = setupRun(ctx, out, "limactl", "start", "--tty=false", "--name", name, yaml)
+	} else {
+		fmt.Fprintln(out, "Starting the existing Lima VM...")
+		err = setupRun(ctx, out, "limactl", "start", "--tty=false", name)
+	}
+	if err != nil {
+		// A previous bad registry login can fail the boot's image step while
+		// leaving this setup-owned VM running and reachable for repair.
+		instance, lookup := findLima(ctx, name)
+		if config == "" || ctx.Err() != nil || lookup != nil || instance.Status != "Running" {
+			return h, empty, err
+		}
+		fmt.Fprintln(out, "VM is running; retrying image setup with saved credentials...")
+	}
+	h.SSHConfig, err = limaSSHConfig(ctx, name)
+	if err != nil || h.SSHConfig == "" {
+		return h, empty, errors.New("Lima did not provide an SSH configuration")
+	}
+	if config != "" {
+		// Lima embeds data files at creation. Refresh auth and finish image setup
+		// when retrying after a failed pull, using only stdin for the credentials.
+		auth, err := privatefile.Read(filepath.Join(dir, "ghcr-config.json"), 16*1024)
+		if err != nil {
+			return h, empty, err
+		}
+		writeAuth := `python3 -c 'import os,sys; os.umask(0o077); os.makedirs("/root/.docker",exist_ok=True); f=open("/root/.docker/config.json","wb"); f.write(sys.stdin.buffer.read()); f.close(); os.chmod("/root/.docker/config.json",0o600)'`
+		err = setupSSH(ctx, h, writeAuth, auth)
+		clear(auth)
+		if err != nil {
+			return h, empty, err
+		}
+		finish := `sh -c 'python3 /usr/local/lib/vpnmodo/install-vm.py --registry /etc/vpnmodo/registry-release.json > /var/lib/vpnmodo/installed-release.json.tmp && chmod 644 /var/lib/vpnmodo/installed-release.json.tmp && mv /var/lib/vpnmodo/installed-release.json.tmp /var/lib/vpnmodo/installed-release.json'`
+		if err := setupSSH(ctx, h, finish, nil); err != nil {
+			return h, empty, err
+		}
+	}
+	receipt := filepath.Join(dir, "installed-release.json")
+	if err := setupRun(ctx, out, "scp", "-F", h.SSHConfig, h.SSH+":/var/lib/vpnmodo/installed-release.json", receipt); err != nil {
+		return h, empty, err
+	}
+	release, err := host.ReadInstalledRelease(receipt)
+	if err != nil {
+		return h, empty, err
+	}
+	if err := host.Add(registry, h); err != nil {
+		previous, lookup := host.Find(registry, name)
+		if !errors.Is(err, host.ErrDuplicate) || lookup != nil || previous != h {
+			return h, empty, err
+		}
+	}
+	return h, release, nil
+}
+
+func setupSSH(ctx context.Context, h host.Host, command string, input []byte) error {
+	args, err := host.SSHArgs(h, command)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Stdin = bytes.NewReader(input)
+	if cmd.Run() != nil {
+		return errors.New("VM image preparation failed; check GHCR access and retry setup")
+	}
+	return nil
+}
+
+func ensureRegistryAuth(ctx context.Context, path string, out io.Writer) error {
+	data, err := privatefile.Read(path, 16*1024)
+	if err == nil {
+		var config struct {
+			Auths map[string]struct {
+				Auth string `json:"auth"`
+			} `json:"auths"`
+		}
+		if json.Unmarshal(data, &config) != nil || config.Auths["ghcr.io"].Auth == "" {
+			return errors.New("invalid saved GHCR credentials; remove ghcr-config.json from the setup directory and retry")
+		}
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	fmt.Fprintln(out, "Release images are private. Enter a GitHub account with package access and a token with read:packages.")
+	data, err = credentialinput.ReadRegistry(ctx)
+	if err != nil {
+		return errors.New("GHCR credentials are required; run setup in an interactive terminal")
+	}
+	defer clear(data)
+	_, err = privatefile.Write(path, data)
+	return err
+}
+
+func waitSetupReady(base context.Context, h host.Host, version string) error {
+	ctx, cancel := context.WithTimeout(base, time.Minute)
+	defer cancel()
+	for {
+		attempt, stop := context.WithTimeout(ctx, 5*time.Second)
+		client, err := host.Connect(attempt, h)
+		if err == nil {
+			var status controller.Status
+			err = client.Call(attempt, protocol.SystemStatus, struct{}{}, &status)
+			client.Close()
+			if err == nil && status.StateReady && status.DockerReady && status.RuntimeEnabled && status.Version == version {
+				stop()
+				return nil
+			}
+		}
+		stop()
+		select {
+		case <-ctx.Done():
+			return errors.New("controller is not ready; inspect it with vpnmodo host check")
+		case <-time.After(time.Second):
+		}
+	}
+}

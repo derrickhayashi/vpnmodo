@@ -1,7 +1,7 @@
 # Onboarding, profile maintenance and adoption
 
 Start with [README installation](../README.md#installation) to install the Mac
-CLI, create and provision a local Ubuntu VM with Lima, and create your VPN
+CLI, run `vpnmodo setup` to create a ready local Ubuntu VM, and create your VPN
 profile. Then use [README usage](../README.md#usage) to connect and access private
 services. The platform pair is macOS ARM64 and Ubuntu 24.04 ARM64; each user owns
 their Mac and VM.

@@ -32,7 +32,7 @@ func run(base context.Context, args []string, output io.Writer) error {
 		return proxyCommand(base, args)
 	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE] [--sudo]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME {--image IMAGE | --release INSTALLED.json} [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo profile help\n       vpnmodo connection {ensure|disconnect|status} ALIAS [--wait] [--json]\n       vpnmodo operation {status|cancel|watch} ID --host HOST [--json]\n       vpnmodo operation submit-mfa ID --host HOST --challenge ID [--code-stdin] [--json]\n       vpnmodo service {configure|start|stop|status} ALIAS [--file FILE] [--service NAME] [--json]\n       vpnmodo {up|down|status|doctor} ALIAS [--json]\n       vpnmodo [--config FILE] proxy ALIAS HOST PORT\n       vpnmodo version")
+		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] setup [--name vpn-vm]\n       vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE] [--sudo]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME {--image IMAGE | --release INSTALLED.json} [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo profile help\n       vpnmodo connection {ensure|disconnect|status} ALIAS [--wait] [--json]\n       vpnmodo operation {status|cancel|watch} ID --host HOST [--json]\n       vpnmodo operation submit-mfa ID --host HOST --challenge ID [--code-stdin] [--json]\n       vpnmodo service {configure|start|stop|status} ALIAS [--file FILE] [--service NAME] [--json]\n       vpnmodo {up|down|status|doctor} ALIAS [--json]\n       vpnmodo [--config FILE] proxy ALIAS HOST PORT\n       vpnmodo version")
 		return nil
 	}
 	root := flag.NewFlagSet("vpnmodo", flag.ContinueOnError)
@@ -45,6 +45,9 @@ func run(base context.Context, args []string, output io.Writer) error {
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintln(output, version)
 		return nil
+	}
+	if len(args) > 0 && args[0] == "setup" {
+		return setupCommand(base, *registry, args[1:], output)
 	}
 	if len(args) > 0 && args[0] == "proxy" {
 		return streamCommand(base, *registry, args, os.Stdin, output)

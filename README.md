@@ -32,92 +32,42 @@ for qualification and the unresolved intermittent startup/session observations
 
 ## Installation
 
-Run the following commands on your **Mac**, unless stated otherwise.
+On an **Apple Silicon Mac**, download one file:
+[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.8/vpnmodo-darwin-arm64).
+Sign in to GitHub to download this private release.
 
-### 1. Install the CLI
-
-Ask the maintainer for the matching release files and trusted SHA-256 checksums.
-The current Lima image manifest uses `v0.1.0-rc.7`. The images are published in
-private GHCR; there is no Homebrew tap or downloadable GitHub release yet.
-
-| File | Purpose |
-| --- | --- |
-| `vpnmodo-v0.1.0-rc.7-darwin-arm64.tar.gz` | Mac CLI and installer |
-| `SHA256SUMS-cli` | CLI archive checksums |
-| `lima.yaml` | Ubuntu VM configuration |
-| `install-vm.py` | Pulls and checks the VM release images |
-| `registry-release.json` | Exact image digests for that release |
-
-Put the files in `~/Downloads/vpnmodo-v0.1.0-rc.7`, then:
+Install it and create your environment:
 
 ```sh
-artifact_dir="$HOME/Downloads/vpnmodo-v0.1.0-rc.7"
-setup_dir="$HOME/vpnmodo-private/setup"
-umask 077
-mkdir -p "$setup_dir/cli"
-chmod 700 "$HOME/vpnmodo-private" "$setup_dir"
-shasum -a 256 "$artifact_dir/vpnmodo-v0.1.0-rc.7-darwin-arm64.tar.gz"
-```
-
-Compare the hash with that archive's entry in the trusted `SHA256SUMS-cli`.
-After it matches:
-
-```sh
-tar -xzf "$artifact_dir/vpnmodo-v0.1.0-rc.7-darwin-arm64.tar.gz" \
-  -C "$setup_dir/cli"
-sh "$setup_dir/cli/install.sh" --prefix "$HOME/.local"
+mkdir -p "$HOME/.local/bin"
+install -m 755 "$HOME/Downloads/vpnmodo-darwin-arm64" "$HOME/.local/bin/vpnmodo"
 export PATH="$HOME/.local/bin:$PATH"
-vpnmodo version
+vpnmodo setup
 ```
 
-Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` once to retain it in new
-terminals. Installation refuses an existing binary; use the explicit
-[upgrade procedure](docs/releases.md#installation-and-upgrades) for replacement.
-The candidate is unsigned and not notarized; use your team's approved macOS
-software policy. The installer does not change Gatekeeper settings.
+Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` once for new terminals.
 
-### 2. Create the VM and start the controller
+Setup installs Lima through Homebrew if needed, creates the Ubuntu VM, installs
+Docker and the release images, starts the controller and checks readiness. If
+Homebrew is missing, setup tells you to install it from [brew.sh](https://brew.sh)
+and run setup again. All provisioning files are embedded in the executable;
+there are no separate setup files to download.
 
-Install Lima 2.2.1 or later and copy the matching provisioning files:
+The images are currently private. Setup prompts for your GitHub username and a
+token with `read:packages`; the account needs access to the packages. Credentials
+are saved in a private file for image pulls. No Mac Docker Desktop, Go or Ansible
+installation is needed.
 
-```sh
-brew install lima
-cp "$artifact_dir/lima.yaml" "$artifact_dir/install-vm.py" \
-  "$artifact_dir/registry-release.json" "$setup_dir/"
-```
+The default VM and registered host are named `vpn-vm`. Running setup again reuses
+them. Use `vpnmodo setup --name another-vm` to create a separate environment.
+For details, see [Lima setup](docs/lima.md). For an existing VM or offline image
+bundle, use [existing VM installation](docs/offline-installation.md).
 
-The same provisioning files are available in the source checkout; see the
-[Lima guide](docs/lima.md#prepare-the-release-inputs) for those copy commands.
+This CLI release is `v0.1.0-rc.8` and provisions the existing `v0.1.0-rc.7`
+controller images. Release checksums, unsigned macOS binary details and explicit
+upgrade instructions are in [release packaging](docs/releases.md).
 
-The GHCR images are currently private. Follow the
-[registry authentication instructions](docs/lima.md#prepare-the-release-inputs)
-to create `ghcr-config.json` beside `lima.yaml`. Your GitHub account needs package
-read access and a token with `read:packages`. Keep the token outside Git.
-
-Create the VM, register Lima's SSH settings and start the controller:
-
-```sh
-limactl start --tty=false --name vpn-vm "$setup_dir/lima.yaml"
-scp -F "$HOME/.lima/vpn-vm/ssh.config" \
-  lima-vpn-vm:/var/lib/vpnmodo/installed-release.json "$setup_dir/installed-release.json"
-vpnmodo host add vpn-vm --ssh lima-vpn-vm \
-  --ssh-config "$HOME/.lima/vpn-vm/ssh.config" --sudo
-vpnmodo host setup vpn-vm --release "$setup_dir/installed-release.json"
-vpnmodo host check vpn-vm
-```
-
-Lima creates the `vpnadmin` account and SSH access, installs Docker and required
-kernel support, and pulls all four release images. `host setup` starts the
-controller using those installed images. No fixed VM IP is needed. For a custom
-`LIMA_HOME`, use the SSH config path described in the [Lima guide](docs/lima.md#ssh-and-restart).
-
-**Using an existing VM or an offline bundle?** Follow
-[existing VM and offline installation](docs/offline-installation.md) instead of
-this Lima step. It uses the Ansible role to prepare the VM and loads images from
-a release bundle. Both paths finish with a registered host named `vpn-vm` and a
-running controller. Continue below after either path succeeds.
-
-### 3. Create a VPN profile
+### Create a VPN profile
 
 On the **Mac**, create a private directory outside any Git checkout:
 

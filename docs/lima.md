@@ -4,6 +4,46 @@ Lima creates Ubuntu 24.04 ARM64 on Apple Silicon, prepares Docker and IPsec/PPP,
 and pulls the published vpnmodo release images. Use Lima's generated SSH config
 directly. The Ansible role remains the preparation option for existing VMs.
 
+## Single-file setup
+
+Install the standalone CLI using [README installation](../README.md#installation),
+then run:
+
+```sh
+vpnmodo setup
+```
+
+The CLI embeds the Lima YAML, VM image installer and pinned registry manifest.
+It writes them under its private configuration directory, creates the VM using
+native `limactl`, registers Lima's generated SSH configuration, starts the
+controller and waits for readiness. It installs Lima with Homebrew if missing;
+Homebrew itself must already be installed. The Mac does not need Python or Docker.
+
+The GHCR packages are private, so setup prompts for a GitHub username and a token
+with `read:packages`. The account must have package read access. Both prompts
+hide input; credentials are saved with mode 0600 and copied into root's Docker
+config in the VM. No token is passed in command arguments or environment variables.
+
+The default instance and host name is `vpn-vm`. Use `vpnmodo setup --name NAME`
+for another name. An existing instance created by setup is reused; an unrelated
+instance or conflicting registered host is refused. Rerunning setup starts the
+VM and reuses the controller without replacing a different controller release.
+Explicit upgrades remain in the [release guide](releases.md#installation-and-upgrades).
+
+Private setup files live beside the host registry under `setup/NAME/`, normally
+`~/Library/Application Support/vpnmodo/setup/vpn-vm/` on macOS. If a token was
+entered incorrectly, remove that directory's `ghcr-config.json` and run setup
+again. Setup refreshes the VM credentials and retries image installation.
+
+When setup reports ready, continue with
+[creating a VPN profile](../README.md#create-a-vpn-profile) and
+[everyday usage](../README.md#usage).
+
+## Manual provisioning reference
+
+The steps below expose the native Lima flow for maintainers. They are not
+needed by users of `vpnmodo setup`.
+
 ## Prepare the release inputs
 
 Install Lima 2.2.1 or later with `brew install lima`. Obtain `lima.yaml`,

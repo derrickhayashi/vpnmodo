@@ -2,8 +2,9 @@
 
 Use this path for an existing local or remote Ubuntu VM, or to transfer release
 images without pulling them from GHCR inside the VM. Install the Mac CLI first
-using [README installation step 1](../README.md#1-install-the-cli), then follow
-this guide instead of the Lima step. No registry login is needed for the bundle.
+using the download and binary installation commands in
+[README installation](../README.md#installation). Skip its `vpnmodo setup` command
+and follow this guide instead. No registry login is needed for the bundle.
 
 Obtain the matching `vpnmodo-v0.1.0-rc.7-linux-arm64-images.tar.gz` and trusted
 `SHA256SUMS-linux-arm64` from the maintainer. Put them in the same private release
@@ -103,5 +104,5 @@ starting, repeat `host check`. Setup uses the receipt to select all four verifie
 images; it does not import existing profiles or change legacy VPN deployments.
 No controller firewall port or registry credentials are needed.
 
-Continue with [creating a VPN profile](../README.md#3-create-a-vpn-profile),
+Continue with [creating a VPN profile](../README.md#create-a-vpn-profile),
 then follow [everyday usage](../README.md#usage).

@@ -3,8 +3,33 @@
 Issue #9 supplies an offline distribution path. ARM64 candidate qualification
 passes as recorded in the [validation record](release-validation.md). These are
 private release candidates. Builds stay local by default; `vm --publish` uploads
-release images to private GHCR. No Homebrew tap or GitHub release is created. GitHub Actions stays disabled. Build and test on the
+release images to private GHCR. The standalone CLI is distributed through a private GitHub prerelease; there is no Homebrew tap. GitHub Actions stays disabled. Build and test on the
 workstation and authorized local VM.
+
+## Single-file CLI download
+
+The `v0.1.0-rc.8` CLI release provides standalone `vpnmodo-darwin-arm64` and
+`vpnmodo-darwin-amd64` executables in addition to the existing archives. The
+standalone executable is the only download needed for local setup. Local
+`vpnmodo setup` targets Apple Silicon; the Intel CLI remains available for
+existing VM workflows. The binary includes the Lima configuration, VM installer
+and registry manifest, and uses Homebrew to install Lima if needed.
+
+This CLI release intentionally provisions the already published and tested
+`v0.1.0-rc.7+git.4696f8c7ec50` controller/runtime images. CLI and runtime source
+versions are recorded separately; setup verifies the runtime against the embedded
+manifest. No container image rebuild is needed for this workstation-only change.
+
+Download the executable through the authenticated private GitHub release page.
+`SHA256SUMS-cli` also covers the standalone binaries for users who need checksum
+verification. The macOS executables are unsigned and not notarized; follow your
+team's approved macOS software policy. No installer changes Gatekeeper settings.
+
+For a fresh installation, follow [README installation](../README.md#installation).
+To replace an existing standalone CLI, stop local service forwards, install the
+new executable at the same path and run `vpnmodo version`. Replacing the CLI does
+not upgrade a controller or disconnect its VM-owned VPN session. Use the explicit
+controller upgrade procedure below when changing runtime images.
 
 ## Artifacts and trust
 
@@ -12,8 +37,7 @@ The bundle contains Docker images that run inside an existing Ubuntu VM: the
 controller, L2TP backend, XAuth backend and application helper. Each teammate
 provides their own local or remote VM. These artifacts do not contain an Ubuntu
 or UTM VM disk image and do not create a VM. The optional [Lima template](lima.md)
-creates a local VM separately; it is available in the source checkout, not the
-CLI or image bundle. Published VM builds also provide `lima.yaml`,
+creates a local VM separately; it is embedded in the standalone CLI and is also available in the source checkout. Published VM builds also provide `lima.yaml`,
 `install-vm.py` and `registry-release.json` for automatic Lima image provisioning.
 
 A release has macOS arm64/amd64 CLI archives, a committed source archive, and a
@@ -111,8 +135,9 @@ Users supply their own private GHCR read credentials as described in
 
 ## Installation and upgrades
 
-Follow [teammate onboarding](onboarding.md) for verification, installation and
-explicit VM activation. CLI installation is atomic and refuses an existing
+Follow [README installation](../README.md#installation) for standalone setup, or
+[teammate onboarding](onboarding.md) for existing VMs. The archive installer is
+atomic and refuses an existing
 executable unless `--replace` is provided. Keep the old verified CLI archive to
 restore a previous version using the same explicit replacement path. The
 installer changes only `<prefix>/bin/vpnmodo` and creates no shell startup edits.
