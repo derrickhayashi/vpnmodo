@@ -9,6 +9,7 @@ import socket
 import re
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 import time
 import uuid
@@ -142,7 +143,13 @@ class Lab:
         dropped = re.search(r"(\d+) packets? dropped by kernel",stats)
         assert received and dropped and int(dropped[1]) == 0, "wire observer lost packets or statistics"
         received = int(received[1])
-        pcap.unlink(); logfile.unlink()
+        if not expected and (count or received):
+            evidence = Path(tempfile.mkdtemp(prefix="vpnmodo-wire-evidence-", dir="/tmp"))
+            pcap.replace(evidence / "packets.pcap")
+            logfile.replace(evidence / "capture.log")
+            print("Synthetic wire evidence", tag, "captured", count, "received", received, "directory", evidence, flush=True)
+        else:
+            pcap.unlink(); logfile.unlink()
         if expected:
             assert count >= expected, "wire observer/escape path positive control failed"
         else:
