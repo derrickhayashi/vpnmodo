@@ -1,5 +1,7 @@
 # VPN sidecar collection
 
+Private development workspace: see [development boundaries and checks](docs/development.md).
+
 Reusable Docker VPN backends for SSH, Ansible and private service access.
 Customer projects own their profiles, deployment settings and runtime state;
 this repository contains reusable code and generic examples.

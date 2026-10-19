@@ -29,3 +29,13 @@ instances/
 **/run/
 **/secrets/
 *.log
+
+# Local development and customer material must remain outside source control.
+/profiles/
+/customer-data/
+/artifacts/
+/.local/
+*.pcap
+*.pcapng
+*.har
+.DS_Store
