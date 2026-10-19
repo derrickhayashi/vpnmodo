@@ -59,6 +59,7 @@ func manifest(d deployment, root string) ([]byte, error) {
 		services := model["services"].(map[string]any)
 		vpn := services["vpn"].(map[string]any)
 		delete(vpn, "devices")
+		vpn["init"] = true
 		vpn["entrypoint"] = []string{"/usr/local/bin/vpn-managed-xauth"}
 		vpn["read_only"] = true
 		vpn["volumes"] = services["application"].(map[string]any)["volumes"]

@@ -163,6 +163,11 @@ def begin(cli, directory, state_root, bridge):
         for name in ("username", "password", "psk"):
             assert credentials[name].encode() not in json.dumps(ids).encode()
         print("PASS: real aggressive PSK + XAUTH_PASSCODE, secure code consumption, private TCP/DNS", flush=True)
+        def rekey():
+            command(["docker", "exec", lab.gateway, "swanctl", "--rekey", "--child", "lab"])
+            command(["docker", "exec", cid, "vpn-servicecheck"])
+            lab.probes(application=True)
+        lab.capture("authenticated-child-rekey", rekey)
         # A quiet interval longer than the old Expect login timeout must survive.
         time.sleep(95)
         command(["docker", "exec", cid, "vpn-servicecheck"])
@@ -174,10 +179,17 @@ def begin(cli, directory, state_root, bridge):
         app = ids["application"]["Id"]
         active = 'while :; do printf vpnmodo-active; sleep 0.1; done | nc -w 30 192.0.2.2 28080'
         command(["docker", "exec", "-d", app, "sh", "-c", active])
+        command(["docker", "exec", "-d", app, "sh", "-c", 'while :; do printf vpnmodo-udp; sleep 0.1; done | nc -u -w 30 192.0.2.2 28081'])
+        time.sleep(0.5)
+        assert b"ESTAB" in command(["docker", "exec", cid, "ss", "-nt", "dst", "192.0.2.2"]).stdout
         command(["docker", "pause", "vpnmodo-controller"])
         try:
-            def remove_policies():
+            def remove_states():
                 command(["docker", "exec", cid, "sh", "-c", "kill -STOP $(pidof charon-cmd)"])
+                command(["docker", "exec", cid, "ip", "xfrm", "state", "flush"])
+                lab.probes(application=True)
+            lab.capture("active-flows-no-sa-controller-adapter-paused", remove_states)
+            def remove_policies():
                 command(["docker", "exec", cid, "ip", "xfrm", "policy", "flush"])
                 lab.probes(application=True)
                 assert command(["docker", "exec", cid, "vpn-tunnelcheck"], required=False).returncode != 0
@@ -196,6 +208,31 @@ def begin(cli, directory, state_root, bridge):
         cli("operation", "cancel", snap["id"], "--host", "example", "--json")
         lab.wait_operation(snap["id"], "cancelled")
         lab.disconnect()
+        # Expiry and invalid codes are bounded without another login/challenge.
+        expired = lab.ensure_challenge()
+        lab.wait_operation(expired["id"], "failed", timeout=60)
+        stale = cli("operation", "submit-mfa", expired["id"], "--host", "example", "--challenge", expired["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210", required=False)
+        assert stale.returncode != 0
+        assert not lab.ids()
+        lab.disconnect()
+        bad = lab.ensure_challenge()
+        cli("operation", "submit-mfa", bad["id"], "--host", "example", "--challenge", bad["challenge"]["id"], "--code-stdin", "--json", data=b"111111")
+        lab.wait_operation(bad["id"], "failed")
+        assert not lab.ids()
+        lab.disconnect()
+        print("PASS: expired/stale and incorrect MFA cannot replay or trigger unattended login", flush=True)
+        # Request another PIN in the same real IKEv1 conversation. The managed
+        # client must refuse rather than replay its credential cache.
+        command(["docker", "exec", lab.gateway, "sed", "-i", "/passcode = Synthetic code/a\\          nextpin = Repeated synthetic code", "/etc/strongswan.conf"])
+        command(["docker", "exec", lab.gateway, "swanctl", "--reload-settings"])
+        repeated = lab.ensure_challenge()
+        cli("operation", "submit-mfa", repeated["id"], "--host", "example", "--challenge", repeated["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
+        lab.wait_operation(repeated["id"], "failed")
+        assert not lab.ids()
+        command(["docker", "exec", lab.gateway, "sed", "-i", "/nextpin = Repeated synthetic code/d", "/etc/strongswan.conf"])
+        command(["docker", "exec", lab.gateway, "swanctl", "--reload-settings"])
+        lab.disconnect()
+        print("PASS: repeated real XAuth PIN request is refused without cached code replay", flush=True)
         # Establish another real session for controller replacement acceptance.
         lab.authenticate()
         lab.vpn_before_restart = lab.ids()["vpn"]["Id"]

@@ -23,3 +23,19 @@
 +	}
  	return &this->public;
  }
+--- a/src/charon-cmd/cmd/cmd_creds.c
++++ b/src/charon-cmd/cmd/cmd_creds.c
+@@ -112,6 +112,13 @@
+ 	}
+ 	shared = shared_key_create(type, chunk_clone(chunk_from_str(pwd)));
+ 	memwipe(pwd, strlen(pwd));
++	/* Managed XAuth codes/passwords must never be replayed from this cache.
++	 * A second request reaches the one-attempt prompt guard instead. */
++	if (getenv("VPNMODO_MANAGED_XAUTH") &&
++		(type == SHARED_PIN || type == SHARED_EAP))
++	{
++		return shared;
++	}
+ 	/* cache password in case it is required more than once */
+ 	this->creds->add_shared(this->creds, shared, NULL);
+ 	return shared->get_ref(shared);
