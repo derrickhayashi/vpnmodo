@@ -119,9 +119,9 @@ collections:
     version: 78bfd940d1b06403bce1ac5bcf86f85babd1e004
 ```
 
-This pins the reviewed preparation implementation in collection `0.4.0`. The runtime
-candidate `990dc2fe7caec4e1b68cf2b54788b996937e66c5` **does not contain this role**;
-use that candidate's matching artifacts for later image/CLI installation only.
+This pins the reviewed preparation implementation in collection `0.4.0`.
+For later CLI and image installation, use the matching runtime artifacts from
+the [installation guide](../README.md#installation).
 
 ```sh
 ansible-galaxy collection install --force -r requirements.yaml -p ./collections
@@ -221,6 +221,6 @@ remote Docker context are outside this preparation path; vpnmodo uses the VM's
 rootful `/var/run/docker.sock`.
 
 Preparation ends here. Continue with [loading the container images and running
-vpnmodo host setup](../README.md#3-load-the-container-images-on-the-vm), then
+vpnmodo host setup](offline-installation.md#2-load-the-container-images-on-the-vm), then
 create your profile and connect with vpnmodo. Host preparation does not validate
 VPN credentials, gateway compatibility, MFA or actual tunnel traffic.

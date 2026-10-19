@@ -1,22 +1,21 @@
 # Onboarding, profile maintenance and adoption
 
-Start with the [README setup walkthrough](../README.md). It is the canonical
-Mac-to-Ubuntu installation path: obtain candidate artifacts, install the CLI,
-prepare verified SSH, load container images, activate the controller, create a
-backend-specific profile, connect, and verify private access. For a fresh guest
-OS, follow [VM preparation](vm-setup.md).
+Start with [README installation](../README.md#installation) to install the Mac
+CLI, create and provision a local Ubuntu VM with Lima, and create your VPN
+profile. Then use [README usage](../README.md#usage) to connect and access private
+services. The platform pair is macOS ARM64 and Ubuntu 24.04 ARM64; each user owns
+their Mac and VM.
 
-The qualified first-release path is macOS ARM64 and Ubuntu 24.04 ARM64. Each
-teammate owns their local or remote VM. [Lima provisioning](lima.md) is an
-optional source workflow for creating a local VM on Apple Silicon.
-The bundle contains four Docker images for an existing VM,
-not a VM disk image. See [release packaging](releases.md) for maintainer builds
-and explicit upgrades.
+For an existing VM, use [existing VM and offline installation](offline-installation.md),
+which includes Ansible preparation and loading the release image bundle. The
+bundle contains four Docker images, not a VM disk image. See
+[release packaging](releases.md) for maintainer builds and explicit upgrades.
 
 ## Sudo mode
 
-The README uses an account with direct access to rootful Docker. If your VM
-account instead already has authorization for noninteractive sudo, verify:
+The README's Lima path already uses `--sudo` for its `vpnadmin` account. The
+offline guide defaults to direct access to rootful Docker. For an existing VM
+account authorized to use noninteractive sudo, verify:
 
 ```sh
 ssh -o BatchMode=yes vpn-vm 'sudo -n python3 --version && sudo -n docker --host unix:///var/run/docker.sock info --format "{{.OSType}}" && sudo -n docker compose version'
@@ -33,7 +32,7 @@ On the Mac, register the host with sudo mode **before initial setup**:
 
 ```sh
 vpnmodo host add vpn-vm --ssh vpn-vm --sudo
-vpnmodo host setup vpn-vm --release "$HOME/.local/share/vpnmodo-setup/v0.1.0-rc.6/installed-release.json"
+vpnmodo host setup vpn-vm --release "$HOME/vpnmodo-private/setup/installed-release.json"
 vpnmodo host check vpn-vm
 ```
 

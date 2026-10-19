@@ -31,7 +31,7 @@ the VM rather than through the VPN being managed. No VPN server, health target,
 credentials, profile, consumer instance, deployment directory or runtime package
 pin is required. Preparation does not load images, create profiles, start a
 controller, initiate MFA/login or deploy legacy containers/watchdogs. Continue
-with [vpnmodo host setup and profile commands](../README.md#3-load-the-container-images-on-the-vm)
+with [vpnmodo host setup and profile commands](../docs/offline-installation.md#2-load-the-container-images-on-the-vm)
 after preparation succeeds.
 
 ## Preparation inputs
