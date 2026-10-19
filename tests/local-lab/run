@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+rm -f /tmp/vpnmodo-lab.exit
+trap 'printf "%s\n" "$?" > /tmp/vpnmodo-lab.exit' EXIT
 cd /work
 docker build -t vpnmodo-controller:acceptance /opt/lab/production
 VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py --binary /opt/lab/vpnmodo --image vpnmodo-controller:acceptance

@@ -70,3 +70,18 @@ The run covers controller setup/repair and profile handling, persistent operatio
 and simulated MFA/recovery, and the real IPsec/L2TP/PPP gateway/client suite with
 DNS, application network sharing and recovery. XAuth protocol MFA and packet
 observed fail-closed acceptance remain the next implementation stage.
+
+The runner writes its final exit code to /tmp/vpnmodo-lab.exit inside the outer
+container. For remote automation, capture output and poll this file so a held
+output stream cannot hide the result. An exit code of zero is required to claim
+the whole suite passed.
+
+## Current validation
+
+The first Ubuntu 24.04 ARM64 nested-daemon run passed SSH/controller/profile
+acceptance, persistent operation and synthetic MFA/recovery acceptance, and real
+IKEv1/IPsec/L2TP/PPP/TCP/DNS checks. Endpoint outage, application namespace repair
+and tunnel-loss recovery also passed. The final reconnect after failed recovery
+and explicit disconnect failed: the tunnel check passed, but the private TCP
+probe timed out. The cause is unresolved; full local acceptance is incomplete.
+Do not infer that this is specifically an ARM64 or nested-Docker defect.
