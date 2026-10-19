@@ -216,7 +216,18 @@ def begin(cli, directory, state_root, bridge, cli_args):
             assert credentials[name].encode() not in json.dumps(ids).encode()
         # The kernel alone can supply the post-encryption mark. A workload
         # with the same UID/capability boundary cannot forge it through SO_MARK.
-        mark_probe = "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)\ntry: s.setsockopt(socket.SOL_SOCKET,socket.SO_MARK,0x76706e6d)\nexcept PermissionError: sys.exit(0)\nsys.exit(1)"
+        mark_probe = """import socket,errno
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+try: s.setsockopt(socket.SOL_SOCKET,socket.SO_MARK,0x76706e6d)
+except PermissionError: pass
+else: raise RuntimeError('workload forged output mark')
+s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM)
+s.settimeout(1)
+try: s.connect(('2001:db8::2',28080))
+except OSError as e:
+    assert e.errno in (errno.ENETUNREACH,errno.EADDRNOTAVAIL,errno.EAFNOSUPPORT,errno.EHOSTUNREACH)
+else: raise RuntimeError('workload IPv6 unexpectedly connected')
+"""
         command(["docker", "run", "--rm", "--network", "container:" + cid, "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--entrypoint", "python3", "vpnmodo-xauth-gateway:acceptance", "-c", mark_probe])
         print("PASS: real aggressive PSK + XAUTH_PASSCODE, secure code consumption, private TCP/DNS", flush=True)
         def rekey():
@@ -229,7 +240,7 @@ def begin(cli, directory, state_root, bridge, cli_args):
         assert command(["docker", "exec", app, "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"]).stdout.strip() == b"1"
         assert command(["docker", "exec", app, "cat", "/proc/sys/net/ipv6/conf/default/disable_ipv6"]).stdout.strip() == b"1"
         assert command(["docker", "exec", app, "timeout", "2", "nslookup", "private.example", "127.0.0.11"], required=False).returncode != 0
-        assert command(["docker", "exec", app, "nc", "-6", "-z", "-w", "1", "2001:db8::2", "28080"], required=False).returncode != 0
+        assert not command(["docker", "exec", app, "cat", "/proc/net/if_inet6"]).stdout.strip()
         assert command(["docker", "exec", app, "sh", "-c", "echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6"], required=False).returncode != 0
         print("PASS: Docker DNS fallback and workload IPv6 bypass are blocked", flush=True)
         # A quiet interval longer than the old Expect login timeout must survive.
