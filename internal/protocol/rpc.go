@@ -167,11 +167,12 @@ const (
 	CodeMFAExpired         ErrorCode = -32007
 	CodeInterrupted        ErrorCode = -32008
 	CodeBackendUnavailable ErrorCode = -32009
+	CodeProfileActive      ErrorCode = -32010
 )
 
 var errorMessages = map[ErrorCode]string{
 	CodeParse: "Invalid JSON", CodeInvalidRequest: "Invalid request", CodeMethod: "Method not found", CodeInvalidParams: "Invalid parameters", CodeInternal: "Internal error",
-	CodeVersion: "Incompatible API version", CodeHandshake: "Version negotiation required", CodeNotFound: "Resource not found", CodeBusy: "Operation in progress", CodeConflict: "Resource conflict", CodeCredentials: "Credentials unavailable or invalid", CodeMFAExpired: "MFA challenge expired", CodeInterrupted: "Operation interrupted; explicit retry required", CodeBackendUnavailable: "Backend unavailable",
+	CodeVersion: "Incompatible API version", CodeHandshake: "Version negotiation required", CodeNotFound: "Resource not found", CodeBusy: "Operation in progress", CodeConflict: "Resource conflict", CodeCredentials: "Credentials unavailable or invalid", CodeMFAExpired: "MFA challenge expired", CodeInterrupted: "Operation interrupted; explicit retry required", CodeBackendUnavailable: "Backend unavailable", CodeProfileActive: "Profile active; disconnect before changing it",
 }
 
 // RPCError is deliberately closed: no raw stderr, paths, or arbitrary error data.

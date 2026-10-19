@@ -29,7 +29,7 @@ func main() {
 }
 func run(base context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME --image IMAGE [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo version")
+		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME --image IMAGE [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo profile help\n       vpnmodo version")
 		return nil
 	}
 	root := flag.NewFlagSet("vpnmodo", flag.ContinueOnError)
@@ -42,6 +42,16 @@ func run(base context.Context, args []string, output io.Writer) error {
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintln(output, version)
 		return nil
+	}
+	if len(args) >= 2 && args[0] == "profile" {
+		if *registry == "" {
+			path, err := host.DefaultRegistry()
+			if err != nil {
+				return err
+			}
+			*registry = path
+		}
+		return profileCommand(base, *registry, args[1:], output)
 	}
 	if len(args) < 2 || args[0] != "host" {
 		return errors.New("usage: vpnmodo [--config FILE] host {add|list|check|setup}")

@@ -31,6 +31,10 @@ func startTestServer(t *testing.T) (Config, context.Context, context.CancelFunc)
 		t.Fatal(err)
 	}
 	fake := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/containers/json" && r.Method == "GET" {
+			_, _ = io.WriteString(w, "[]")
+			return
+		}
 		if r.URL.Path != "/_ping" || r.Method != "GET" {
 			t.Error("unexpected Docker mutation")
 			w.WriteHeader(400)
