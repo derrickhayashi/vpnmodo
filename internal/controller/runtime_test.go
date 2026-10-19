@@ -13,6 +13,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -303,6 +306,24 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 		}
 	}
 	row := map[string]any{"phase": phase, "ok": err == nil}
+	if phase == "service" && err != nil {
+		addr, _ := d.base.Run(ctx, "exec", args[1], "ip", "-4", "address", "show", "dev", "ppp0")
+		row["expected_peer"] = strings.Contains(string(addr), "peer 198.51.100.1")
+		route, _ := d.base.Run(ctx, "exec", args[1], "ip", "-4", "route", "get", "198.51.100.1")
+		row["route_ppp"] = strings.Contains(string(route), "dev ppp0")
+		filters, _ := d.base.Run(ctx, "exec", args[1], "iptables", "-nvxL", "OUTPUT")
+		if found := regexp.MustCompile(`policy DROP ([0-9]+) packets`).FindSubmatch(filters); len(found) == 2 {
+			count, _ := strconv.Atoi(string(found[1]))
+			row["dropped_packets"] = count
+		}
+		for _, line := range strings.Split(string(filters), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) > 6 && fields[2] == "ACCEPT" && fields[6] == "ppp0" {
+				count, _ := strconv.Atoi(fields[0])
+				row["ppp_accepted_packets"] = count
+			}
+		}
+	}
 	if e, ok := err.(interface{ ExitCode() int }); ok {
 		row["exit"] = e.ExitCode()
 	}

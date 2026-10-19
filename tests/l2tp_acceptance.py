@@ -75,6 +75,8 @@ def begin(cli, directory, state_root):
             if time.monotonic() > deadline:
                 raise RuntimeError("synthetic gateway startup failed")
             time.sleep(0.5)
+        listening = command(["docker", "exec", lab.gateway, "ss", "-lnt"]).stdout
+        assert b":28080" in listening, "synthetic gateway TCP listener unavailable"
         definition = {"schema_version": 1, "name": NAME, "backend": {"type": "l2tp-ipsec", "config": {"server": "192.0.2.1", "dns": ["198.51.100.1"], "ike_proposals": ["aes256-sha256-modp2048!"], "esp_proposals": ["aes256-sha256!"]}}, "health": {"host": "198.51.100.1", "port": 28080}}
         source = directory / "l2tp-profile.json"
         source.write_text(json.dumps(definition))
@@ -146,6 +148,10 @@ def begin(cli, directory, state_root):
         return lab
     except Exception:
         # Sanitized protocol/process presence only; never dump configs or logs.
+        if lab.created:
+            server_addr = command(["docker", "exec", lab.gateway, "ip", "-4", "address"], required=False).stdout
+            server_tcp = command(["docker", "exec", lab.gateway, "ss", "-lnt"], required=False).stdout
+            print("L2TP gateway diagnostic: expected PPP address=", b"198.51.100.1" in server_addr, "TCP listener=", b":28080" in server_tcp, flush=True)
         trace = state_root / "l2tp-trace.json"
         if trace.is_file():
             print("L2TP command phases:", json.dumps(json.loads(trace.read_text())[-45:]), flush=True)
