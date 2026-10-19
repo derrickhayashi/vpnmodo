@@ -134,7 +134,8 @@ Other successful selected forwards remain available and the result is partial.
 
 `status` and `doctor` perform current network probes and report separate evidence:
 
-- VM SSH host-key/authentication reachability and negotiated controller version.
+- VM SSH host-key/authentication reachability, Python helper prerequisites and
+  negotiated controller version.
 - Controller state/Docker readiness; profile revision and credential presence.
 - Compose and local backend/application image availability, without pulling.
 - Deployment ownership, authenticated tunnel, private health TCP endpoint and
@@ -167,6 +168,7 @@ return a single report. Stdout contains only these results/events.
 | Code | Meaning/action |
 | --- | --- |
 | `vm_ssh_unavailable` | Check VM reachability, known host key and workstation authentication |
+| `vm_python_unavailable` | VM SSH works; restore the VM Python 3 helper prerequisite |
 | `controller_unavailable` | Check/explicitly repair the controller with `host check` / `host setup` |
 | `operation_in_progress` | The report includes the active operation ID; inspect/watch it instead of starting another login |
 | `inspection_unavailable_operation_may_be_active` | Inspect/watch the existing operation before retrying |

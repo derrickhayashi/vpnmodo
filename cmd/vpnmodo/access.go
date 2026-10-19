@@ -207,6 +207,15 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		return fail("vm_ssh_unavailable")
 	}
 	r.Checks = append(r.Checks, accessCheck{"vm_ssh", "ready", true})
+	pythonCtx, cancelPython := context.WithTimeout(ctx, 15*time.Second)
+	err = host.ProbePython(pythonCtx, h)
+	cancelPython()
+	if err != nil {
+		r.Checks = append(r.Checks, accessCheck{"vm_python", "vm_python_unavailable", false})
+		return fail("vm_python_unavailable")
+	}
+	r.Checks = append(r.Checks, accessCheck{"vm_python", "ready", true})
+
 	client, err := host.Connect(ctx, h)
 	if err != nil {
 		r.Checks = append(r.Checks, accessCheck{"controller", "controller_unavailable", false})

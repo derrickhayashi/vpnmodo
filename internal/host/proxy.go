@@ -19,14 +19,18 @@ type ProxyRequest struct {
 	Port          int    `json:"port"`
 }
 
-func Probe(ctx context.Context, h Host) error {
-	args, err := SSHArgs(h, "true")
+func Probe(ctx context.Context, h Host) error { return probeCommand(ctx, h, "true") }
+func ProbePython(ctx context.Context, h Host) error {
+	return probeCommand(ctx, h, "python3 -c 'import json,os,signal,subprocess,time'")
+}
+func probeCommand(ctx context.Context, h Host, command string) error {
+	args, err := SSHArgs(h, command)
 	if err != nil {
 		return err
 	}
+	// Nil stdio supplies real /dev/null descriptors, avoiding capture pipes in a
+	// user-configured persistent SSH connection. Diagnostics never forward output.
 	cmd := exec.CommandContext(ctx, "ssh", args...)
-	cmd.Stderr = io.Discard
-	cmd.Stdout = io.Discard
 	if cmd.Run() != nil {
 		return ErrSSH
 	}

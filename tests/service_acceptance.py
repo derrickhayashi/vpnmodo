@@ -145,6 +145,12 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
             if self.cli('doctor',self.alias,'--json',required=False).returncode==0:break
             time.sleep(.2)
         else:raise RuntimeError('controller inspection did not recover after restart')
+        command(['sudo','-n','mv','/usr/bin/python3','/usr/bin/python3.probe-disabled'])
+        try:
+            failed=self.cli('doctor',self.alias,'--json',required=False)
+            assert failed.returncode and last(failed)['error']=='vm_python_unavailable'
+            self.fetch(self.ports[0])
+        finally:command(['sudo','-n','mv','/usr/bin/python3.probe-disabled','/usr/bin/python3'])
         # Missing remote Python cannot falsely certify an otherwise live forward.
         command(['docker','exec',self.name,'mv','/usr/bin/python3','/usr/bin/python3.probe-disabled'])
         try:
