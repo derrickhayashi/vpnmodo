@@ -105,8 +105,8 @@ class Lab:
     def disconnect(self):
         last_json(self.cli("connection", "disconnect", NAME, "--wait", "--json"))
 
-    def capture(self, tag, action, expected=0):
-        vpn = self.ids()["vpn"]["Id"]
+    def capture(self, tag, action, expected=0, vpn=None):
+        vpn = vpn or self.ids()["vpn"]["Id"]
         peer_index = int(command(["docker", "exec", vpn, "cat", "/sys/class/net/eth0/iflink"]).stdout)
         names = [name for index, name in socket.if_nameindex() if index == peer_index]
         assert len(names) == 1, "VPN veth peer is outside this isolated Docker host"
@@ -118,7 +118,7 @@ class Lab:
         # Capture from the outer lab's stable network namespace. This retains no
         # VPN namespace descriptor, and sees the physical egress after encryption
         # before a plaintext route could forward through another bridge peer.
-        process = subprocess.Popen(["sudo", "-n", observer, "-Z", "root", "-Q", "in", "-n", "-i", names[0], "-U", "-w", str(pcap), "tcp port 28080 or udp port 28081 or port 53"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=output, start_new_session=True)
+        process = subprocess.Popen(["sudo", "-n", observer, "-Z", "root", "-Q", "in", "-n", "-i", names[0], "-U", "-w", str(pcap), "tcp port 28080 or udp port 28081 or port 53 or (udp and udp[8:4] = 0x76706e6d and udp[12:4] = 0x6f646f2d)"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=output, start_new_session=True)
         try:
             deadline = time.monotonic() + 5
             while not pcap.exists() or pcap.stat().st_size < 24:
@@ -184,6 +184,29 @@ def begin(cli, directory, state_root, bridge, cli_args):
             time.sleep(0.5)
         else:
             raise RuntimeError("synthetic XAuth gateway startup failed")
+        # Before any VPN process binds IKE sockets, an adversarial workload can
+        # bind ports 500/4500 but must not use root's plaintext IKE exception.
+        guard = "vpnmodo-xauth-guard-" + uuid.uuid4().hex[:8]
+        guard_id = command(["docker", "run", "-d", "--name", guard, "--network", NETWORK, "--cap-add", "NET_ADMIN", "--cap-add", "NET_RAW", "--sysctl", "net.ipv6.conf.all.disable_ipv6=1", "--sysctl", "net.ipv6.conf.default.disable_ipv6=1", "--sysctl", "net.ipv4.ip_unprivileged_port_start=0", "--env", "VPN_SERVER=192.0.2.1", "--read-only", "--tmpfs", "/run:mode=0755", "--entrypoint", "sh", "vpnmodo-xauth:dev", "-c", "mkdir -m 700 /run/vpn; vpn-enforce; exec sleep infinity"]).stdout.decode().strip()
+        lab.created.append(guard)
+        for _ in range(50):
+            if command(["docker", "exec", guard_id, "test", "-f", "/run/vpn/enforcement.sha256"], required=False).returncode == 0: break
+            time.sleep(0.1)
+        else: raise RuntimeError("pre-login namespace enforcement did not start")
+        raw_ike_probe = """import socket
+for port in (500,4500):
+    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as s:
+        s.bind(('0.0.0.0',port))
+        assert s.sendto(b'vpnmodo-bypass',('192.0.2.1',port)) == len(b'vpnmodo-bypass')
+"""
+        def send_ike():
+            command(["docker", "run", "--rm", "--network", "container:" + guard_id, "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--entrypoint", "python3", "vpnmodo-xauth-gateway:acceptance", "-c", raw_ike_probe])
+        command(["docker", "exec", guard_id, "iptables", "-P", "OUTPUT", "ACCEPT"])
+        try: lab.capture("pre-vpn-ike-positive-control", send_ike, expected=1, vpn=guard_id)
+        finally: command(["docker", "exec", guard_id, "vpn-enforce"])
+        lab.capture("pre-vpn-workload-cannot-use-ike-exceptions", send_ike, vpn=guard_id)
+        command(["docker", "rm", "-f", guard_id])
+        lab.created.remove(guard)
         definition = {"schema_version": 1, "name": NAME, "backend": {"type": "ipsec-xauth", "config": {"server": "192.0.2.1", "dns": ["198.51.100.1"], "ike_proposals": ["aes256-sha256-modp2048"], "esp_proposals": ["aes256-sha256"]}}, "health": {"host": "198.51.100.1", "port": 28080}}
         source = directory / "xauth-profile.json"
         source.write_text(json.dumps(definition))
