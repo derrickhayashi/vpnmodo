@@ -64,7 +64,8 @@ registry/package download access. It builds the full production controller
 Dockerfile, including the pinned Go builder stage; no host Go installation is
 needed. Its Docker socket is explicitly `/var/run/docker.sock`. Use the nested
 [local lab](../tests/local-lab/README.md) on a shared VM. Build images only in its
-isolated daemon. Repeat on native amd64 to produce the amd64 VM bundle; this
+isolated daemon. The builder can also produce a native amd64 VM bundle, but
+Intel builds/testing are outside the first-release qualification scope. The
 script does not install emulation or provision another VM.
 
 The output directory must not exist. Failed builds can leave partial artifacts;
@@ -108,10 +109,12 @@ sessions are active. CLI rollback does not disconnect a VPN.
 See the [candidate validation record](release-validation.md) for tested revisions,
 platform results and remaining release gates.
 
-The release targets are macOS arm64/amd64 and Ubuntu 24.04 Linux arm64/amd64.
-A successful cross-build alone does not establish runtime acceptance. Record
-native CLI installation, verified SSH onboarding, real VPN/service use,
-controller upgrade and disposal evidence for each tested architecture.
+The agreed first-release qualification targets are macOS arm64 and Ubuntu 24.04
+Linux arm64. Intel/amd64 native testing is not a release gate. The CLI builder
+still produces amd64 cross-built artifacts; record them as unvalidated on native
+Intel hardware. A successful cross-build alone does not establish runtime
+acceptance. Record native CLI installation, verified SSH onboarding, real
+VPN/service use, controller upgrade and disposal evidence for the ARM64 targets.
 
 The existing packet/recovery acceptance suites remain required backend evidence.
 `--onboarding-only` in the isolated harness tests packaged production images

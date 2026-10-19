@@ -5,7 +5,7 @@ The v1 profile, protocol and operation implementation is tracked in issue #2.
 Controller/profile/lifecycle management and managed L2TP/XAuth are implemented
 in the private stage branches. Workstation [service access and diagnostics](design/007-service-access.md)
 are implemented. Private release packaging supplies candidate artifacts;
-adoption and platform acceptance remain the final release gate. See
+adoption and ARM64 release acceptance remain the final release gate. See
 [v1 profiles, protocol and operations](design/001-v1-model.md)
 for the initial scope, ownership and lifecycle defaults selected for implementation.
 
@@ -258,7 +258,7 @@ controller. The following defaults are recommendations, not yet user decisions:
 | Decision | Recommended initial behavior |
 | --- | --- |
 | Backend scope | L2TP/IPsec and IPsec/XAuth first; decide whether Tailscale must ship with v1. |
-| Supported systems | macOS arm64/amd64 workstation, Ubuntu LTS VM amd64/arm64; add Linux workstation/Windows only if required. Pin tested Ubuntu versions before release. |
+| Supported systems | Agreed first-release qualification: macOS arm64 workstation and Ubuntu 24.04 arm64 VM. Intel/amd64 native testing is outside the release gate; cross-built artifacts remain unvalidated on native Intel hardware. |
 | Profile authority | VM is authoritative for managed VPN configuration and credentials. Workstation keeps host/profile references and local forward bindings. No automatic bidirectional file synchronization. |
 | Lifecycle policy | SSH loss leaves operations running; MFA expires normally. On controller restart reconcile established sessions and mark interrupted logins as requiring explicit retry. Fresh authentication is not silently triggered by reboot. |
 | Changes and deletion | Reject active-profile configuration changes by default; require explicit disconnect/apply. Disconnect preserves credentials. Delete requires a separate explicit operation and reports credential disposal. |
@@ -272,8 +272,9 @@ engineering decisions to record in the design, not additional user prerequisites
 The proposed small-stack candidates are jrpc2, bbolt and the Go standard library.
 
 Existing-deployment compatibility/adoption and mandatory XAuth fail-closed
-behavior are now agreed above. The remaining product scope choices are supported
-platforms and first-release backend coverage. Profile authority, lifecycle and
+behavior are now agreed above, along with the ARM64 release qualification scope.
+The remaining product scope choice is first-release backend coverage.
+Profile authority, lifecycle and
 forward-configuration defaults above remain recommendations to settle in the
 design. Implementation can begin with schemas and the controller skeleton.
 

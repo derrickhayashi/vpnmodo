@@ -8,9 +8,14 @@ No release was published and no customer deployment was adopted.
 | Target | Evidence | Remaining |
 | --- | --- | --- |
 | macOS arm64 | Native archive installation/version/help; explicit replacement; checksum/symlink refusal; temporary-prefix cleanup | Final adoption workflow |
-| macOS amd64 | Cross-built archive and checksum | Native runtime acceptance |
+| macOS amd64 | Cross-built archive and checksum | Outside the agreed release gate; native runtime unvalidated |
 | Ubuntu 24.04 arm64 | Full production Dockerfile build; verified offline image load; real L2TP and XAuth onboarding, two-hop forwarding, controller replacement and disposal | Legacy VPN adoption/cutover/rollback |
-| Ubuntu 24.04 amd64 | Controller binary cross-build | Native image build and runtime acceptance |
+| Ubuntu 24.04 amd64 | Controller binary cross-build | Outside the agreed release gate; native build/runtime unvalidated |
+
+The agreed first-release qualification scope is macOS arm64 and Ubuntu 24.04
+arm64. Intel/amd64 native testing is not required for this release. Existing
+amd64 cross-build evidence remains recorded above without claiming native
+runtime validation.
 
 The image bundle's Docker archive contains content IDs without repository tags.
 Loading it preserves deliberately conflicting pre-existing tags. The loader
@@ -44,7 +49,7 @@ and remote bundle were removed after verifying no nested test containers remaine
 
 These onboarding checks are a subset, not a replacement for the previous full
 [packet/rekey/recovery evidence](../tests/local-lab/README.md). Issue #9 stays open
-for explicit legacy adoption/rollback and the remaining platform release gate.
+for explicit legacy adoption/rollback and the remaining ARM64 bundle acceptance.
 The unconfirmed startup observation #19 remains open after its separate 20-pass
 replacement investigation; no backend fix was claimed for it.
 
@@ -89,7 +94,7 @@ been rerun for this correction. These
 patched trial images are not a new full production-Dockerfile release bundle.
 
 PR #20 remains draft. Issue #9 stays open for #21, fresh schema-2 bundle acceptance,
-legacy cutover/rollback with fresh MFA, and the remaining native amd64 matrix.
+and legacy cutover/rollback with fresh MFA on the agreed ARM64 targets.
 No raw deployment settings, credentials, transcripts or packet metadata belong
 in this record. GitHub Actions remains disabled.
 

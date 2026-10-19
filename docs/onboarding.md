@@ -4,6 +4,9 @@ Use this path with a verified private release candidate. Each teammate supplies
 their own local or remote Ubuntu 24.04 VM. VPN profile creation has explicit JSON
 configuration and hidden credential/MFA prompts; there is no creation wizard.
 Existing deployments keep their current launcher until an explicit cutover.
+The qualified first-release path uses macOS arm64 and Ubuntu 24.04 arm64.
+Intel/amd64 artifacts may be cross-built but have no native runtime validation
+requirement for this release.
 
 ## 1. Install the workstation command
 
