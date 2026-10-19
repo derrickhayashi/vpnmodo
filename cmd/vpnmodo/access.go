@@ -25,18 +25,19 @@ type accessCheck struct {
 	OK    bool   `json:"ok"`
 }
 type accessReport struct {
-	ControllerVersion  string          `json:"controller_version,omitempty"`
-	ProfileRevision    uint64          `json:"profile_revision,omitempty"`
-	CredentialsPresent bool            `json:"credentials_present"`
-	Type               string          `json:"type"`
-	Alias              string          `json:"alias"`
-	Outcome            string          `json:"outcome"`
-	VPNReady           bool            `json:"vpn_ready"`
-	Ready              bool            `json:"ready"`
-	Checks             []accessCheck   `json:"checks"`
-	Services           []access.Result `json:"services"`
-	OperationID        string          `json:"operation_id,omitempty"`
-	Error              string          `json:"error,omitempty"`
+	Connection         *operation.Connection `json:"connection,omitempty"`
+	ControllerVersion  string                `json:"controller_version,omitempty"`
+	ProfileRevision    uint64                `json:"profile_revision,omitempty"`
+	CredentialsPresent bool                  `json:"credentials_present"`
+	Type               string                `json:"type"`
+	Alias              string                `json:"alias"`
+	Outcome            string                `json:"outcome"`
+	VPNReady           bool                  `json:"vpn_ready"`
+	Ready              bool                  `json:"ready"`
+	Checks             []accessCheck         `json:"checks"`
+	Services           []access.Result       `json:"services"`
+	OperationID        string                `json:"operation_id,omitempty"`
+	Error              string                `json:"error,omitempty"`
 }
 
 var errAccess = errors.New("service access incomplete; see reported checks")
@@ -67,8 +68,18 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 			return json.NewEncoder(out).Encode(r)
 		}
 		fmt.Fprintf(out, "%s: %s\n", r.Alias, r.Outcome)
+		if r.ControllerVersion != "" {
+			fmt.Fprintf(out, "  controller version: %s\n", r.ControllerVersion)
+		}
+		if r.Connection != nil {
+			fmt.Fprintf(out, "  desired: %s; observed: %s\n", r.Connection.Desired, r.Connection.Observed)
+		}
 		for _, c := range r.Checks {
-			fmt.Fprintf(out, "  %s: %s\n", c.Layer, c.Code)
+			verdict := "ok"
+			if !c.OK {
+				verdict = "failed"
+			}
+			fmt.Fprintf(out, "  %s: %s (%s)\n", c.Layer, verdict, c.Code)
 		}
 		for _, s := range r.Services {
 			fmt.Fprintf(out, "  %s (127.0.0.1:%d): %s\n", s.Name, s.LocalPort, s.Code)
@@ -252,10 +263,25 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		Controller controller.Status     `json:"controller"`
 		Runtime    operation.RuntimeView `json:"runtime"`
 	}
-	for attempt := 0; attempt < 4; attempt++ {
+	inspectionDeadline := time.Now().Add(5 * time.Second)
+	for {
 		err = client.Call(ctx, protocol.Doctor, protocol.ProfileParams{Profile: ref.Profile}, &view)
 		var rpc *protocol.RPCError
 		if !errors.As(err, &rpc) || rpc.Code != protocol.CodeBusy {
+			break
+		}
+		var connection operation.Connection
+		if e := client.Call(ctx, protocol.ConnectionStatus, protocol.ProfileParams{Profile: ref.Profile}, &connection); e != nil {
+			break
+		}
+		r.Connection = &connection
+		if connection.ActiveOperation != "" {
+			r.OperationID = connection.ActiveOperation
+			return fail("operation_in_progress")
+		}
+		// A background health probe briefly owns the runtime gate; wait for it, but
+		// do not make doctor sit through an active authentication/connection attempt.
+		if time.Now().After(inspectionDeadline) {
 			break
 		}
 		select {
@@ -267,6 +293,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	if err != nil {
 		return fail("inspection_unavailable_operation_may_be_active")
 	}
+	r.Connection = &view.Runtime.Connection
 	r.ProfileRevision = view.Runtime.ProfileRevision
 	r.CredentialsPresent = view.Runtime.CredentialsPresent
 	r.Checks = append(r.Checks, accessCheck{"credentials", "credentials_present", r.CredentialsPresent}, accessCheck{"runtime_prerequisites", "images_and_compose", view.Runtime.PrerequisitesReady}, accessCheck{"deployment", string(view.Runtime.Health), view.Runtime.Health != operation.HealthOwnerConflict})

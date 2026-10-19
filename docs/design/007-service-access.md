@@ -152,7 +152,7 @@ certificate validity. These checks describe a point in time.
 Normal terminal output names each failed layer/service and each local endpoint.
 JSON status/errors use fixed codes and never include raw SSH/backend stderr.
 A final report has `type: "access"`, `outcome`, `vpn_ready`, `ready`, `checks`,
-`services` and optional `error`. `ready` requires at least one selected service
+`services`, current desired/observed connection intent and optional `error`. `ready` requires at least one selected service
 and all selected checks to pass. With no configured service, a healthy VPN reports
 `vpn_ready`, not end-to-end service readiness. Partial/failure exits nonzero.
 Configuration, stop and successful disconnect have their own successful outcomes.
@@ -168,6 +168,7 @@ return a single report. Stdout contains only these results/events.
 | --- | --- |
 | `vm_ssh_unavailable` | Check VM reachability, known host key and workstation authentication |
 | `controller_unavailable` | Check/explicitly repair the controller with `host check` / `host setup` |
+| `operation_in_progress` | The report includes the active operation ID; inspect/watch it instead of starting another login |
 | `inspection_unavailable_operation_may_be_active` | Inspect/watch the existing operation before retrying |
 | `vpn_access_unavailable` | Inspect the separate VPN, endpoint and attachment checks; diagnosis never starts login |
 | `local_port_conflict` | Release that port or stop services and explicitly reconfigure it |

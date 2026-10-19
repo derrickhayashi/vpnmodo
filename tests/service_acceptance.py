@@ -177,6 +177,7 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
         self.cli('service','stop',self.alias,'--service','metrics','--json')
         self.fetch(self.ports[0])
         with socket.socket() as occupied:
+            occupied.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
             occupied.bind(('127.0.0.1',self.ports[1]));occupied.listen()
             partial=self.cli('up',self.alias,'--json',required=False)
             report=last(partial)
