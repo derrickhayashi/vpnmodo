@@ -172,6 +172,38 @@ class Lab:
         ):
             command(["docker", "exec", "--user", "65534:65534", cid, "sh", "-c", script], required=False)
 
+    def large_transfer(self, phase):
+        cid = self.ids()["vpn"]["Id"]
+        routes = json.loads(command(["docker", "exec", cid, "ip", "-j", "-4", "route", "show", "table", "220"]).stdout)
+        assert routes and all(
+            not ({"mtu", "advmss"} & set(route.get("metrics", {})))
+            and "mtu" not in route and "advmss" not in route
+            for route in routes
+        ), "unexpected route MTU/MSS override"
+        probe = """import socket
+payload=bytes(range(256))*1024
+with socket.create_connection(('198.51.100.1',28080),timeout=10) as peer:
+ peer.settimeout(10)
+ peer.sendall(payload)
+ received=bytearray()
+ while len(received)<len(payload):
+  chunk=peer.recv(len(payload)-len(received))
+  if not chunk:break
+  received.extend(chunk)
+ assert received==payload,'bidirectional payload mismatch'
+"""
+        command(["docker", "run", "--rm", "--network", "container:" + cid,
+                 "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt",
+                 "no-new-privileges:true", "--read-only", "--entrypoint", "python3",
+                 "vpnmodo-xauth-gateway:acceptance", "-c", probe])
+        print("PASS: XAuth 256 KiB each way without route overrides: " + phase, flush=True)
+
+    def child_ids(self):
+        listing = command(["docker", "exec", self.gateway, "swanctl", "--list-sas"]).stdout.decode()
+        children = set(re.findall(r"^\s+lab: #(\d+), reqid \d+, INSTALLED,", listing, re.MULTILINE))
+        assert children, "authenticated gateway CHILD_SA not installed"
+        return children
+
     def close(self):
         if getattr(self, "services", None):
             self.services.close()
@@ -277,6 +309,7 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
 """
         command(["docker", "run", "--rm", "--network", "container:" + cid, "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--entrypoint", "python3", "vpnmodo-xauth-gateway:acceptance", "-c", mark_probe])
         print("PASS: real aggressive PSK + XAUTH_PASSCODE, secure code consumption, private TCP/DNS", flush=True)
+        lab.large_transfer("fresh authentication")
         if onboarding_only:
             from service_acceptance import ServiceLab
             lab.services = ServiceLab(cli, directory, lab)
@@ -284,8 +317,14 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
             lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
             return lab
         def rekey():
+            previous = lab.child_ids()
             command(["docker", "exec", lab.gateway, "swanctl", "--rekey", "--child", "lab"])
+            deadline = time.monotonic() + 30
+            while not lab.child_ids().difference(previous):
+                assert time.monotonic() < deadline, "authenticated CHILD rekey did not install a replacement"
+                time.sleep(0.2)
             command(["docker", "exec", cid, "vpn-servicecheck"])
+            lab.large_transfer("authenticated CHILD rekey")
             lab.probes(application=True)
         lab.capture("authenticated-child-rekey", rekey)
         # Neither Docker DNS nor IPv6 can bypass the namespace policy.
@@ -426,6 +465,7 @@ def after_restart(cli, state_root, lab):
     last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
     assert lab.ids()["vpn"]["Id"] == lab.vpn_before_restart
     lab.services.after_restart()
+    lab.large_transfer("controller replacement")
     lab.services = None
     lab.disconnect()
     assert not list((state_root / "deployments" / NAME / "credentials").glob("*/*"))
