@@ -6,6 +6,7 @@ so a changed route cannot hide plaintext fallback.
 """
 import json
 import socket
+import re
 import os
 import subprocess
 from pathlib import Path
@@ -118,7 +119,7 @@ class Lab:
         # Capture from the outer lab's stable network namespace. This retains no
         # VPN namespace descriptor, and sees the physical egress after encryption
         # before a plaintext route could forward through another bridge peer.
-        process = subprocess.Popen(["sudo", "-n", observer, "-Z", "root", "-Q", "in", "-n", "-i", names[0], "-U", "-w", str(pcap), "tcp port 28080 or udp port 28081 or port 53 or (udp and udp[8:4] = 0x76706e6d and udp[12:4] = 0x6f646f2d)"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=output, start_new_session=True)
+        process = subprocess.Popen(["sudo", "-n", observer, "--immediate-mode", "-Z", "root", "-Q", "in", "-n", "-i", names[0], "-U", "-w", str(pcap), "tcp port 28080 or udp port 28081 or port 53 or (udp and udp[8:4] = 0x76706e6d and udp[12:4] = 0x6f646f2d)"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=output, start_new_session=True)
         try:
             deadline = time.monotonic() + 5
             while not pcap.exists() or pcap.stat().st_size < 24:
@@ -136,11 +137,16 @@ class Lab:
         assert process.returncode == 0, "wire observer did not finish cleanly"
         raw = command(["sudo", "-n", observer, "-nn", "-r", str(pcap)]).stdout
         count = len(raw.splitlines())
+        stats = logfile.read_text()
+        received = re.search(r"(\d+) packets? received by filter",stats)
+        dropped = re.search(r"(\d+) packets? dropped by kernel",stats)
+        assert received and dropped and int(dropped[1]) == 0, "wire observer lost packets or statistics"
+        received = int(received[1])
         pcap.unlink(); logfile.unlink()
         if expected:
             assert count >= expected, "wire observer/escape path positive control failed"
         else:
-            assert count == 0, "plaintext escaped during " + tag
+            assert count == 0 and received == 0, "plaintext escaped during " + tag
         print("PASS: wire capture", tag, "plaintext=" + str(count), flush=True)
 
     def probes(self, application=False):
