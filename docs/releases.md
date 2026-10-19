@@ -2,8 +2,8 @@
 
 Issue #9 supplies an offline distribution path. ARM64 candidate qualification
 passes as recorded in the [validation record](release-validation.md). These are
-private release candidates; the build scripts publish no registry, Homebrew tap
-or GitHub release. GitHub Actions stays disabled. Build and test on the
+private release candidates. Builds stay local by default; `vm --publish` uploads
+release images to private GHCR. No Homebrew tap or GitHub release is created. GitHub Actions stays disabled. Build and test on the
 workstation and authorized local VM.
 
 ## Artifacts and trust
@@ -11,7 +11,10 @@ workstation and authorized local VM.
 The bundle contains Docker images that run inside an existing Ubuntu VM: the
 controller, L2TP backend, XAuth backend and application helper. Each teammate
 provides their own local or remote VM. These artifacts do not contain an Ubuntu
-or UTM VM disk image and do not create a VM.
+or UTM VM disk image and do not create a VM. The optional [Lima template](lima.md)
+creates a local VM separately; it is available in the source checkout, not the
+CLI or image bundle. Published VM builds also provide `lima.yaml`,
+`install-vm.py` and `registry-release.json` for automatic Lima image provisioning.
 
 A release has macOS arm64/amd64 CLI archives, a committed source archive, and a
 separate Linux arm64 or amd64 container image bundle. Each artifact group has SHA-256 sums.
@@ -78,7 +81,33 @@ The output directory must not exist. Failed builds can leave partial artifacts;
 discard the failed output directory and start with a new one. Successful builds
 write `SHA256SUMS-cli` or `SHA256SUMS-linux-<arch>` last. Review diffs and run
 `scripts/check-secrets` before pushing source. Review distribution contents before
-sharing. Neither command uploads artifacts or enables CI.
+sharing. Without `--publish`, these commands do not upload artifacts. CI remains
+disabled.
+
+## Publish private GHCR images
+
+On the native Linux builder, log Docker into `ghcr.io` with package write access,
+then use the existing VM build command with `--publish`:
+
+```sh
+python3 scripts/build-release.py vm --version v0.1.0-rc.7 --publish \
+  --output /absolute/private/release/linux-arm64
+```
+
+This builds the same four images and offline bundle, then pushes
+`ghcr.io/derrickhayashi/vpn-sidecars-next/ROLE:VERSION-arm64` for `controller`,
+`l2tp`, `xauth` and `application`. `registry-release.json` records the returned
+registry digests. Docker can push a single-platform manifest whose digest
+differs from a local index; use the push result, not local `RepoDigests` or
+image IDs. Keep the packages private
+and grant intended users package read access.
+
+Distribute `lima.yaml`, `install-vm.py` and `registry-release.json` together.
+When selecting a new default Lima release, update the source example
+`examples/lima/registry-release.json` from the generated manifest.
+Users supply their own private GHCR read credentials as described in
+[Lima setup](lima.md). Provisioning emits the same receipt consumed by
+`vpnmodo host setup --release`. No hosted CI is used for publication.
 
 ## Installation and upgrades
 

@@ -3,7 +3,7 @@
 Manage VPN connections from your Mac using your own local or remote Ubuntu VM.
 The Mac runs the `vpnmodo` CLI. A containerized `vpnmodo-controller` on the VM
 stores profiles and credentials, starts the VPN containers, and monitors them.
-Control traffic uses verified SSH; there is no HTTP API port to expose.
+Control traffic uses SSH; there is no HTTP API port to expose.
 
 ```text
 Mac: vpnmodo CLI / OpenSSH
@@ -17,50 +17,53 @@ Managed profiles support **L2TP/IPsec** with username/password and PSK, and
 **IPsec/XAuth** with username/password, PSK and emailed MFA. XAuth fails closed
 when IPsec state is lost and requires an explicit login with fresh MFA to recover.
 
-The tested installation path is **macOS ARM64 → Ubuntu 24.04 ARM64**. You supply
-the VM, SSH account and approved VPN settings. The container image bundle runs
-inside that VM; it does not contain or create a UTM/Ubuntu VM disk image. Docker
-Desktop and Go are not needed on a teammate's Mac when installing the archives.
+The tested platform pair is **macOS ARM64 → Ubuntu 24.04 ARM64**. For a local
+VM on Apple Silicon, Lima creates Ubuntu, sets up SSH and installs the release
+images. Existing local or remote VMs can use Ansible preparation and an offline
+image bundle. Docker Desktop and Go are not needed on the user's Mac.
 
 This is a private release candidate. See the [validation record](docs/release-validation.md)
 for qualification and the unresolved intermittent startup/session observations
 [#19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19) and
 [#23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
 
-## 1. Obtain the installation files
+- [Installation](#installation): install the CLI, prepare the VM and create a profile once.
+- [Usage](#usage): connect, access private services and disconnect.
 
-There is no published GitHub release, registry image or Homebrew tap yet. Ask the
-maintainer for these private candidate files and their trusted SHA-256 checksums:
+## Installation
 
-| File | Used on |
+Run the following commands on your **Mac**, unless stated otherwise.
+
+### 1. Install the CLI
+
+Ask the maintainer for the matching release files and trusted SHA-256 checksums.
+The current Lima image manifest uses `v0.1.0-rc.7`. The images are published in
+private GHCR; there is no Homebrew tap or downloadable GitHub release yet.
+
+| File | Purpose |
 | --- | --- |
-| `vpnmodo-v0.1.0-rc.6-darwin-arm64.tar.gz` | Mac: CLI and installer |
-| `SHA256SUMS-cli` | Mac: CLI/source archive checksums |
-| `vpnmodo-v0.1.0-rc.6-linux-arm64-images.tar.gz` | VM: controller, both VPN backends and application helper |
-| `SHA256SUMS-linux-arm64` | VM: container bundle checksum |
-| `vpnmodo-v0.1.0-rc.6-source.tar.gz` | Matching source and documentation |
+| `vpnmodo-v0.1.0-rc.7-darwin-arm64.tar.gz` | Mac CLI and installer |
+| `SHA256SUMS-cli` | CLI archive checksums |
+| `lima.yaml` | Ubuntu VM configuration |
+| `install-vm.py` | Pulls and checks the VM release images |
+| `registry-release.json` | Exact image digests for that release |
 
-Use the matching artifact set. The tested candidate reports
-`v0.1.0-rc.6+git.990dc2fe7cae`. The maintainer can produce these files using the
-[release build instructions](docs/releases.md); the commands below install them.
-Checksums must come through a trusted channel, not just an unverified download.
-
-On the **Mac**, put the files in `~/Downloads/vpnmodo-v0.1.0-rc.6`, then:
+Put the files in `~/Downloads/vpnmodo-v0.1.0-rc.7`, then:
 
 ```sh
-artifact_dir="$HOME/Downloads/vpnmodo-v0.1.0-rc.6"
-setup_dir="$HOME/.local/share/vpnmodo-setup/v0.1.0-rc.6"
+artifact_dir="$HOME/Downloads/vpnmodo-v0.1.0-rc.7"
+setup_dir="$HOME/vpnmodo-private/setup"
 umask 077
 mkdir -p "$setup_dir/cli"
-shasum -a 256 "$artifact_dir/vpnmodo-v0.1.0-rc.6-darwin-arm64.tar.gz"
+chmod 700 "$HOME/vpnmodo-private" "$setup_dir"
+shasum -a 256 "$artifact_dir/vpnmodo-v0.1.0-rc.7-darwin-arm64.tar.gz"
 ```
 
-Compare the printed hash with that archive's entry in `SHA256SUMS-cli`. Stop if
-it differs. The checksum file also lists other artifacts; you do not need the
-Intel archive to install on an ARM64 Mac. After the hash matches:
+Compare the hash with that archive's entry in the trusted `SHA256SUMS-cli`.
+After it matches:
 
 ```sh
-tar -xzf "$artifact_dir/vpnmodo-v0.1.0-rc.6-darwin-arm64.tar.gz" \
+tar -xzf "$artifact_dir/vpnmodo-v0.1.0-rc.7-darwin-arm64.tar.gz" \
   -C "$setup_dir/cli"
 sh "$setup_dir/cli/install.sh" --prefix "$HOME/.local"
 export PATH="$HOME/.local/bin:$PATH"
@@ -68,101 +71,53 @@ vpnmodo version
 ```
 
 Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` once to retain it in new
-Mac terminals. Installation refuses an existing binary; use the explicit
+terminals. Installation refuses an existing binary; use the explicit
 [upgrade procedure](docs/releases.md#installation-and-upgrades) for replacement.
 The candidate is unsigned and not notarized; use your team's approved macOS
 software policy. The installer does not change Gatekeeper settings.
 
-## 2. Prepare the Ubuntu VM and SSH access
+### 2. Create the VM and start the controller
 
-Follow [prepare an Ubuntu VM](docs/vm-setup.md) to establish verified SSH and run
-the dedicated `vpn_sidecar.client.vm_prepare` Ansible role from your Mac. You
-supply an existing Ubuntu 24.04 ARM64 VM with Python 3 and administrative access.
-The role prepares rootful Docker Engine, Compose, utilities, management-account
-access and kernel support without VPN settings or credentials. Ansible host
-preparation does not need Docker Desktop on the Mac.
-
-The guide pins the preparation collection separately from the runtime candidate:
-runtime commit `990dc2fe7caec4e1b68cf2b54788b996937e66c5` predates the new role.
-Preparation does not create a profile or start a controller or VPN. Continue here
-after it succeeds; `vpnmodo host setup` installs the controller later.
-
-On the **Mac**, add a VM alias to `~/.ssh/config`, replacing the uppercase values
-and choosing your existing SSH identity:
-
-```sshconfig
-Host vpn-vm
-    HostName VM_ADDRESS
-    User VM_USER
-    IdentityFile ~/.ssh/id_ed25519
-    IdentitiesOnly yes
-    StrictHostKeyChecking yes
-    ForwardAgent no
-```
-
-Enroll the host key only after comparing its fingerprint with the VM console,
-as described in the VM guide. Then verify noninteractive access from the **Mac**:
+Install Lima 2.2.1 or later and copy the matching provisioning files:
 
 ```sh
-ssh -o BatchMode=yes vpn-vm 'python3 --version && docker --host unix:///var/run/docker.sock info --format "{{.OSType}}" && docker compose version'
+brew install lima
+cp "$artifact_dir/lima.yaml" "$artifact_dir/install-vm.py" \
+  "$artifact_dir/registry-release.json" "$setup_dir/"
 ```
 
-All three checks must succeed: Python 3, Docker `linux`, and Compose v2. This
-walkthrough uses direct Docker access for the VM account. Docker access gives
-administrative authority over the VM. For an account already authorized to use
-noninteractive sudo instead, see [sudo mode](docs/onboarding.md#sudo-mode) before
-loading images or registering the controller. Substitute that guide's loader
-and `host add` commands for the ordinary versions below; do not run both modes.
+The same provisioning files are available in the source checkout; see the
+[Lima guide](docs/lima.md#prepare-the-release-inputs) for those copy commands.
 
-## 3. Load the container images on the VM
+The GHCR images are currently private. Follow the
+[registry authentication instructions](docs/lima.md#prepare-the-release-inputs)
+to create `ghcr-config.json` beside `lima.yaml`. Your GitHub account needs package
+read access and a token with `read:packages`. Keep the token outside Git.
 
-On the **Mac**, transfer the bundle and checksum file:
-
-```sh
-ssh vpn-vm 'umask 077; mkdir -p "$HOME/vpnmodo-install/v0.1.0-rc.6"'
-scp "$artifact_dir/vpnmodo-v0.1.0-rc.6-linux-arm64-images.tar.gz" \
-  "$artifact_dir/SHA256SUMS-linux-arm64" \
-  vpn-vm:vpnmodo-install/v0.1.0-rc.6/
-ssh vpn-vm
-```
-
-In that **VM shell**, verify the checksum before extracting. Continue only if
-`sha256sum` reports `OK`:
+Create the VM, register Lima's SSH settings and start the controller:
 
 ```sh
-umask 077
-cd "$HOME/vpnmodo-install/v0.1.0-rc.6"
-sha256sum -c SHA256SUMS-linux-arm64
-```
-
-After the checksum passes, load the images:
-
-```sh
-mkdir -m 700 release
-tar -xzf vpnmodo-v0.1.0-rc.6-linux-arm64-images.tar.gz -C release
-cd release
-python3 install-vm.py > installed-release.json
-```
-
-The loader verifies and imports all four images. Continue only if it exits
-successfully. Its receipt records the VM's immutable image IDs and
-`"activated": false`: loading images has not started a controller or VPN.
-Return to the **Mac** with `exit`, then copy the receipt back:
-
-```sh
-scp vpn-vm:vpnmodo-install/v0.1.0-rc.6/release/installed-release.json \
-  "$setup_dir/installed-release.json"
-vpnmodo host add vpn-vm --ssh vpn-vm
+limactl start --tty=false --name vpn-vm "$setup_dir/lima.yaml"
+scp -F "$HOME/.lima/vpn-vm/ssh.config" \
+  lima-vpn-vm:/var/lib/vpnmodo/installed-release.json "$setup_dir/installed-release.json"
+vpnmodo host add vpn-vm --ssh lima-vpn-vm \
+  --ssh-config "$HOME/.lima/vpn-vm/ssh.config" --sudo
 vpnmodo host setup vpn-vm --release "$setup_dir/installed-release.json"
 vpnmodo host check vpn-vm
 ```
 
-Expect `storage ready: true` and `Docker ready: true`. If the controller is still
-starting, repeat `host check`. Setup uses the receipt to select all four verified
-images; it does not import existing profiles or change legacy VPN deployments.
-No controller firewall port or registry credentials are needed.
+Lima creates the `vpnadmin` account and SSH access, installs Docker and required
+kernel support, and pulls all four release images. `host setup` starts the
+controller using those installed images. No fixed VM IP is needed. For a custom
+`LIMA_HOME`, use the SSH config path described in the [Lima guide](docs/lima.md#ssh-and-restart).
 
-## 4. Create a VPN profile
+**Using an existing VM or an offline bundle?** Follow
+[existing VM and offline installation](docs/offline-installation.md) instead of
+this Lima step. It uses the Ansible role to prepare the VM and loads images from
+a release bundle. Both paths finish with a registered host named `vpn-vm` and a
+running controller. Continue below after either path succeeds.
+
+### 3. Create a VPN profile
 
 On the **Mac**, create a private directory outside any Git checkout:
 
@@ -234,7 +189,11 @@ for protected stdin/file-descriptor input and updates.
 If adopting an existing deployment, follow the [cutover notes](docs/onboarding.md#adopting-an-existing-deployment)
 before connecting. Do not run two recovery owners for the same VPN session.
 
-## 5. Connect and check the VPN
+## Usage
+
+Installation is complete. Use these commands on the **Mac** for everyday access.
+
+### Connect and check the VPN
 
 On the **Mac**:
 
@@ -252,7 +211,7 @@ A successful VPN health check proves the configured TCP endpoint is reachable;
 it does not establish an SSH login or HTTP application login. Without configured
 services, reports show VPN readiness separately from end-to-end service readiness.
 
-## 6. Access a private SSH server
+### Access a private SSH server
 
 The VPN runs in the VM's container network. Your Mac does not automatically route
 all traffic through it. On the **Mac**, add a private destination to
@@ -283,7 +242,7 @@ Destination SSH keys and authentication stay on the Mac. `proxy` attaches to the
 current healthy application container; it does not start a VPN login or ask for
 MFA. Run `vpnmodo up work` first if the VPN is disconnected.
 
-## 7. Optionally forward a private web service
+### Optionally forward a private web service
 
 For a dashboard listening on the **private SSH server's** `127.0.0.1:8081`, save
 this as `~/vpnmodo-private/services.json` on the **Mac**:
@@ -319,7 +278,17 @@ scheme to match your application. The forward binds only to Mac loopback.
 A reachable endpoint does not replace application authentication. See the
 [service guide](docs/design/007-service-access.md) for other targets and diagnostics.
 
-## Everyday commands and troubleshooting
+### Disconnect and everyday commands
+
+Disconnect without deleting the saved profile or credentials:
+
+```sh
+vpnmodo down work
+```
+
+For a Lima VM, stop it with `limactl stop vpn-vm`. Start it again with
+`limactl start vpn-vm`, then run `vpnmodo up work` to reconnect and restore your
+configured service forwards.
 
 | Command on the Mac | Purpose |
 | --- | --- |
@@ -329,6 +298,8 @@ A reachable endpoint does not replace application authentication. See the
 | `vpnmodo service stop work` | Stop owned local forwards, keeping the VPN connected |
 | `vpnmodo down work` | Stop owned forwards and disconnect this VPN; keep its profile/credentials |
 | `vpnmodo profile help` | Show profile creation, update and credential-rotation commands |
+
+### Troubleshooting
 
 If VM SSH fails, check VM reachability, its verified host key and your SSH key.
 If `host check` fails, check VM Docker access and controller setup before trying
