@@ -156,3 +156,27 @@ func TestStopRejectsDescriptorBoundToAnotherProfileAlias(t *testing.T) {
 		t.Fatal("uncertain ownership discarded")
 	}
 }
+
+func TestDoctorClassifiesAnUnownedOccupiedPortWithoutStoppingIt(t *testing.T) {
+	ctx := context.Background()
+	registry := filepath.Join(t.TempDir(), "hosts.json")
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	d := definition()
+	d.Services[0].LocalPort = listener.Addr().(*net.TCPAddr).Port
+	if err = Configure(ctx, registry, "example", d); err != nil {
+		t.Fatal(err)
+	}
+	results, err := Status(ctx, registry, "example")
+	if err != nil || len(results) != 1 || results[0].Code != "local_port_conflict" {
+		t.Fatal("occupied port not diagnosed", results, err)
+	}
+	conn, err := net.Dial("tcp4", listener.Addr().String())
+	if err != nil {
+		t.Fatal("unowned listener was stopped")
+	}
+	conn.Close()
+}

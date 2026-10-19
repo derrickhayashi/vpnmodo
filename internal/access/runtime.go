@@ -432,6 +432,9 @@ func Status(ctx context.Context, registry, alias string) ([]Result, error) {
 				break
 			}
 		}
+		if r.Code == "stopped" && !portAvailable(svc.LocalPort) {
+			r.Code = "local_port_conflict"
+		}
 		result = append(result, r)
 	}
 	for _, s := range states {

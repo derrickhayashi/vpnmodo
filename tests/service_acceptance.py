@@ -179,6 +179,8 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
         with socket.socket() as occupied:
             occupied.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
             occupied.bind(('127.0.0.1',self.ports[1]));occupied.listen()
+            diagnosis=self.cli('doctor',self.alias,'--json',required=False)
+            assert diagnosis.returncode and any(s['code']=='local_port_conflict' for s in last(diagnosis)['services'])
             partial=self.cli('up',self.alias,'--json',required=False)
             report=last(partial)
             assert partial.returncode and report['outcome']=='partial' and report['vpn_ready'] and not report['ready']
