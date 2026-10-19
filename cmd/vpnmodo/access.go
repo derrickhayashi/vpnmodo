@@ -261,7 +261,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	appOK := health == operation.HealthHealthy && view.Runtime.ApplicationID != ""
 	code := string(health)
 	r.Checks = append(r.Checks, accessCheck{"vpn", code, tunnelOK}, accessCheck{"private_health_endpoint", code, serviceOK}, accessCheck{"application", code, appOK})
-	r.VPNReady = tunnelOK && serviceOK && appOK && view.Runtime.PrerequisitesReady && r.CredentialsPresent
+	r.VPNReady = tunnelOK && serviceOK && appOK
 	if !r.VPNReady {
 		if len(r.Services) > 0 {
 			r.Outcome = "partial"
@@ -276,8 +276,11 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 			return fail("local_service_start_incomplete")
 		}
 	}
-	r.Ready = len(r.Services) > 0
+	r.Ready = len(r.Services) > 0 && view.Runtime.PrerequisitesReady && r.CredentialsPresent
 	r.Outcome = "vpn_ready"
+	if !view.Runtime.PrerequisitesReady || !r.CredentialsPresent {
+		r.Outcome = "partial"
+	}
 	for _, s := range r.Services {
 		if s.Code != "ready" {
 			r.Ready = false

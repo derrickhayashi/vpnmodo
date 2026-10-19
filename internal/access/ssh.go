@@ -7,14 +7,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
 )
-
-var syscallECONNREFUSED = syscall.ECONNREFUSED
 
 func destination(ctx context.Context, s Service) (host.ProxyRequest, error) {
 	// ssh -G resolves the user's normal key/user/host configuration without network

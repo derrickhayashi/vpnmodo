@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
@@ -201,7 +202,7 @@ func stopOne(ctx context.Context, s state) error {
 				conn.Close()
 				return ErrConfig
 			}
-			if !errors.Is(e, os.ErrNotExist) && !errors.Is(e, syscallECONNREFUSED) {
+			if !errors.Is(e, os.ErrNotExist) && !errors.Is(e, syscall.ECONNREFUSED) {
 				return ErrConfig
 			}
 			if os.Remove(path) != nil {

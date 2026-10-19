@@ -42,7 +42,7 @@ func TestRegistryAndSSHValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, required := range []string{"-T", "BatchMode=yes", "StrictHostKeyChecking=yes", "-- user@vm.example.com", "-F /tmp/synthetic-config"} {
+	for _, required := range []string{"-T", "BatchMode=yes", "StrictHostKeyChecking=yes", "ForwardAgent=no", "PermitLocalCommand=no", "RemoteCommand=none", "ClearAllForwardings=yes", "-- user@vm.example.com", "-F /tmp/synthetic-config"} {
 		if !strings.Contains(joined, required) {
 			t.Fatal("missing SSH protection", required)
 		}
