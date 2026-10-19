@@ -17,6 +17,7 @@ import (
 )
 
 type fakeDocker struct {
+	failApplication bool
 	containers      map[string]container
 	calls           [][]string
 	tunnel, service bool
@@ -113,6 +114,9 @@ func (f *fakeDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 		c.State.Status = "running"
 		c.State.StartedAt = time.Now().UTC()
 		f.containers[c.ID] = c
+		if service == "application" && f.failApplication {
+			return nil, commandError{1}
+		}
 		return nil, nil
 	}
 	return nil, ErrRuntime
@@ -350,5 +354,25 @@ func TestUnsupportedBackendAndCancelledCallsCannotMutate(t *testing.T) {
 	}
 	if mutationCount(f) != 0 {
 		t.Fatal("mutated on cancelled/unsupported call")
+	}
+}
+
+func TestFailedPartialApplicationStartIsQuiesced(t *testing.T) {
+	a, f, _, p := setup(t)
+	ctx := context.Background()
+	if err := a.Connect(ctx, p, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.failApplication = true
+	if err := a.RepairForwarding(ctx, p); err == nil {
+		t.Fatal("partial application failure claimed success")
+	}
+	for _, c := range f.containers {
+		if c.Config.Labels["com.docker.compose.service"] == "application" {
+			t.Fatal("partial application remained attached")
+		}
+	}
+	if len(f.containers) != 1 {
+		t.Fatal("application failure disrupted VPN")
 	}
 }

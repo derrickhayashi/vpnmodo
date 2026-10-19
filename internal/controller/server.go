@@ -37,6 +37,7 @@ type Status struct {
 }
 type Config struct {
 	EnableL2TP                                bool
+	L2TPRunner                                l2tp.Runner
 	L2TPImage, ApplicationImage, DockerBinary string
 	Socket, StateDir, DockerSocket, Version   string
 	Adapter                                   lifecycle.Adapter
@@ -99,7 +100,11 @@ func Listen(config Config) (*Server, error) {
 		if binary == "" {
 			binary = "/usr/local/bin/docker"
 		}
-		config.Adapter, err = l2tp.New(filepath.Join(config.StateDir, "deployments"), config.L2TPImage, config.ApplicationImage, profiles, l2tp.CLI{Binary: binary, Socket: config.DockerSocket})
+		runner := config.L2TPRunner
+		if runner == nil {
+			runner = l2tp.CLI{Binary: binary, Socket: config.DockerSocket}
+		}
+		config.Adapter, err = l2tp.New(filepath.Join(config.StateDir, "deployments"), config.L2TPImage, config.ApplicationImage, profiles, runner)
 		if err != nil {
 			return nil, ErrService
 		}

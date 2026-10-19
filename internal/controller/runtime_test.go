@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/l2tp"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
@@ -87,6 +88,7 @@ func runSyntheticProcess(ctx context.Context, args []string) error {
 		config := Config{Socket: *socket, StateDir: *root, DockerSocket: "/var/run/docker.sock", Version: "synthetic-test-only", Adapter: adapter, OperationTimeout: time.Minute, MFATimeout: 20 * time.Second, Recovery: lifecycle.RecoveryPolicy{Interval: 100 * time.Millisecond, ProbeTimeout: 3 * time.Second, Cooldown: 2 * time.Second, MaxBackoff: 8 * time.Second}}
 		if os.Getenv("VPNMODO_L2TP_TEST_PROCESS") == "1" {
 			config.Adapter = nil
+			config.L2TPRunner = &traceDocker{root: *root, base: l2tp.CLI{Binary: "/usr/local/bin/docker", Socket: "/var/run/docker.sock"}}
 			config.EnableL2TP = true
 			config.Version = "l2tp-test-only"
 			config.OperationTimeout = 3 * time.Minute
@@ -268,4 +270,66 @@ func (f *fileAdapter) RepairForwarding(ctx context.Context, p profile.Profile) e
 		state.Health = ""
 	}
 	return f.write(p.Name, state)
+}
+
+// Synthetic lab diagnostics allowlist command phases and process states only.
+// No args, environment, credentials, backend text or raw Docker payload is saved.
+type traceDocker struct {
+	mu    sync.Mutex
+	root  string
+	base  l2tp.Runner
+	steps []map[string]any
+}
+
+func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
+	out, err := d.base.Run(ctx, args...)
+	phase := args[0]
+	if phase == "network" {
+		phase += "." + args[1]
+	}
+	if phase == "compose" {
+		phase += "." + args[len(args)-1]
+	}
+	if phase == "exec" && len(args) > 4 {
+		switch args[4] {
+		case "/usr/local/bin/vpn-tunnelcheck":
+			phase = "tunnel"
+		case "/usr/local/bin/vpn-servicecheck":
+			phase = "service"
+		case "readlink":
+			phase = "namespace"
+		case "test":
+			phase = "ready"
+		}
+	}
+	row := map[string]any{"phase": phase, "ok": err == nil}
+	if e, ok := err.(interface{ ExitCode() int }); ok {
+		row["exit"] = e.ExitCode()
+	}
+	if args[0] == "inspect" && err == nil {
+		var cs []struct {
+			State struct {
+				Running  bool
+				ExitCode int
+			}
+			Config struct{ Labels map[string]string }
+		}
+		if json.Unmarshal(out, &cs) == nil && len(cs) == 1 {
+			role := cs[0].Config.Labels["com.docker.compose.service"]
+			if role == "vpn" || role == "application" {
+				row["role"] = role
+				row["running"] = cs[0].State.Running
+				row["process_exit"] = cs[0].State.ExitCode
+			}
+		}
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.steps = append(d.steps, row)
+	if len(d.steps) > 200 {
+		d.steps = d.steps[len(d.steps)-200:]
+	}
+	data, _ := json.Marshal(d.steps)
+	_, _ = privatefile.Write(filepath.Join(d.root, "l2tp-trace.json"), data)
+	return out, err
 }

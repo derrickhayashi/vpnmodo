@@ -15,6 +15,7 @@ var ErrOwnership = errors.New("managed L2TP ownership conflict")
 
 type commandError struct{ code int }
 
+func (e commandError) ExitCode() int { return e.code }
 func (e commandError) Error() string { return "Docker command failed" }
 
 type Runner interface {

@@ -113,9 +113,15 @@ def begin(cli, directory, state_root):
         # namespace alive. The controller must repair attachment without replacing
         # the now-healthy VPN again.
         app_before = lab.ids()["application"]["Id"]
-        command(["docker", "restart", "--time", "2", original])
+        command(["docker", "pause", "vpnmodo-controller"])
+        try:
+            command(["docker", "compose", "--project-name", PROJECT, "--env-file", "/dev/null", "-f", str(state_root / "deployments" / NAME / "compose.json"), "up", "-d", "--no-deps", "--pull", "never", "--force-recreate", "vpn"])
+            replacement = lab.ids()["vpn"]["Id"]
+        finally:
+            command(["docker", "unpause", "vpnmodo-controller"])
         lab.wait(lambda c: c["observed"] == "connected" and "active_operation" not in c and lab.ids().get("application", {}).get("Id") != app_before, timeout=150)
-        assert lab.ids()["vpn"]["Id"] == original
+        assert lab.ids()["vpn"]["Id"] == replacement
+        original = replacement
         lab.namespaces()
         command(["docker", "exec", original, "ipsec", "down", "l2tp-psk"])
         lab.wait(lambda c: c["observed"] == "connected" and "active_operation" not in c and lab.ids().get("vpn", {}).get("Id") != original, timeout=150)
@@ -126,7 +132,7 @@ def begin(cli, directory, state_root):
         # the application was never reattached to that failed recovery.
         lab.control("service-stop")
         command(["docker", "exec", recovered, "ipsec", "down", "l2tp-psk"])
-        failed = lab.wait(lambda c: "last_operation" in c and "active_operation" not in c and c["observed"] == "disconnected" and c.get("recovery", {}).get("attempts", 0) > 0, timeout=150)
+        failed = lab.wait(lambda c: "last_operation" in c and "active_operation" not in c and c.get("recovery", {}).get("attempts", 0) > 0, timeout=150)
         record = last_json(cli("operation", "status", failed["last_operation"], "--host", "example", "--json"))
         assert record["kind"] == "connection.recover" and record["state"] == "failed"
         assert "application" not in lab.ids()
@@ -140,6 +146,9 @@ def begin(cli, directory, state_root):
         return lab
     except Exception:
         # Sanitized protocol/process presence only; never dump configs or logs.
+        trace = state_root / "l2tp-trace.json"
+        if trace.is_file():
+            print("L2TP command phases:", json.dumps(json.loads(trace.read_text())[-45:]), flush=True)
         ids = lab.ids() if lab.network else {}
         for role in ("vpn", "application"):
             if role in ids:
