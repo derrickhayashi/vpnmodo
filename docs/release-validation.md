@@ -1,0 +1,91 @@
+# Private ARM64 candidate validation — 2026-10-19
+
+Validated source: `990dc2fe7caec4e1b68cf2b54788b996937e66c5`.
+Candidate identity: `v0.1.0-rc.6+git.990dc2fe7cae`.
+Subsequent documentation commits record these results without changing runtime code.
+
+Both agreed validation gates pass: the complete isolated protocol/recovery/packet
+suite, and a fresh ARM64 release bundle built from the production Dockerfiles.
+The candidate remains private. No registry, GitHub release or public artifact was
+published. GitHub Actions remains disabled; all work used the existing Mac and VM.
+
+## Qualified scope and results
+
+Qualification covers macOS arm64 and Ubuntu 24.04 arm64. Intel/amd64 native testing
+and legacy rollback testing are outside the agreed release scope. Cross-built
+amd64 CLI artifacts have checksums but no native runtime qualification.
+
+| Check | Result |
+| --- | --- |
+| Native Mac ARM64 CLI | Fresh archive checksums, install, version/help, explicit replacement, corrupt/symlink refusal and temporary-prefix cleanup pass |
+| Hidden terminal input | Native credential/MFA waiting, echo suppression, cancellation and terminal restoration pass |
+| Full isolated Linux suite | Controller/profile/operation, L2TP, XAuth and PMTU suites complete with exit 0 |
+| XAuth authenticated CHILD rekey | Replacement CHILD_SA confirmed; 256 KiB each way passes before/after rekey with no route MTU/MSS override and zero observed plaintext |
+| XAuth controller replacement | Same VPN retained; 256 KiB each way and private service access pass before explicit disconnect |
+| Fresh container image bundle | Full production L2TP, XAuth and controller Dockerfile builds, pinned backend/application IDs, source inventory and SHA-256 verification pass |
+| Classic Docker image store | Docker 29.1.3, vfs, ARM64: schema-2 bundle import and immutable-ID receipt pass; existing development image tags remain unchanged |
+| Containerd image store | Docker 29.1.3, ARM64: checksum-verified import and repeat import pass; receipts verify all four images/version and report activation false |
+| Packaged onboarding/upgrade | Production-policy L2TP and XAuth authentication, private TCP/DNS, two-hop service access, credential disposal and controller upgrade pass; final exit 0 |
+| Local checks | Go race tests, vet and all 84 Python tests pass |
+
+The complete suite includes endpoint outage, namespace repair, automatic L2TP
+recovery and failed recovery, graceful stop and three fresh reconnects. XAuth
+covers real aggressive PSK/XAUTH_PASSCODE, a 95-second quiet session, expired,
+incorrect and repeated MFA, controller crash, DNS/IPv6 bypass refusal and SO_MARK
+forgery refusal. Captures require zero plaintext when SAs/policies disappear
+while the client and controller are suspended; reachable positive controls prove
+the observer and escape paths work.
+
+The separate PMTU fixture uses fresh ESP/NAT-T peers across a routed 1280-byte
+bottleneck. The uncorrected filter drops 16 related fragmentation-needed errors
+and times out. The narrow ICMP correction permits 256 KiB each way without route
+MTU/MSS overrides. Unrelated forged ICMP and protected plaintext/post-policy
+probes remain blocked; all five scenarios pass.
+
+The bundle onboarding subset uses production operation/recovery settings. Its
+upgrade rehearsal changes the controller binary identity and backend/application
+image IDs while preserving the established VPN and service access. Full failure
+and packet acceptance use the separate test controller with shortened lab-only
+timings; the two suites provide complementary evidence.
+
+## Adoption and known observations
+
+The earlier native ARM64 functional trial completed real adoption/cutover:
+existing settings became a managed profile, credentials remained on the VM, the
+legacy session was stopped and retained, and the existing workstation wrapper
+and SSH aliases selected the managed application. Fresh MFA, authenticated SSH
+and 256 KiB uploads/downloads passed on both configured targets with interface
+MTU 1500 and no route MTU/MSS override. That trial used reviewed changes layered
+on verified base images; the newly validated bundle above is a fresh full build.
+Repeating real adoption/cutover or rehearsing legacy rollback is not a release gate.
+
+The intermittent post-MFA client exit (fixed diagnostic 27) and disappearance of
+established kernel IPsec state still have unconfirmed causes and are tracked in
+[issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
+These successes do not establish long-term stability or resolve that follow-up.
+The earlier unconfirmed synthetic L2TP startup observation remains tracked in
+[issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
+
+The first attempt at the extended full suite reached deliberate service teardown
+before a new payload probe, so the probe found no VPN. This was a fixture ordering
+mistake: the service test had explicitly disconnected it. Moving the probe before
+teardown corrected the test; the complete committed-source rerun exits 0.
+
+## Import isolation and cleanup
+
+Both Docker image-store imports verify immutable IDs and leave activation false.
+Every pre-existing named image tag is preserved. Immediate before/after snapshots
+around repeated containerd import show unchanged container IDs, running/stopped
+states and start times. The existing managed XAuth VPN/controller retain their
+identities and start times throughout the run.
+
+An independent watchdog-managed legacy VPN was recreated during the longer test
+window, before the image import. Lifecycle timestamps distinguish that event
+from import; the whole-run snapshot is not claimed to show every unrelated
+container unchanged. No unrelated configuration or VPN logs were read.
+
+After both suites pass, the nested daemon has no remaining acceptance containers.
+The exact outer lab and VM staging directory are removed. Verified candidate
+archives, receipts and raw synthetic evidence remain privately outside source.
+Customer settings, credentials, transcripts and packet metadata are excluded
+from this repository and issue artifacts.

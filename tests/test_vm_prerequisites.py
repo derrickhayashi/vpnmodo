@@ -25,6 +25,7 @@ class VmPrerequisiteTests(unittest.TestCase):
         values = {
             'ansible_facts': {'distribution': 'Ubuntu', 'kernel': '6.8.0-100-generic', 'packages': {}},
             'vpn_sidecar_backend': 'l2tp-ipsec',
+            'vpn_sidecar_l2tp_acceleration': False,
             'vpn_sidecar_kernel_blocklist': [],
             'vpn_sidecar_kernel_allowlist': [],
             'vpn_sidecar_kernel_warning_releases': ['6.8.0-146-generic'],
@@ -76,11 +77,16 @@ class VmPrerequisiteTests(unittest.TestCase):
                                        vpn_sidecar_install_docker=False) for value in checks))
         self.assertFalse(all(self.render(value, vpn_sidecar_docker_ce=True,
                                         ansible_facts={'packages': {'docker.io': []}}) for value in checks))
+        self.assertFalse(all(self.render(value, ansible_facts={'packages': {'podman-docker': []}})
+                             for value in checks))
 
     def test_ppp_requirements_are_l2tp_only(self):
         modules = self.task('Select the modules required by this VPN type')['ansible.builtin.set_fact']['vpn_sidecar_required_modules']
         self.assertEqual(self.render(modules, vpn_sidecar_backend='ipsec-xauth'), ['xfrm_user', 'esp4'])
-        self.assertIn('l2tp_ppp', self.render(modules))
+        self.assertEqual(self.render(modules), ['xfrm_user', 'esp4', 'ppp_generic', 'ppp_async'])
+        self.assertIn('l2tp_ppp', self.render(modules, vpn_sidecar_l2tp_acceleration=True))
+        self.assertEqual(self.render(modules, vpn_sidecar_backend='ipsec-xauth',
+                                     vpn_sidecar_l2tp_acceleration=True), ['xfrm_user', 'esp4'])
         self.assertFalse(self.enabled('Inspect the PPP device for L2TP',
                                       vpn_sidecar_backend='ipsec-xauth', ansible_check_mode=False))
 
@@ -105,6 +111,17 @@ class VmPrerequisiteTests(unittest.TestCase):
         self.assertFalse(self.enabled(name, vpn_sidecar_install_kernel_modules=False))
         package = self.task(name)['ansible.builtin.apt']['name']
         self.assertEqual(self.render(package), 'linux-modules-extra-6.8.0-100-generic')
+
+    def test_check_mode_requires_present_modules_or_available_matching_packages(self):
+        condition = self.task('Explain deferred kernel verification in check mode')['ansible.builtin.assert']['that'][0]
+        self.assertTrue(self.render(condition))
+        self.assertTrue(self.render(condition, vpn_sidecar_module_reprobe={'results': [{'rc': 0}]}))
+        self.assertFalse(self.render(condition, vpn_sidecar_kernel_packages={'results': [{'rc': 100}, {'rc': 100}]}))
+        self.assertFalse(self.render(condition, vpn_sidecar_install_kernel_modules=False))
+
+    def test_acceleration_requires_a_real_boolean(self):
+        policy = self.tasks[0]['ansible.builtin.assert']['that']
+        self.assertFalse(all(self.render(value, vpn_sidecar_l2tp_acceleration='false') for value in policy))
 
     def test_failed_module_loads_prevent_container_deployment(self):
         condition = self.task('Require all VPN kernel modules before creating containers')['ansible.builtin.assert']['that'][0]

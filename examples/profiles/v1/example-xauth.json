@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "name": "example-xauth",
+  "backend": {
+    "type": "ipsec-xauth",
+    "config": {
+      "server": "203.0.113.10",
+      "dns": [
+        "192.0.2.53"
+      ]
+    }
+  },
+  "health": {
+    "host": "192.0.2.10",
+    "port": 22
+  }
+}

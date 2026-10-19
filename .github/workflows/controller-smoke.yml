@@ -1,0 +1,81 @@
+name: Controller SSH acceptance
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  controller-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Install isolated SSH server
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openssh-server
+      - name: Check standalone watchdog recovery and ownership decisions
+        run: |
+          python3 -m venv "$RUNNER_TEMP/watchdog-tests"
+          "$RUNNER_TEMP/watchdog-tests/bin/pip" install --quiet pytest==8.4.2
+          "$RUNNER_TEMP/watchdog-tests/bin/python" -m pytest -q tests/test_vpn_watchdog.py
+      - name: Build workstation test binary and controller image
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/vpnmodo" ./cmd/vpnmodo
+          docker build --tag vpnmodo-controller:acceptance --file containers/controller/Dockerfile .
+      - name: Exercise verified SSH bootstrap and container lifecycle
+        env:
+          VPNMODO_ISOLATED_TEST_HOST: '1'
+        run: python3 tests/smoke_controller.py --binary "$RUNNER_TEMP/vpnmodo" --image vpnmodo-controller:acceptance
+
+      - name: Build isolated synthetic operation test image
+        run: |
+          mkdir -p "$RUNNER_TEMP/operation-image"
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/operation-image/vpnmodo-controller" ./internal/controller
+          docker build --tag vpnmodo-controller:operation-acceptance --file tests/Dockerfile.operations "$RUNNER_TEMP/operation-image"
+      - name: Exercise persistent operations over verified SSH
+        env:
+          VPNMODO_ISOLATED_TEST_HOST: '1'
+        run: python3 tests/smoke_controller.py --binary "$RUNNER_TEMP/vpnmodo" --image vpnmodo-controller:operation-acceptance --operations
+
+  l2tp-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Prepare isolated Linux PPP and SSH prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openssh-server
+          sudo modprobe ppp_generic
+          sudo modprobe ppp_async
+          # xl2tpd supports userspace L2TP when this optional accelerator is absent.
+          if modinfo l2tp_ppp >/dev/null 2>&1; then sudo modprobe l2tp_ppp; fi
+          sudo modprobe xfrm_user
+          if [ ! -e /dev/ppp ]; then sudo mknod /dev/ppp c 108 0; fi
+      - name: Build real VPN backend, synthetic gateway and real-adapter test controller
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/vpnmodo" ./cmd/vpnmodo
+          docker build -t vpnmodo-l2tp:dev containers/l2tp-ipsec
+          docker build -t vpnmodo-lab-gateway:acceptance tests/l2tp-lab
+          docker pull alpine:3.22
+          mkdir -p "$RUNNER_TEMP/l2tp-image"
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/l2tp-image/vpnmodo-controller" ./internal/controller
+          docker build -t vpnmodo-controller:l2tp-acceptance -f tests/Dockerfile.l2tp "$RUNNER_TEMP/l2tp-image"
+      - name: Exercise real L2TP integration and recovery over verified SSH
+        env:
+          VPNMODO_ISOLATED_TEST_HOST: '1'
+        run: python3 tests/smoke_controller.py --binary "$RUNNER_TEMP/vpnmodo" --image vpnmodo-controller:l2tp-acceptance --l2tp

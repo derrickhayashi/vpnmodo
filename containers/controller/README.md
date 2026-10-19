@@ -1,0 +1,135 @@
+# Controller container and workstation host commands
+
+This stage supplies runnable `vpnmodo` and `vpnmodo-controller` binaries, verified
+SSH transport, schema discovery and controller/Docker readiness. VPN profile
+management is now available through the [profile guide](../../docs/design/002-profile-storage.md).
+Persistent operation coordination is described in the
+[operation guide](../../docs/design/003-persistent-operations.md). The
+[managed L2TP adapter](../../docs/design/005-managed-l2tp.md) now supplies real
+Docker/Compose lifecycle and controller-owned recovery. `runtime_enabled` reports
+that adapter wiring; image/kernel prerequisites and a verified VPN are separate
+checks. The [managed XAuth adapter](../../docs/design/006-managed-xauth.md) adds
+secure MFA and mandatory kernel-enforced isolation, with explicit authentication
+after tunnel loss.
+
+For checksum-verified candidate binaries and offline images, use the
+[release guide](../../docs/releases.md) and [onboarding guide](../../docs/onboarding.md).
+The development build below remains available.
+
+## Prerequisites and build
+
+The target is an existing Ubuntu 24.04 VM with SSH, Python 3, rootful Docker
+Engine and Compose v2 or later. The SSH account must already have Docker access.
+The commands use the VM's `/var/run/docker.sock` explicitly; Docker contexts on
+the workstation/VM do not redirect this management connection. VM creation and
+installing Docker/SSH are outside this skeleton's setup command. Existing Ansible
+deployment tooling remains available for prerequisites and legacy VPN instances.
+
+Build the workstation binary with Go 1.27:
+
+```sh
+go build -trimpath -o /tmp/vpnmodo ./cmd/vpnmodo
+```
+
+Build the controller image on the VM, or explicitly transfer a compatible built
+image using Docker's normal image tooling. There is no published release image
+yet, and `host setup` does not upload source or image archives:
+
+```sh
+docker build -t vpnmodo-controller:dev -f containers/controller/Dockerfile .
+```
+
+The build context allowlists only the controller's Go source packages and module
+files. The runtime image bundles the static Go binary and Docker CLI/Compose.
+It contains no customer configuration or credentials. Install the development
+backend/application images explicitly on the VM before connection:
+
+```sh
+docker build -t vpnmodo-l2tp:dev containers/l2tp-ipsec
+docker build -t vpnmodo-xauth:dev containers/ipsec-xauth
+docker pull alpine:3.22
+```
+
+The VM needs kernel IPsec/netfilter support. XAuth requires native XFRM output
+marks and IPv6-disable sysctls, tested on Ubuntu 24.04. L2TP additionally needs
+PPP (`ppp_generic`, `ppp_async`, `/dev/ppp`).
+xl2tpd can use userspace L2TP when optional kernel L2TP acceleration is absent.
+The adapter never installs modules, creates host devices, builds or pulls images.
+
+## Register, set up and check
+
+Use an existing SSH alias with trusted host keys and key-based authentication:
+
+```sh
+/tmp/vpnmodo host add my-vm --ssh vpn-host
+/tmp/vpnmodo host setup my-vm --image vpnmodo-controller:dev
+/tmp/vpnmodo host check my-vm
+/tmp/vpnmodo host check my-vm --json
+```
+
+`host add` stores only the name, SSH target and optional `--ssh-config` path. It
+does not connect/provision. The private registry is under `os.UserConfigDir()`:
+`Library/Application Support/vpnmodo/hosts.json` on macOS. `--config` before `host`
+selects another absolute private registry path for automation/tests. Secret input
+does not belong in that registry. Registry updates lock and replace atomically.
+
+`host setup` uses fixed Python code sent over SSH; operator inputs are JSON stdin
+and never interpolated into shell syntax. It requires the image to exist on the
+VM or be pullable with that host's existing registry authentication. It creates
+private storage at `~/.local/share/vpnmodo` on the VM, writes a protected resolved
+controller Compose manifest, and starts only project `vpnmodo-controller`.
+It serializes bootstrap updates and refuses foreign containers with the same
+name, a different data mount, symlink storage or public storage permissions.
+
+An existing matching controller is reused or started if stopped. A changed image
+requires `--replace`. Use that explicit option to recreate/repair the controller
+while retaining persistent storage. No VPN or legacy Compose project is stopped:
+
+```sh
+/tmp/vpnmodo host setup my-vm --image vpnmodo-controller:dev --replace
+```
+
+Setup reports created/reused/started/replaced, not end-to-end readiness. Follow it
+with `host check`; the container may need a moment to start. Setup can repair a
+stopped controller without relying on the controller's own API. Its current
+private manifest format is implementation-owned, not a user profile schema.
+
+## Process and permission model
+
+The service runs as the VM SSH user's UID/GID with the Docker socket's numeric
+group added. It has a read-only image filesystem, no network attachment/published
+ports, no added capabilities, and a private owner-matched tmpfs for its Unix
+socket. Persistent host data is mounted at the same absolute path inside the
+controller. Docker socket access remains administrative authority over the VM.
+
+The workstation invokes a fixed non-PTY `docker exec -i` bridge over SSH. SSH
+requires existing host-key trust and noninteractive authentication. The bridge
+forwards bounded frames to the persistent service's private Unix socket. Closing
+stdin drains replies; closing a bridge leaves the service running. The service
+requires `system.hello` negotiation per connection and exposes `system.status`,
+`backend.list` and `backend.describe`. Profile management methods validate and provision protected VM storage;
+connection/operation methods use a persistent manager with the L2TP adapter. Request/response logging is disabled.
+
+The service bounds connections, outstanding calls, frame size/depth, idle reads
+and writes. Docker readiness uses the local `GET /_ping` endpoint. Profile mutations also
+query exactly labeled managed containers to verify inactivity. These read-only
+checks do not change existing VPN deployments. Container health checks verify
+the management process; status separately reports Docker readiness.
+
+## Validation
+
+`go test -race ./...` exercises real temporary Unix sockets, negotiation, strict
+input/error handling, bridge EOF, service lifetime, registry updates and secret
+handling. Bootstrap unit tests fake Docker and never touch live resources.
+
+The [local Ubuntu lab](../../tests/local-lab/README.md) uses an existing VM and a
+disposable nested Docker daemon. Hosted Actions remains disabled. It generates
+ephemeral SSH keys outside the checkout, pins its own server key, rejects unknown
+keys, creates the controller through actual SSH/Compose, checks private mounts and
+permissions, repairs a stopped controller, recreates it with state retained, and
+checks an unrelated synthetic legacy container is unchanged. It removes its
+resources. Do not run that smoke test on a customer or shared deployment host.
+
+The supplied `compose.yaml` is a manual equivalent for an explicitly prepared
+host; set image, data-root and numeric UID/GID/socket group values first. It is
+independent from all VPN profile projects.

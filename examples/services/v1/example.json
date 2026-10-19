@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "services": [
+    {
+      "name": "dashboard",
+      "ssh_target": "private-jump",
+      "ssh_config": "/absolute/path/to/project/vpn/ssh_config",
+      "local_port": 18081,
+      "remote_host": "127.0.0.1",
+      "remote_port": 8081
+    }
+  ]
+}

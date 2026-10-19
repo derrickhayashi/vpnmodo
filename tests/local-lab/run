@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+rm -f /tmp/vpnmodo-lab.exit
+trap 'printf "%s\n" "$?" > /tmp/vpnmodo-lab.exit' EXIT
+cd /work
+docker build -t vpnmodo-controller:acceptance /opt/lab/production
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py --binary /opt/lab/vpnmodo --image vpnmodo-controller:acceptance
+docker build -t vpnmodo-controller:operation-acceptance -f tests/Dockerfile.operations /opt/lab/operations
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py --binary /opt/lab/vpnmodo --image vpnmodo-controller:operation-acceptance --operations
+docker build -t vpnmodo-service-lab:acceptance tests/service-lab
+docker build -t vpnmodo-l2tp:base-acceptance containers/l2tp-ipsec
+docker build -t vpnmodo-l2tp:dev tests/l2tp-client
+docker build -t vpnmodo-lab-gateway:acceptance tests/l2tp-lab
+docker pull alpine:3.22
+docker build -t vpnmodo-controller:l2tp-acceptance -f tests/Dockerfile.l2tp /opt/lab/operations
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py --binary /opt/lab/vpnmodo --image vpnmodo-controller:l2tp-acceptance --l2tp
+docker build -t vpnmodo-xauth:dev containers/ipsec-xauth
+docker build -t vpnmodo-xauth-gateway:acceptance tests/xauth-lab
+docker build -t vpnmodo-controller:xauth-acceptance -f tests/Dockerfile.xauth /opt/lab/operations
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py --binary /opt/lab/vpnmodo --image vpnmodo-controller:xauth-acceptance --xauth
+sudo -n env VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/pmtu_acceptance.py
+echo 'PASS: all isolated Linux acceptance suites'

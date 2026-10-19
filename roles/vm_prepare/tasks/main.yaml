@@ -1,0 +1,83 @@
+---
+- name: Validate personal VM preparation inputs
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '24.04'
+      - ansible_facts['architecture'] in ['aarch64', 'arm64']
+      - vpnmodo_vm_management_user is defined
+      - (vpnmodo_vm_management_user | default('')) is match('^[a-z_][a-z0-9_-]*[$]?$')
+      - vpnmodo_vm_docker_access in ['direct', 'sudo']
+      - vpnmodo_vm_l2tp | type_debug == 'bool'
+    fail_msg: >-
+      VM preparation requires Ubuntu 24.04 ARM64, an explicitly selected existing
+      vpnmodo_vm_management_user, direct or sudo Docker access, and a boolean
+      vpnmodo_vm_l2tp. SSH, Python 3 and administrative access must already work.
+
+- name: Require the selected management account to exist
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ vpnmodo_vm_management_user }}"
+    fail_key: true
+
+- name: Validate pre-authorized noninteractive sudo without cached credentials
+  ansible.builtin.command:
+    argv: [runuser, -u, "{{ vpnmodo_vm_management_user }}", --, sudo, -n, -k, --, python3, -c, 'import os; assert os.geteuid() == 0']
+  become: true
+  become_user: root
+  changed_when: false
+  check_mode: false
+  when: vpnmodo_vm_docker_access == 'sudo'
+
+- name: Prepare shared Docker and kernel prerequisites without deployment
+  ansible.builtin.include_role:
+    name: vpn_sidecar.client.vpn_sidecar
+    tasks_from: prerequisites
+  vars:
+    vpn_sidecar_backend: "{{ 'l2tp-ipsec' if vpnmodo_vm_l2tp else 'ipsec-xauth' }}"
+    vpn_sidecar_instance: vpnmodo-preparation
+
+- name: Grant explicitly selected direct Docker access
+  ansible.builtin.user:
+    name: "{{ vpnmodo_vm_management_user }}"
+    groups: docker
+    append: true
+    state: present
+  when:
+    - vpnmodo_vm_docker_access == 'direct'
+    - not ansible_check_mode
+
+- name: Inspect direct Docker group access in check mode
+  ansible.builtin.command:
+    argv: [id, -nG, "{{ vpnmodo_vm_management_user }}"]
+  register: vpnmodo_vm_groups
+  changed_when: "'docker' not in vpnmodo_vm_groups.stdout.split()"
+  check_mode: false
+  when:
+    - vpnmodo_vm_docker_access == 'direct'
+    - ansible_check_mode
+
+# A fresh process must acquire newly assigned supplementary Docker groups, even
+# when the management account is also the existing Ansible SSH user.
+- name: Verify management account access to rootful Docker
+  ansible.builtin.command:
+    argv: >-
+      {{ ['runuser', '-u', vpnmodo_vm_management_user, '--']
+         + (['sudo', '-n', '-k', '--'] if vpnmodo_vm_docker_access == 'sudo' else [])
+         + item }}
+  loop:
+    - [docker, --host, 'unix:///var/run/docker.sock', info]
+    - [docker, --host, 'unix:///var/run/docker.sock', compose, version]
+  become: true
+  become_user: root
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Explain the next explicit managed installation step
+  ansible.builtin.debug:
+    msg: >-
+      Host preparation {{ 'preview complete' if ansible_check_mode else 'complete' }}.
+      {{ 'Apply and rerun to verify Docker, modules and /dev/ppp.' if ansible_check_mode else
+         'Use a new SSH login so Docker group membership applies.' }}
+      Load the verified image bundle, then run vpnmodo host setup from the Mac.
+      No controller, VPN profile, VPN container or watchdog is installed here.

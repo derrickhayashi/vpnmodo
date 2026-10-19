@@ -11,7 +11,7 @@ WATCHDOG = Path(__file__).resolve().parents[1] / "watchdog/vpn-watchdog"
 
 def run_watchdog(tmp_path, *, health="healthy", status="running", detached=False,
                  cooldown=False, application_status="running", mode="auto",
-                 reachable=True, recovery_succeeds=True, checks=1, details=False, duplicate_vpn=False):
+                 reachable=True, recovery_succeeds=True, checks=1, details=False, duplicate_vpn=False, managed=False):
     """Fake only host/container tools; execute the actual watchdog shell logic."""
     tools = tmp_path / "bin"
     tools.mkdir()
@@ -39,7 +39,9 @@ if args[0] == 'compose':
         path.write_text(json.dumps(state))
 elif args[0] == 'inspect':
     fmt, target = args[2:4]
-    if 'Health' in fmt:
+    if 'Labels' in fmt:
+        print('vpnmodo' if os.environ['MOCK_MANAGED'] == '1' else '')
+    elif 'Health' in fmt:
         print(state['health'])
     elif 'Status' in fmt:
         print(state['status'] if target == 'vpn' else state['application_status'])
@@ -64,6 +66,7 @@ elif args[0] == 'exec':
            "MOCK_REACHABLE": '1' if reachable else '0',
            "MOCK_DETACHED": '1' if detached else '0',
            "MOCK_RECOVERY": '1' if recovery_succeeds else '0',
+           "MOCK_MANAGED": '1' if managed else '0',
            "MOCK_DUPLICATE": '1' if duplicate_vpn else '0',
            "VPN_PROJECT_DIR": str(tmp_path),
            "MOCK_CONTAINERS": str(state_file), "MOCK_CALLS": str(calls_file)}
@@ -158,3 +161,13 @@ def test_replacement_waits_for_a_single_vpn_container(tmp_path):
     assert operations == []
     assert results == [0]
     assert 'replacement is in progress' in output
+
+
+def test_managed_profile_refuses_standalone_recovery(tmp_path):
+    operations, output, results, state = run_watchdog(
+        tmp_path, health="unhealthy", detached=True, managed=True,
+        checks=2, details=True)
+    assert operations == []
+    assert results == [0, 0]
+    assert output.count('standalone watchdog is disabled') == 1
+    assert (state / 'status').read_text().strip() == 'controller-owned'

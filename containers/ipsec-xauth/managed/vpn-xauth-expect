@@ -1,0 +1,99 @@
+#!/usr/bin/expect -f
+# The only parsed diagnostic is CHILD_SA establishment. Control is fixed enum
+# state, not forwarded log output. Login deadlines cannot be reset by log floods.
+log_user 0
+exp_internal 0
+set timeout 90
+set stage initial
+set established 0
+set psk_sent 0
+set password_sent 0
+set otp_sent 0
+set deadline [expr {[clock seconds] + 90}]
+proc state {value} {
+    set f [open /run/vpn/state.new w 0600]
+    puts $f $value
+    close $f
+    file rename -force /run/vpn/state.new /run/vpn/state
+}
+proc shutdown {status} {
+    global spawn_id
+    state failed
+    if {[info exists spawn_id]} {
+        catch {exec kill -TERM [exp_pid -i $spawn_id]}
+        set timeout 1
+        catch {expect -i $spawn_id {eof {catch {wait -i $spawn_id}} timeout {catch {exec kill -KILL [exp_pid -i $spawn_id]}}}}
+    }
+    exit $status
+}
+# Fixed exit reasons survive container cleanup through Docker lifecycle events.
+# They contain no transcript, endpoint, username or submitted credential.
+proc failure {{reason 2}} {shutdown $reason}
+proc timed_out {} {
+    global stage
+    switch -- $stage { initial {failure 23} waiting {failure 24} submitted {failure 25} default {failure 2} }
+}
+trap {shutdown 0} {SIGTERM SIGINT SIGHUP}
+proc credential {name} {
+    set f [open /run/secrets/vpn_$name r]
+    set v [read $f 4097]; close $f
+    if {[string length $v] == 0 || [string length $v] > 4096 || [regexp {[\r\n\x00]} $v]} {failure 29}
+    return $v
+}
+set route [exec ip -4 route get $env(VPN_SERVER)]
+if {![regexp {src ([0-9.]+)} $route -> identity]} {failure}
+set args [list --debug 1 --host $env(VPN_SERVER) --identity $identity --remote-identity %any --profile ikev1-xauth-psk-am]
+foreach p [split $env(VPN_IKE_PROPOSALS) ,] {lappend args --ike-proposal $p}
+foreach p [split $env(VPN_ESP_PROPOSALS) ,] {lappend args --esp-proposal $p}
+spawn -noecho charon-cmd {*}$args
+# Disable PTY echo before sending any credential, including a fast initial PSK.
+stty -echo < $spawn_out(slave,name)
+while {1} {
+    if {!$established} {
+        set timeout [expr {$deadline - [clock seconds]}]
+        if {$timeout <= 0} {timed_out}
+    } else {set timeout -1}
+    expect {
+        -exact "Preshared Key: " {
+            if {$psk_sent || $established} {failure 20}
+            set psk_sent 1
+            send -- "[credential psk]\r"
+        }
+        -exact "EAP password: " {
+            if {!$psk_sent || $password_sent || $established} {failure 21}
+            set password_sent 1
+            send -- "[credential password]\r"
+        }
+        -exact "PIN: " {
+            if {!$password_sent || $otp_sent || $established} {failure 22}
+            set otp_sent 1
+            state mfa
+            set stage waiting
+            set deadline [expr {[clock seconds] + 180}]
+            while {![file exists /run/vpn/code]} {
+                if {[clock seconds] >= $deadline} {timed_out}
+                after 100
+            }
+            set f [open /run/vpn/code r]; set code [read $f 12]; close $f
+            file delete /run/vpn/code
+            if {![regexp {^[0-9]{4,10}$} $code]} {failure 28}
+            state submitted
+            set stage submitted
+            send -- "$code\r"; unset code
+            set deadline [expr {[clock seconds] + 90}]
+        }
+        -re {([^\r\n]+)\r?\n} {
+            if {[regexp {CHILD_SA .* established with SPIs} $expect_out(1,string)]} {
+                if {!$password_sent || !$otp_sent} {failure 30}
+                set established 1
+                set stage established
+                state established
+                close [open /run/vpn/ready w 0600]
+            }
+        }
+        timeout {timed_out}
+        eof {
+            switch -- $stage { submitted {failure 27} established {failure 31} default {failure 26} }
+        }
+    }
+}

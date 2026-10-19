@@ -1,11 +1,11 @@
 ---
 namespace: vpn_sidecar
 name: client
-version: 0.3.0
+version: 0.4.0
 readme: README.md
 authors:
   - VPN sidecar maintainers
-description: Reusable VPN backends, named profiles, deployment and recovery
+description: Personal vpnmodo VM preparation and reusable VPN backends
 license: []
 tags:
   - networking

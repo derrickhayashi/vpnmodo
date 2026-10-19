@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "example-l2tp",
+  "backend": {
+    "type": "l2tp-ipsec",
+    "config": {
+      "server": "vpn.example.com",
+      "dns": ["192.0.2.53"],
+      "force_encapsulation": true
+    }
+  },
+  "health": {"host": "192.0.2.10", "port": 22}
+}

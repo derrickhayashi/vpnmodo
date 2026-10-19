@@ -1,0 +1,45 @@
+#!/bin/sh
+# Rules live in the VPN namespace and survive all userspace/controller failures.
+set -eu
+case "$VPN_SERVER" in ''|*[!0-9.]*) exit 1;; esac
+test "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" = 1
+test "$(cat /proc/sys/net/ipv6/conf/default/disable_ipv6)" = 1
+if [ "${1:-}" = check ]; then
+    (iptables -t filter -S; ip6tables -t filter -S) | sha256sum | cmp -s - /run/vpn/enforcement.sha256
+    exit $?
+fi
+# Loopback egress is limited to 127.0.0.1: Docker's embedded resolver at
+# 127.0.0.11 must not provide an out-of-namespace DNS fallback.
+# PMTU errors are control feedback, not a general RELATED data exception.
+# Conntrack must validate the quoted existing flow before accepting the error.
+# No ESTABLISHED exception: losing an XFRM policy blocks existing flows too.
+# Root-owned IKE sockets are the only plaintext UDP exception. Application
+# containers always run as UID 65534 with no capabilities/no-new-privileges.
+iptables-restore <<RULES
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+-A INPUT -i lo -j ACCEPT
+-A INPUT -p icmp --icmp-type fragmentation-needed -m conntrack --ctstate RELATED -j ACCEPT
+-A OUTPUT -o lo -d 127.0.0.1/32 -j ACCEPT
+-A INPUT -s $VPN_SERVER -p udp --sport 500 --dport 500 -j ACCEPT
+-A INPUT -s $VPN_SERVER -p udp --sport 4500 --dport 4500 -j ACCEPT
+-A OUTPUT -d $VPN_SERVER -p udp --sport 500 --dport 500 -m owner --uid-owner 0 -j ACCEPT
+-A OUTPUT -d $VPN_SERVER -p udp --sport 4500 --dport 4500 -m owner --uid-owner 0 -j ACCEPT
+-A INPUT -s $VPN_SERVER -p esp -j ACCEPT
+-A OUTPUT -d $VPN_SERVER -p esp -m mark --mark 0x76706e6d/0xffffffff -j ACCEPT
+-A OUTPUT -d $VPN_SERVER -p udp --sport 4500 --dport 4500 -m mark --mark 0x76706e6d/0xffffffff -j ACCEPT
+-A INPUT -m policy --dir in --pol ipsec --proto esp --mode tunnel --tunnel-src $VPN_SERVER -j ACCEPT
+-A OUTPUT -m policy --dir out --pol ipsec --proto esp --mode tunnel --tunnel-dst $VPN_SERVER -j ACCEPT
+COMMIT
+RULES
+ip6tables-restore <<'RULES'
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+COMMIT
+RULES
+(iptables -t filter -S; ip6tables -t filter -S) | sha256sum > /run/vpn/enforcement.sha256
+vpn-enforce check

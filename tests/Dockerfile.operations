@@ -1,0 +1,8 @@
+# Acceptance only: the Go test binary contains the injected synthetic adapter.
+# The build context contains only this binary, never profiles or SSH test keys.
+FROM scratch
+COPY vpnmodo-controller /usr/local/bin/vpnmodo-controller
+ENV VPNMODO_OPERATION_TEST_PROCESS=1
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/vpnmodo-controller"]
+CMD ["serve"]

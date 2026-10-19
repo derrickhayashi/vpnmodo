@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+case "$(cat /run/vpn/state)" in
+    starting) echo starting;;
+    mfa) echo mfa;;
+    submitted) echo starting;;
+    established) echo established;;
+    *) echo failed;;
+esac

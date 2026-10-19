@@ -1,0 +1,46 @@
+--- a/src/charon-cmd/cmd/cmd_connection.c
++++ b/src/charon-cmd/cmd/cmd_connection.c
+@@ -201,0 +202,7 @@
++	/* Fresh IKEv1 authentication always requires explicit user intent. Child
++	 * rekeying using the current IKE SA remains enabled. */
++	if (getenv("VPNMODO_MANAGED_XAUTH"))
++	{
++		peer.rekey_time = 0;
++		peer.reauth_time = 0;
++	}
+@@ -352,0 +360,7 @@
++	/* Only the kernel's completed ESP transform may mark NAT-T packets for
++	 * the namespace firewall. Workloads have no capability to set SO_MARK. */
++	if (getenv("VPNMODO_MANAGED_XAUTH"))
++	{
++		child.set_mark_out.value = 0x76706e6d;
++		child.set_mark_out.mask = 0xffffffff;
++	}
+@@ -589,0 +604,17 @@
++	/* Managed usernames are credentials: read the protected mount, never argv.
++	 * The legacy CLI and its defaults remain unchanged. */
++	if (getenv("VPNMODO_MANAGED_XAUTH"))
++	{
++		char username[4097];
++		FILE *file = fopen("/run/secrets/vpn_username", "r");
++		size_t length = file ? fread(username, 1, sizeof(username), file) : 0;
++		if (file) { fclose(file); }
++		if (!length || length >= sizeof(username) ||
++			memchr(username, '\0', length) || memchr(username, '\r', length) ||
++			memchr(username, '\n', length))
++		{
++			exit(1);
++		}
++		this->xautheap = strndup(username, length);
++		memwipe(username, sizeof(username));
++	}
+--- a/src/charon-cmd/cmd/cmd_creds.c
++++ b/src/charon-cmd/cmd/cmd_creds.c
+@@ -114,0 +115,7 @@
++	/* Managed XAuth codes/passwords must never be replayed from this cache.
++	 * A second request reaches the one-attempt prompt guard instead. */
++	if (getenv("VPNMODO_MANAGED_XAUTH") &&
++		(type == SHARED_PIN || type == SHARED_EAP))
++	{
++		return shared;
++	}

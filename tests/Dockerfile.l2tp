@@ -1,0 +1,7 @@
+# Test binary supplies short policy timings; the real L2TP/Compose adapter runs.
+FROM docker:28.5.1-cli
+COPY vpnmodo-controller /usr/local/bin/vpnmodo-controller
+ENV VPNMODO_OPERATION_TEST_PROCESS=1 VPNMODO_L2TP_TEST_PROCESS=1
+ENTRYPOINT ["/usr/local/bin/vpnmodo-controller"]
+CMD ["serve"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 CMD ["/usr/local/bin/vpnmodo-controller", "health"]

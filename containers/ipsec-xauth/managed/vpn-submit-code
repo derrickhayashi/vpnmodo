@@ -1,0 +1,11 @@
+#!/usr/bin/expect -f
+# Docker exec -i carries the code on stdin, never argv/environment/host files.
+set code [read stdin 12]
+if {![eof stdin] || ![regexp {^[0-9]{4,10}$} $code]} {exit 1}
+set f [open /run/vpn/state r]; set state [string trim [read $f]]; close $f
+if {$state ne "mfa"} {exit 1}
+set f [open /run/vpn/code.pending {WRONLY CREAT EXCL} 0600]
+puts -nonewline $f $code
+close $f
+file rename /run/vpn/code.pending /run/vpn/code
+unset code

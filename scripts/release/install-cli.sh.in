@@ -1,0 +1,46 @@
+#!/bin/sh
+# Generated per artifact. Verify the archive through a trusted release channel first.
+set -eu
+prefix=${HOME:?}/.local
+replace=no
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --prefix) [ "$#" -ge 2 ] || exit 2; prefix=$2; shift 2 ;;
+        --replace) replace=yes; shift ;;
+        *) echo 'Usage: sh install.sh [--prefix ABSOLUTE_DIRECTORY] [--replace]' >&2; exit 2 ;;
+    esac
+done
+case "$prefix" in /*) ;; *) echo 'Installation prefix must be absolute' >&2; exit 1;; esac
+[ "$(uname -s)" = Darwin ] || { echo 'This package requires macOS' >&2; exit 1; }
+arch=$(uname -m)
+[ "$arch" != x86_64 ] || arch=amd64
+[ "$arch" = '@ARCH@' ] || { echo 'Package architecture does not match this Mac' >&2; exit 1; }
+bundle=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+[ -f "$bundle/vpnmodo" ] && [ ! -L "$bundle/vpnmodo" ] || exit 1
+(cd "$bundle" && printf '%s  vpnmodo\n' '@SHA256@' | shasum -a 256 -c - >/dev/null) || {
+    echo 'Binary checksum mismatch; nothing installed' >&2; exit 1;
+}
+dir=$prefix/bin
+parent=$dir
+while [ "$parent" != / ]; do
+    [ ! -L "$parent" ] || { echo 'Installation path contains a symlink' >&2; exit 1; }
+    parent=$(dirname -- "$parent")
+done
+umask 022
+mkdir -p "$dir"
+lock=$dir/.vpnmodo-install.lock
+mkdir "$lock" 2>/dev/null || { echo 'Another install is active; inspect the install lock' >&2; exit 1; }
+temporary=
+trap 'test -z "$temporary" || rm -f "$temporary"; rmdir "$lock"' EXIT
+trap 'exit 1' HUP INT TERM
+destination=$dir/vpnmodo
+if [ -e "$destination" ] || [ -L "$destination" ]; then
+    [ -f "$destination" ] && [ ! -L "$destination" ] || { echo 'Refusing nonregular destination' >&2; exit 1; }
+    [ "$replace" = yes ] || { echo 'vpnmodo already exists; use --replace for an explicit upgrade' >&2; exit 1; }
+fi
+temporary=$(mktemp "$dir/.vpnmodo.XXXXXXXX")
+install -m 0755 "$bundle/vpnmodo" "$temporary"
+mv -f "$temporary" "$destination"
+temporary=
+printf 'Installed %s\n' "$destination"
+printf 'Ensure %s is on PATH, then run vpnmodo version\n' "$dir"
