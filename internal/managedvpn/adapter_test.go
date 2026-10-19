@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
@@ -17,6 +18,9 @@ import (
 )
 
 type fakeDocker struct {
+	authState       string
+	codeAccepted    bool
+	repeatChallenge bool
 	failApplication bool
 	containers      map[string]container
 	calls           [][]string
@@ -61,6 +65,8 @@ func (f *fakeDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 	case "exec":
 		cmd := args[4:]
 		switch cmd[0] {
+		case "/usr/local/bin/vpn-auth-state":
+			return []byte(f.authState), nil
 		case "/usr/local/bin/vpn-tunnelcheck":
 			if !f.tunnel {
 				return nil, commandError{1}
@@ -374,5 +380,89 @@ func TestFailedPartialApplicationStartIsQuiesced(t *testing.T) {
 	}
 	if len(f.containers) != 1 {
 		t.Fatal("application failure disrupted VPN")
+	}
+}
+
+func (f *fakeDocker) RunInput(ctx context.Context, input []byte, args ...string) ([]byte, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if len(args) != 4 || args[0] != "exec" || args[1] != "-i" || args[3] != "/usr/local/bin/vpn-submit-code" {
+		return nil, ErrRuntime
+	}
+	f.calls = append(f.calls, append([]string(nil), args...))
+	f.codeAccepted = string(input) == "9876543210"
+	if !f.codeAccepted {
+		return nil, ErrRuntime
+	}
+	if !f.repeatChallenge {
+		f.authState = "established"
+		f.tunnel = true
+	}
+	return nil, nil
+}
+func TestXAuthPrivateChallengeAndManifest(t *testing.T) {
+	for _, scenario := range []string{"success", "expiry", "repeat"} {
+		t.Run(scenario, func(t *testing.T) {
+			a, f, store, p := setup(t)
+			if err := a.EnableXAuth(""); err != nil {
+				t.Fatal(err)
+			}
+			p.Name = "xauth-example"
+			p.Backend = profile.Backend{Type: profile.XAuth, XAuth: &profile.XAuthConfig{Server: "192.0.2.1", DNS: []string{"198.51.100.1"}}}
+			_, err := store.Create(context.Background(), p, profile.Credentials{Username: secret.New("synthetic-user"), Password: secret.New("synthetic-password"), PSK: secret.New("synthetic-shared")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.authState = "mfa"
+			f.tunnel = false
+			f.repeatChallenge = scenario == "repeat"
+			count := 0
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			err = a.Connect(ctx, p, func(context.Context) (secret.Value, error) {
+				count++
+				if scenario == "expiry" {
+					return secret.Value{}, lifecycle.ErrExpired
+				}
+				return secret.New("9876543210"), nil
+			})
+			if scenario == "success" && err != nil {
+				t.Fatal(err)
+			}
+			if scenario == "expiry" && !errors.Is(err, lifecycle.ErrExpired) {
+				t.Fatal("expiry lost", err)
+			}
+			if scenario == "repeat" && !errors.Is(err, lifecycle.ErrAuthentication) {
+				t.Fatal("repeat accepted", err)
+			}
+			if count != 1 {
+				t.Fatal("challenge count", count)
+			}
+			data, err := os.ReadFile(filepath.Join(a.dir(p), "compose.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var manifest map[string]any
+			if json.Unmarshal(data, &manifest) != nil {
+				t.Fatal("manifest")
+			}
+			services := manifest["services"].(map[string]any)
+			vpn := services["vpn"].(map[string]any)
+			app := services["application"].(map[string]any)
+			if app["user"] != "65534:65534" || vpn["read_only"] != true || vpn["devices"] != nil {
+				t.Fatal("XAuth isolation")
+			}
+			if vpn["image"] != DefaultXAuthImage {
+				t.Fatal("wrong backend image")
+			}
+			for _, call := range f.calls {
+				for _, arg := range call {
+					if strings.Contains(arg, "9876543210") || strings.Contains(arg, "synthetic-password") {
+						t.Fatal("secret in argv")
+					}
+				}
+			}
+		})
 	}
 }

@@ -207,6 +207,8 @@ def begin(cli, directory, state_root, bridge):
                 for file in ("load-output", "charon-output", "radius-output"):
                     data = command(["docker", "exec", name, "tail", "-n", "10", "/run/lab/" + file], required=False).stdout
                     print("Synthetic XAuth", role, file, data.decode(errors="replace"), flush=True)
+        trace = state_root / "l2tp-trace.json"
+        if trace.is_file(): print("XAuth command phases", json.loads(trace.read_text())[-35:], flush=True)
         for role, data in lab.ids().items() if lab.network else ():
             print("XAuth process", role, data["State"]["Running"], data["State"]["ExitCode"], flush=True)
         lab.close()

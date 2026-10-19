@@ -94,6 +94,9 @@ func runSyntheticProcess(ctx context.Context, args []string) error {
 			config.L2TPRunner = &traceDocker{root: *root, base: managedvpn.CLI{Binary: "/usr/local/bin/docker", Socket: "/var/run/docker.sock"}}
 			config.EnableL2TP = true
 			config.EnableXAuth = os.Getenv("VPNMODO_XAUTH_TEST_PROCESS") == "1"
+			if config.EnableXAuth {
+				config.MFATimeout = 45 * time.Second
+			}
 			config.Version = "l2tp-test-only"
 			config.OperationTimeout = 3 * time.Minute
 			config.Recovery = lifecycle.RecoveryPolicy{Interval: time.Second, ProbeTimeout: 15 * time.Second, Cooldown: 3 * time.Second, MaxBackoff: 12 * time.Second}

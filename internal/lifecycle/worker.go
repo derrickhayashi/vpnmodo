@@ -209,7 +209,18 @@ func (m *Manager) reconcileConnected(previous operation.Connection) {
 	if !current {
 		return
 	}
-	established, err := m.options.Adapter.Observe(ctx, snapshot.Profile)
+	// Interrupted XAuth logins must discard their private challenge namespace,
+	// even if a late peer response established a CHILD_SA after our crash.
+	m.mu.Lock()
+	record := m.state.Operations[c.LastOperation]
+	interruptedLogin := snapshot.Profile.Backend.Type == profile.XAuth && record.Kind == operation.EnsureConnection && record.Failure == operation.Interrupted
+	m.mu.Unlock()
+	established, err := false, error(nil)
+	if interruptedLogin {
+		err = m.options.Adapter.Disconnect(ctx, snapshot.Profile)
+	} else {
+		established, err = m.options.Adapter.Observe(ctx, snapshot.Profile)
+	}
 	observed := operation.Unknown
 	if err == nil {
 		observed = operation.ObservedDisconnected

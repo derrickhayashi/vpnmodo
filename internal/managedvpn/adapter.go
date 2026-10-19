@@ -450,6 +450,9 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 		}
 		c := cs["vpn"]
 		if c.ID == "" || !c.State.Running {
+			if p.Backend.Type == profile.XAuth && c.ID != "" && c.State.ExitCode == 2 {
+				return lifecycle.ErrAuthentication
+			}
 			return ErrRuntime
 		}
 		if p.Backend.Type == profile.XAuth {

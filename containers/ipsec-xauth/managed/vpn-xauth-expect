@@ -1,7 +1,6 @@
 #!/usr/bin/expect -f
 # The only parsed diagnostic is CHILD_SA establishment. Control is fixed enum
 # state, not forwarded log output. Login deadlines cannot be reset by log floods.
-umask 077
 log_user 0
 exp_internal 0
 set timeout 90

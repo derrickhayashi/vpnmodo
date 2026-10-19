@@ -8,6 +8,8 @@ if [ "${1:-}" = check ]; then
     (iptables-save -t filter; ip6tables-save -t filter) | sha256sum | cmp -s - /run/vpn/enforcement.sha256
     exit $?
 fi
+# Loopback egress is limited to 127.0.0.1: Docker's embedded resolver at
+# 127.0.0.11 must not provide an out-of-namespace DNS fallback.
 # No ESTABLISHED exception: losing an XFRM policy blocks existing flows too.
 # Root-owned IKE sockets are the only plaintext UDP exception. Application
 # containers always run as UID 65534 with no capabilities/no-new-privileges.
@@ -17,7 +19,7 @@ iptables-restore <<RULES
 :FORWARD DROP [0:0]
 :OUTPUT DROP [0:0]
 -A INPUT -i lo -j ACCEPT
--A OUTPUT -o lo -j ACCEPT
+-A OUTPUT -o lo -d 127.0.0.1/32 -j ACCEPT
 -A INPUT -s $VPN_SERVER -p udp --sport 500 --dport 500 -j ACCEPT
 -A INPUT -s $VPN_SERVER -p udp --sport 4500 --dport 4500 -j ACCEPT
 -A OUTPUT -d $VPN_SERVER -p udp --sport 500 --dport 500 -m owner --uid-owner 0 -j ACCEPT
