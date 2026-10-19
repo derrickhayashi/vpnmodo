@@ -271,7 +271,11 @@ touch /run/vpn/ready
 log "VPN is ready; shared network traffic now uses ppp0"
 
 while :; do
-    sleep 5
+    # Waiting for a background sleep lets the shell handle TERM immediately.
+    # A foreground sleep defers the trap beyond the controller's stop budget,
+    # so Docker can kill the container before L2TP/IPsec cleanup runs.
+    sleep 5 &
+    wait "$!"
     if ! ip link show ppp0 2>/dev/null | grep -q 'UP'; then
         log "ppp0 is no longer up; exiting for container restart"
         exit 1

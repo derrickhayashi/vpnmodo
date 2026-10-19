@@ -166,8 +166,37 @@ def begin(cli, directory, state_root):
         time.sleep(4)
         assert lab.ids() == {}
         last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
-        lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
         print("PASS: failed real recovery leaves forwarding stopped, and explicit disconnect prevents unattended revival", flush=True)
+        # Stop during a newly started idle sleep, when a foreground sleep would
+        # postpone TERM handling past Docker's two-second grace period. Exercise
+        # the real entrypoint and peer cleanup, then reconnect repeatedly.
+        for _ in range(3):
+            current = lab.ids()["vpn"]["Id"]
+            command(["docker", "pause", "vpnmodo-controller"])
+            try:
+                def sleep_pid():
+                    script = 'for p in $(cat /proc/1/task/1/children); do if [ "$(cat /proc/$p/comm 2>/dev/null)" = sleep ]; then printf "%s" "$p"; fi; done'
+                    return command(["docker", "exec", current, "sh", "-c", script]).stdout.strip()
+                previous = sleep_pid()
+                deadline = time.monotonic() + 8
+                while True:
+                    fresh = sleep_pid()
+                    if fresh and fresh != previous:
+                        break
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("VPN idle sleep did not advance")
+                    time.sleep(0.05)
+                command(["docker", "stop", "--time", "2", current])
+                stopped = json.loads(command(["docker", "inspect", current]).stdout)[0]
+                assert stopped["State"]["ExitCode"] == 0, "VPN was force-killed before graceful cleanup"
+                status = command(["docker", "exec", lab.gateway, "ipsec", "status"]).stdout
+                assert b"ESTABLISHED" not in status, "gateway retained an authenticated session after graceful stop"
+            finally:
+                command(["docker", "unpause", "vpnmodo-controller"])
+            last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
+            lab.namespaces()
+        print("PASS: idle-sleep TERM cleans the peer within Docker's stop budget, and three fresh reconnects work", flush=True)
+        lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
         return lab
     except Exception:
         # Sanitized protocol/process presence only; never dump configs or logs.
