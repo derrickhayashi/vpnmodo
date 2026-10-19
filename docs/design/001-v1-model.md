@@ -1,9 +1,9 @@
 # V1 profiles, protocol and operation model
 
-Status: model baseline from issue #2, with the controller/SSH skeleton from
-issue #3. Managed profile and VPN runtime work remains in subsequent issues.
-This document records defaults selected from the requirements so those issues
-have a concrete interface to implement.
+Status: model baseline from issue #2, controller/SSH from issue #3, and secure
+profile management from issue #4. VPN connection and operation runtime work
+remains in subsequent issues. Storage and credential input details are in the
+[profile storage guide](002-profile-storage.md).
 
 ## Package ownership
 
@@ -15,8 +15,11 @@ have a concrete interface to implement.
 | `internal/secret` | Shared redacted values with explicit transport encoding |
 | `internal/jsonstrict` | Bounded, exact-shape JSON parsing |
 | `internal/rpcio` | Bounded jrpc2 channels and negotiated client |
-| `internal/controller` | Private socket service, discovery/status and bridge |
-| `internal/host` | Workstation host registry, verified SSH and explicit bootstrap |
+| `internal/controller` | Private socket service, profile administration, discovery/status and bridge |
+| `internal/host` | Workstation host/profile references, verified SSH and explicit bootstrap |
+| `internal/profilestore` | VM profile/vault transactions and recovery |
+| `internal/privatefile` | Private atomic files, ownership checks and locks |
+| `internal/credentialinput` | Hidden terminal and protected descriptor input |
 
 `protocol` depends on the domain packages. `profile` and `operation` do not depend
 on RPC types; in particular, RPC errors belong to wire snapshots in `protocol`.
@@ -82,13 +85,13 @@ line-based backend credential files. The encoded create payload must also fit th
 descriptors, never flags/environment variables. No guided creation wizard.
 
 The `secret.Value` type redacts fmt formatting and refuses normal JSON encoding.
-Only explicit transport encoders release secret strings to bytes; secret checks
+Only explicit transport/protected-vault encoders release secret strings to bytes; secret checks
 use predicates that must not retain or log plaintext.
 Raw wire bytes remain sensitive: never log, dump or persist them. Go cannot
 guarantee memory erasure, and wrapping a value does not protect arbitrary strings
 or external logger/reflection integrations. Runtime logging must allowlist fields.
 
-Credential persistence/provisioning is issue #4. Use private directories/files
+Credential persistence/provisioning is implemented in issue #4. Use private directories/files
 (0700/0600), atomic writes and explicit rotation. Do not return secret values from
 inspection. Reject updates/rotation/deletion of an active profile until the user
 explicitly disconnects. Updates use expected revisions to prevent lost changes;
