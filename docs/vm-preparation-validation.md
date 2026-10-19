@@ -5,7 +5,7 @@
 - **[VERIFIED] Local suite:** all 79 Python tests pass with Ansible 2.21.5 and Python 3.12 on macOS ARM64, including 15 VM preparation tests.
 - **[VERIFIED] Collection:** `vpn_sidecar.client` 0.4.0 builds, installs into a temporary collection directory, and resolves `vm_prepare` through its packaged FQCN.
 - **[VERIFIED] Linux functionality:** both isolated Ubuntu 24.04 ARM64/systemd fixtures pass preparation, check mode, account policy and idempotence assertions.
-- **[VERIFIED] Preservation gate fails:** an existing VM container disappears and another changes state during the run. Owned fixture cleanup succeeds; the overall runner exits 1.
+- **[VERIFIED] Preservation is inconclusive:** an existing VM container disappears and another changes state during the run. Owned fixture cleanup succeeds; the overall runner exits 1.
 - **Limits:** these results do not qualify fresh-VM kernel package repair, reboot persistence, actual SSH transport, Docker CE repair or VPN traffic.
 
 The tested source is `78bfd940d1b06403bce1ac5bcf86f85babd1e004`.
@@ -66,8 +66,11 @@ The ordinary L2TP path does not require or persist `l2tp_ppp`.
 The functional scenarios pass, but the complete runner **exits 1** at the final
 comparison with pre-existing VM containers. One previously running container is
 absent, and one surviving container has changed status and `StartedAt`.
-The cause is not established by this run. The kernel journal contains no OOM
-indicators during the recorded test interval.
+The user confirms that the VM is shared and does not know whether other
+activity changed containers during the run (2026-10-19). Preservation is
+therefore inconclusive. The cause is not established by this run; attribution
+to either the fixture or another actor requires additional evidence. The
+kernel journal contains no OOM indicators during the recorded test interval.
 
 The exact fixture IDs are disjoint from all baseline IDs, and all owned fixture
 containers are removed. Cleanup targets only recorded IDs with verified ownership
@@ -75,9 +78,11 @@ labels and the unique fixture image tag. Existing deployments receive no repair,
 restart or rollback actions. The final loaded-module comparison is not reached
 in this run because the container snapshot raises first.
 
-This is a **functional pass with an unsuccessful preservation gate**, not a
-successful end-to-end harness run. A run on an idle authorized lab VM must
-complete that gate before claiming full harness acceptance. No existing workload
+This is a **functional pass with an inconclusive preservation result**. The
+runner still exits 1 because its strict snapshot comparison fails. Full harness
+acceptance requires an authorized lab interval with controlled concurrent
+activity and a successful preservation comparison. No additional acceptance
+run is initiated on the shared VM after this clarification. No existing workload
 should be modified to manufacture a matching snapshot.
 
 ## Remaining qualification
