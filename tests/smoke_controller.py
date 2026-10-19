@@ -27,6 +27,15 @@ def command(args, *, data=None, required=True, pass_fds=()):
             # This binary emits only fixed safe errors. Never dump wire data,
             # Docker inspection payloads, private keys or arbitrary remote output.
             detail = ": " + result.stderr.decode("utf-8", errors="replace").strip()
+            try:
+                report=json.loads(result.stdout.decode().splitlines()[-1])
+                if report.get("type")=="access":
+                    # Only fixed result/layer codes and booleans, never aliases,
+                    # endpoints, identities, configuration or raw SSH output.
+                    detail+=" "+json.dumps({"error":report.get("error"),"checks":[(c["layer"],c["code"],c["ok"]) for c in report.get("checks",[])],"services":[(s["code"],s["listener_ready"],s["destination_ssh_ready"],s["remote_service_ready"]) for s in report.get("services",[])]})
+            except (ValueError,IndexError,KeyError,TypeError):
+                pass
+
         raise RuntimeError("acceptance command failed: " + Path(str(args[0])).name + detail)
     return result
 

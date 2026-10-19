@@ -96,7 +96,9 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
 ''')
         for src,dst in ((server,'host-key'),(auth,'authorized'),(sshd,'sshd_config'),(http,'endpoint.py')):
             command(['docker','cp',str(src),self.name+':/run/service/'+dst])
+        command(['docker','exec',self.name,'chown','0:0','/run/service/host-key','/run/service/authorized'])
         command(['docker','exec',self.name,'chmod','0600','/run/service/host-key','/run/service/authorized'])
+        assert command(['docker','exec',self.name,'stat','-c','%u','/run/service/host-key','/run/service/authorized']).stdout==b'0\n0\n'
         command(['docker','exec','-d',self.name,'/usr/sbin/sshd','-D','-e','-f','/run/service/sshd_config'])
         self.start_http()
         self.config.write_text(f'''Host private-jump
