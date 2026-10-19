@@ -115,6 +115,27 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
         ready=last(self.cli('up',self.alias,'--json'))
         assert ready['ready'] and ready['vpn_ready'] and len(ready['services'])==2
         for port in self.ports: self.fetch(port)
+        # Diagnose each hop independently while existing data streams stay live.
+        vm_config=self.directory/'ssh_config'
+        vm_original=vm_config.read_text()
+        try:
+            vm_config.write_text(vm_original.replace(str(self.directory/'known_hosts'),str(self.directory/'unknown-vm-hosts')))
+            failed=self.cli('doctor',self.alias,'--json',required=False)
+            report=last(failed)
+            assert failed.returncode and report['error']=='vm_ssh_unavailable'
+            assert all(item['code']=='ready' for item in report['services'])
+            self.fetch(self.ports[0])
+        finally: vm_config.write_text(vm_original)
+        command(['docker','stop','vpnmodo-controller'])
+        try:
+            self.fetch(self.ports[0])
+            failed=self.cli('doctor',self.alias,'--json',required=False)
+            assert failed.returncode and last(failed)['error']=='controller_unavailable'
+        finally: command(['docker','start','vpnmodo-controller'])
+        for _ in range(40):
+            if self.cli('doctor',self.alias,'--json',required=False).returncode==0:break
+            time.sleep(.2)
+        else:raise RuntimeError('controller inspection did not recover after restart')
         # No accidental listener on the destination's inherited LocalForward.
         assert b'127.0.0.1:1 ' not in command(['ss','-lnt']).stdout
         owned=command(['ss','-lnt']).stdout

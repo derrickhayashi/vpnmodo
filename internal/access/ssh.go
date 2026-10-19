@@ -93,5 +93,6 @@ func inspectOne(ctx context.Context, s state) Result {
 	}
 	r.RemoteServiceReady = true
 	r.Code = "ready"
+	r.Endpoint = net.JoinHostPort("127.0.0.1", strconv.Itoa(s.Service.LocalPort))
 	return r
 }

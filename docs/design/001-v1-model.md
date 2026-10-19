@@ -4,7 +4,8 @@ Status: model baseline from issue #2, controller/SSH from issue #3, and secure
 profile management from issue #4, and persistent operation coordination from
 issue #5. Managed L2TP and XAuth are described in the
 [runtime](005-managed-l2tp.md) and [MFA/isolation](006-managed-xauth.md) guides.
-Service access and release packaging remain later stages. Storage and credential
+Workstation [service access](007-service-access.md) adds named forwards and
+live diagnostics. Release packaging remains a later stage. Storage and credential
 input details are in the
 [profile storage guide](002-profile-storage.md).
 
@@ -159,7 +160,8 @@ Reserved method surface:
 | `operation.status`, `operation.cancel` | Opaque operation ID |
 | `operation.subscribe` | Current operation snapshot, then revisioned change notifications |
 | `operation.submit_mfa` | Operation ID, challenge ID and secret code |
-| `system.doctor` | Typed diagnostic checks; never secret read-back |
+| `connection.application` | Fresh, lifecycle-gated owned application ID for the VM stream helper |
+| `system.doctor` | Profile-scoped live runtime/credential/prerequisite checks; never secret read-back |
 
 Method constants include implemented handlers and future reservations. Exact
 mutation/list/doctor payloads are completed with their owning implementation

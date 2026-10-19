@@ -25,15 +25,18 @@ type accessCheck struct {
 	OK    bool   `json:"ok"`
 }
 type accessReport struct {
-	Type        string          `json:"type"`
-	Alias       string          `json:"alias"`
-	Outcome     string          `json:"outcome"`
-	VPNReady    bool            `json:"vpn_ready"`
-	Ready       bool            `json:"ready"`
-	Checks      []accessCheck   `json:"checks"`
-	Services    []access.Result `json:"services"`
-	OperationID string          `json:"operation_id,omitempty"`
-	Error       string          `json:"error,omitempty"`
+	ControllerVersion  string          `json:"controller_version,omitempty"`
+	ProfileRevision    uint64          `json:"profile_revision,omitempty"`
+	CredentialsPresent bool            `json:"credentials_present"`
+	Type               string          `json:"type"`
+	Alias              string          `json:"alias"`
+	Outcome            string          `json:"outcome"`
+	VPNReady           bool            `json:"vpn_ready"`
+	Ready              bool            `json:"ready"`
+	Checks             []accessCheck   `json:"checks"`
+	Services           []access.Result `json:"services"`
+	OperationID        string          `json:"operation_id,omitempty"`
+	Error              string          `json:"error,omitempty"`
 }
 
 var errAccess = errors.New("service access incomplete; see reported checks")
@@ -76,6 +79,14 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		return nil
 	}
 	fail := func(code string) error {
+		if r.Outcome == "failed" {
+			for _, s := range r.Services {
+				if s.Code == "ready" || s.Code == "stopped" {
+					r.Outcome = "partial"
+					break
+				}
+			}
+		}
 		r.Error = code
 		if err := emit(); err != nil {
 			return err
@@ -83,6 +94,11 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		return errAccess
 	}
 	if flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
+		for _, arg := range args[2:] {
+			if arg == "--json" {
+				*machine = true
+			}
+		}
 		return fail("invalid_options")
 	}
 	if (group == "service" && command != "configure" && command != "start" && command != "stop" && command != "status") || (group == "" && command != "up" && command != "down" && command != "status" && command != "doctor") {
@@ -116,7 +132,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		results, err := access.Stop(ctx, registry, alias, *selected)
 		r.Services = results
 		if err != nil {
-			return fail("local_stop_failed")
+			r.Error = "local_stop_failed"
 		}
 		for _, s := range results {
 			if s.Code != "stopped" {
@@ -180,6 +196,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		return fail("controller_prerequisites_unavailable")
 	}
 	r.Checks = append(r.Checks, accessCheck{"controller", "ready", true})
+	r.ControllerVersion = system.Version
 	if command == "up" || command == "down" {
 		method := protocol.ConnectionEnsure
 		if command == "down" {
@@ -235,13 +252,16 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	if err != nil {
 		return fail("inspection_unavailable_operation_may_be_active")
 	}
+	r.ProfileRevision = view.Runtime.ProfileRevision
+	r.CredentialsPresent = view.Runtime.CredentialsPresent
+	r.Checks = append(r.Checks, accessCheck{"credentials", "credentials_present", r.CredentialsPresent}, accessCheck{"runtime_prerequisites", "images_and_compose", view.Runtime.PrerequisitesReady}, accessCheck{"deployment", string(view.Runtime.Health), view.Runtime.Health != operation.HealthOwnerConflict})
 	health := view.Runtime.Health
 	tunnelOK := view.Runtime.TunnelReady
 	serviceOK := view.Runtime.PrivateEndpointReady
 	appOK := health == operation.HealthHealthy && view.Runtime.ApplicationID != ""
 	code := string(health)
 	r.Checks = append(r.Checks, accessCheck{"vpn", code, tunnelOK}, accessCheck{"private_health_endpoint", code, serviceOK}, accessCheck{"application", code, appOK})
-	r.VPNReady = tunnelOK && serviceOK && appOK
+	r.VPNReady = tunnelOK && serviceOK && appOK && view.Runtime.PrerequisitesReady && r.CredentialsPresent
 	if !r.VPNReady {
 		if len(r.Services) > 0 {
 			r.Outcome = "partial"

@@ -4,12 +4,15 @@ import (
 	"context"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"time"
 )
 
 // Runtime serializes read-only inspection with backend changes. It never repairs,
 // authenticates, or changes desired intent. Profile -> mutex -> gate is the same
 // lock order as submit; gate acquisition is nonblocking to avoid worker deadlock.
 func (m *Manager) Runtime(ctx context.Context, name string) (operation.RuntimeView, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 	var result operation.RuntimeView
 	if m.options.WithProfile == nil {
 		return result, ErrUnavailable
@@ -57,15 +60,26 @@ func (m *Manager) Runtime(ctx context.Context, name string) (operation.RuntimeVi
 		if c.Desired != operation.Connected || health != operation.HealthHealthy {
 			id = ""
 		}
-		tunnel, err := m.options.Adapter.Observe(ctx, p.Profile)
-		if err != nil {
-			return err
+		tunnel, endpoint := false, false
+		if health != operation.HealthOwnerConflict {
+			tunnel, err = m.options.Adapter.Observe(ctx, p.Profile)
+			if err != nil {
+				return err
+			}
+			if tunnel {
+				endpoint = m.options.Adapter.Verify(ctx, p.Profile) == nil
+			}
 		}
-		endpoint := false
-		if tunnel {
-			endpoint = m.options.Adapter.Verify(ctx, p.Profile) == nil
+		if !tunnel || !endpoint {
+			id = ""
 		}
-		result = operation.RuntimeView{Connection: c, Health: health, ApplicationID: id, TunnelReady: tunnel, PrivateEndpointReady: endpoint}
+		prerequisites := false
+		if checker, ok := m.options.Adapter.(interface {
+			Prerequisites(context.Context, profile.Profile) bool
+		}); ok {
+			prerequisites = checker.Prerequisites(ctx, p.Profile)
+		}
+		result = operation.RuntimeView{Connection: c, Health: health, ApplicationID: id, TunnelReady: tunnel, PrivateEndpointReady: endpoint, ProfileRevision: p.Revision, CredentialsPresent: p.CredentialsPresent, PrerequisitesReady: prerequisites}
 		return nil
 	})
 	return result, err

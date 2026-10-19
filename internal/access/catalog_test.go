@@ -1,8 +1,10 @@
 package access
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -92,4 +94,33 @@ func TestDescriptorAndCleanupNeverFollowForeignPaths(t *testing.T) {
 	if _, err := os.Stat(p); err != nil {
 		t.Fatal("foreign data changed")
 	}
+}
+
+func TestStopPreservesOtherAliasesAndUnrelatedListeners(t *testing.T) {
+	registry := filepath.Join(t.TempDir(), "hosts.json")
+	ctx := context.Background()
+	if err := Configure(ctx, registry, "other", definition()); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(catalogPath(registry, "other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if _, err = Stop(ctx, registry, "example", ""); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(catalogPath(registry, "other"))
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("other alias changed")
+	}
+	conn, err := net.Dial("tcp4", listener.Addr().String())
+	if err != nil {
+		t.Fatal("unrelated listener stopped")
+	}
+	conn.Close()
 }

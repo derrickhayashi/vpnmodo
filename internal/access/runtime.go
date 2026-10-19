@@ -31,6 +31,7 @@ type state struct {
 	Directory string  `json:"directory"`
 }
 type Result struct {
+	Endpoint            string `json:"endpoint,omitempty"`
 	Name                string `json:"name"`
 	Code                string `json:"code"`
 	LocalPort           int    `json:"local_port"`
@@ -213,6 +214,9 @@ func stopOne(ctx context.Context, s state) error {
 
 // Start leaves successful services running if another selected service fails.
 func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Reference, selected string) ([]Result, error) {
+	if h.Validate() != nil || ref.Validate() != nil || ref.Name != alias || ref.Host != h.Name {
+		return nil, ErrConfig
+	}
 	if privatefile.Dir(registry+".access") != nil {
 		return nil, ErrConfig
 	}

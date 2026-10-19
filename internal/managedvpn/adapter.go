@@ -150,6 +150,9 @@ func (a *Adapter) owned(ctx context.Context, p profile.Profile) (*deployment, ma
 			return nil, nil, ErrOwnership
 		}
 	}
+	if d != nil && len(out) > 0 && !reflect.DeepEqual(d.Profile, p) {
+		return nil, nil, ErrOwnership
+	}
 	return d, out, nil
 }
 func (a *Adapter) exec(ctx context.Context, c container, command ...string) ([]byte, error) {
@@ -644,4 +647,25 @@ func (a *Adapter) Forget(ctx context.Context, name string) error {
 		return ErrRuntime
 	}
 	return privatefile.SyncDir(a.root)
+}
+
+// Prerequisites is a bounded read-only check. Routine diagnostics never pull or
+// build an image, and an image's existence does not prove tunnel readiness.
+func (a *Adapter) Prerequisites(ctx context.Context, p profile.Profile) bool {
+	if a.valid(p) != nil {
+		return false
+	}
+	if _, err := a.docker.Run(ctx, "compose", "version", "--short"); err != nil {
+		return false
+	}
+	image := a.image
+	if p.Backend.Type == profile.XAuth {
+		image = a.xauth
+	}
+	for _, value := range []string{image, a.application} {
+		if _, err := a.docker.Run(ctx, "image", "inspect", value); err != nil {
+			return false
+		}
+	}
+	return true
 }
