@@ -282,10 +282,11 @@ func (f *fileAdapter) RepairForwarding(ctx context.Context, p profile.Profile) e
 // Synthetic lab diagnostics allowlist command phases and process states only.
 // No args, environment, credentials, backend text or raw Docker payload is saved.
 type traceDocker struct {
-	mu    sync.Mutex
-	root  string
-	base  managedvpn.Runner
-	steps []map[string]any
+	mu           sync.Mutex
+	root         string
+	base         managedvpn.Runner
+	steps        []map[string]any
+	vpnInstances map[string]int
 }
 
 func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
@@ -309,7 +310,14 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 			phase = "ready"
 		}
 	}
-	row := map[string]any{"phase": phase, "ok": err == nil}
+	row := map[string]any{"phase": phase, "ok": err == nil, "time": time.Now().UTC().Format(time.RFC3339Nano)}
+	cid, discoveredVPN := "", false
+	if args[0] == "exec" {
+		cid = args[1]
+	}
+	if args[0] == "stop" || args[0] == "rm" {
+		cid = args[len(args)-1]
+	}
 	if phase == "service" && err != nil {
 		addr, _ := d.base.Run(ctx, "exec", args[1], "ip", "-4", "address", "show", "dev", "ppp0")
 		row["expected_local"] = strings.Contains(string(addr), "inet 198.51.100.")
@@ -334,6 +342,7 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	if args[0] == "inspect" && err == nil {
 		var cs []struct {
+			ID    string `json:"Id"`
 			State struct {
 				Running  bool
 				ExitCode int
@@ -346,11 +355,23 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 				row["role"] = role
 				row["running"] = cs[0].State.Running
 				row["process_exit"] = cs[0].State.ExitCode
+				if role == "vpn" {
+					cid, discoveredVPN = cs[0].ID, true
+				}
 			}
 		}
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.vpnInstances == nil {
+		d.vpnInstances = map[string]int{}
+	}
+	if discoveredVPN && d.vpnInstances[cid] == 0 {
+		d.vpnInstances[cid] = len(d.vpnInstances) + 1
+	}
+	if instance := d.vpnInstances[cid]; instance != 0 {
+		row["vpn_instance"] = instance
+	}
 	d.steps = append(d.steps, row)
 	if len(d.steps) > 200 {
 		d.steps = d.steps[len(d.steps)-200:]
