@@ -77,15 +77,34 @@ def source_snapshot(root, temporary, version):
                         shutil.copyfileobj(stream, output)
                     destination.chmod(member.mode & 0o777)
         metadata = {'schema_version': 1, 'version': version, 'revision': revision, 'source_epoch': epoch}
-        write_json(source / 'release-source.json', metadata)
+        if (source / 'release-source.json').exists():
+            raise RuntimeError('release-source.json is reserved for exported source')
+        files = {str(path.relative_to(source)): digest(path) for path in source.rglob('*') if path.is_file()}
+        write_json(source / 'release-source.json', dict(metadata, files=files))
     else:
         metadata = json.loads((root / 'release-source.json').read_text())
         if metadata.get('schema_version') != 1 or metadata.get('version') != version:
             raise RuntimeError('source bundle release identity does not match')
         if not REVISION.fullmatch(metadata.get('revision', '')) or type(metadata.get('source_epoch')) is not int:
             raise RuntimeError('invalid source bundle identity')
-        # A source bundle must have been independently checksum-verified first.
-        shutil.copytree(root, source, dirs_exist_ok=True, symlinks=True)
+        # Copy only the committed file inventory. Extra runtime files never ship.
+        files = metadata.pop('files', None)
+        if not isinstance(files, dict) or not files or len(files) > 10000:
+            raise RuntimeError('source bundle has no valid committed file inventory')
+        for name, expected in files.items():
+            relative = Path(name)
+            if relative.is_absolute() or '..' in relative.parts or name == 'release-source.json':
+                raise RuntimeError('unsafe source inventory path')
+            original = root / relative
+            if original.is_symlink() or not original.is_file() or not original.resolve().is_relative_to(root.resolve()):
+                raise RuntimeError('source inventory file is missing or unsafe')
+            if digest(original) != expected:
+                raise RuntimeError('source inventory file was modified')
+            destination = source / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(original, destination)
+            shutil.copymode(original, destination)
+        write_json(source / 'release-source.json', dict(metadata, files=files))
     return source, metadata
 
 
@@ -112,7 +131,11 @@ def cli(source, output, metadata, temporary):
 
 def docker(*args):
     # Explicitly target the local rootful VM engine, never a workstation context.
-    return run(['docker', '--host', 'unix:///var/run/docker.sock', *args])
+    command = ['docker', '--host', 'unix:///var/run/docker.sock', *args]
+    if args[0] in ('build', 'pull', 'save'):
+        subprocess.run(command, check=True)
+        return ''
+    return run(command)
 
 
 def vm(source, output, metadata, temporary):

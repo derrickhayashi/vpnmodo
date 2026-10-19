@@ -37,7 +37,9 @@ are pinned, but byte-identical image rebuilds are not promised.
 
 Use Python 3.9+, Go 1.27.1, a clean committed checkout and an output directory
 outside source. The builder exports only `git archive HEAD`; ignored files,
-customer folders, credentials and local runtime state are not included.
+customer folders, credentials and local runtime state are not included. Exported
+source carries a hashed committed-file inventory: changed source files are
+refused, and extra files added to an extracted source directory are never copied.
 
 ```sh
 python3 scripts/build-release.py cli --version v0.1.0-rc.1 \

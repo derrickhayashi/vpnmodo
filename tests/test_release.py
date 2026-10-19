@@ -43,6 +43,16 @@ class ReleaseTests(unittest.TestCase):
             self.assertFalse((source / 'ignored').exists())
             self.assertFalse((source / '.git').exists())
             self.assertEqual(metadata['revision'], git('rev-parse', 'HEAD').decode().strip())
+            (source / 'extra-runtime-file').write_text('synthetic private material')
+            exported = Path(directory) / 'exported'
+            exported.mkdir()
+            copied, _ = builder.source_snapshot(source, exported, 'v0.1.0-rc.1')
+            self.assertFalse((copied / 'extra-runtime-file').exists())
+            (source / 'source').write_text('changed exported source')
+            bad = Path(directory) / 'tampered'
+            bad.mkdir()
+            with self.assertRaisesRegex(RuntimeError, 'modified'):
+                builder.source_snapshot(source, bad, 'v0.1.0-rc.1')
             (root / 'source').write_text('modified')
             next_dir = Path(directory) / 'next'
             next_dir.mkdir()
