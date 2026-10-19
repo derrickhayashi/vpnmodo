@@ -323,11 +323,20 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
         # challenge, preserve the vault, and require a new explicit attempt.
         pending = lab.ensure_challenge()
         old_vpn = lab.ids()["vpn"]["Id"]
-        command(["docker", "kill", "vpnmodo-controller"])
+        controller = json.loads(command(["docker", "inspect", "vpnmodo-controller"]).stdout)[0]
+        assert controller["Config"]["Labels"]["io.vpnmodo.managed-by"] == "vpnmodo"
+        assert controller["Config"]["Labels"]["io.vpnmodo.component"] == "controller"
+        assert controller["State"]["Running"] and controller["State"]["Pid"] > 1
+        # Docker kill is an intentional administrative stop and suppresses its
+        # restart policy. Kill the owned process from this isolated parent PID
+        # namespace to simulate a crash that Docker should restart automatically.
+        command(["sudo", "-n", "kill", "-KILL", str(controller["State"]["Pid"])])
         for _ in range(60):
             if cli("host", "check", "example", "--json", required=False).returncode == 0:
                 break
             time.sleep(0.3)
+        else:
+            raise RuntimeError("owned controller did not restart automatically after process crash")
         interrupted = lab.wait_operation(pending["id"], "failed")
         assert interrupted["failure"]["code"] == -32008
         for _ in range(60):
