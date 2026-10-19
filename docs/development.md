@@ -33,6 +33,12 @@ Linux environment with Docker and the required kernel features; record the
 checks actually run and any validation still pending. Existing workflow files
 remain as references, but their presence does not mean hosted CI is active.
 
+For a shared Ubuntu VM, use the [isolated local lab](../tests/local-lab/README.md).
+It runs the existing acceptance suites in a disposable container with its own
+Docker daemon, without mounting the VM's Docker socket or host networking.
+Prepare only committed sources and synthetic fixtures; keep SSH identities,
+host addresses and runtime state outside the checkout.
+
 ## Public contribution
 
 The `upstream` remote refers to the original public project and has pushing
