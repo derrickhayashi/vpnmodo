@@ -88,7 +88,7 @@ func runSyntheticProcess(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		config := Config{Socket: *socket, StateDir: *root, DockerSocket: "/var/run/docker.sock", Version: "synthetic-test-only", Adapter: adapter, OperationTimeout: time.Minute, MFATimeout: 20 * time.Second, Recovery: lifecycle.RecoveryPolicy{Interval: 100 * time.Millisecond, ProbeTimeout: 3 * time.Second, Cooldown: 2 * time.Second, MaxBackoff: 8 * time.Second}}
+		config := Config{Socket: *socket, StateDir: *root, DockerSocket: "/var/run/docker.sock", Version: "synthetic-test-only", Adapter: adapter, OperationTimeout: 3 * time.Minute, MFATimeout: 90 * time.Second, Recovery: lifecycle.RecoveryPolicy{Interval: 100 * time.Millisecond, ProbeTimeout: 3 * time.Second, Cooldown: 2 * time.Second, MaxBackoff: 8 * time.Second}}
 		if os.Getenv("VPNMODO_L2TP_TEST_PROCESS") == "1" {
 			config.Adapter = nil
 			config.L2TPRunner = &traceDocker{root: *root, base: l2tp.CLI{Binary: "/usr/local/bin/docker", Socket: "/var/run/docker.sock"}}

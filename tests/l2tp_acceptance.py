@@ -90,9 +90,13 @@ def begin(cli, directory, state_root):
         # and an application in the same kernel network namespace.
         command(["docker", "exec", original, "vpn-tunnelcheck"])
         command(["docker", "exec", original, "vpn-servicecheck"])
-        command(["docker", "exec", original, "ip", "-4", "address", "show", "dev", "ppp0"])
+        ppp_address = command(["docker", "exec", original, "ip", "-4", "address", "show", "dev", "ppp0"]).stdout
+        assert b"inet 198.51.100." in ppp_address and b"peer 198.51.100.1" in ppp_address
         command(["docker", "exec", ids["application"]["Id"], "nc", "-z", "-w", "3", "198.51.100.1", "28080"])
         lab.namespaces()
+        command(["docker", "exec", ids["application"]["Id"], "nslookup", "private.example", "127.0.0.1"])
+        ipv6 = command(["docker", "exec", ids["application"]["Id"], "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"]).stdout
+        assert ipv6.strip() == b"1"
         last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
         assert lab.ids()["vpn"]["Id"] == original
         env = ids["vpn"]["Config"]["Env"]
@@ -106,6 +110,19 @@ def begin(cli, directory, state_root):
         for path in (state_root / "deployments" / NAME / "credentials").glob("*/*"):
             assert path.stat().st_mode & 0o777 == 0o600
         print("PASS: real IKEv1/IPsec transport, L2TP/PPP and private TCP access; healthy reuse and isolated credential mounts", flush=True)
+        watchdog = "vpnmodo-foreign-watchdog-" + uuid.uuid4().hex[:12]
+        command(["docker", "create", "--name", watchdog, "--network", "none", "--label", "com.docker.compose.project=" + PROJECT, "--label", "com.docker.compose.service=watchdog", "alpine:3.22", "sleep", "infinity"])
+        untouched = command(["docker", "inspect", watchdog]).stdout
+        try:
+            refused = cli("connection", "ensure", NAME, "--wait", "--json", required=False)
+            assert refused.returncode != 0
+            assert lab.ids()["vpn"]["Id"] == original
+            assert command(["docker", "inspect", watchdog]).stdout == untouched
+        finally:
+            command(["docker", "rm", watchdog])
+        last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
+        assert lab.ids()["vpn"]["Id"] == original
+        print("PASS: a competing legacy watchdog identity refuses managed actions without altering either deployment", flush=True)
         lab.control("service-stop")
         lab.wait(lambda c: c.get("recovery", {}).get("health") == "service_unavailable")
         assert lab.ids()["vpn"]["Id"] == original
