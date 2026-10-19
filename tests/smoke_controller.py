@@ -19,8 +19,8 @@ import time
 import uuid
 
 
-def command(args, *, data=None, required=True):
-    result = subprocess.run(args, input=data, capture_output=True, timeout=240)
+def command(args, *, data=None, required=True, pass_fds=()):
+    result = subprocess.run(args, input=data, capture_output=True, timeout=240, pass_fds=pass_fds)
     if required and result.returncode:
         detail = ""
         if Path(str(args[0])).name == "vpnmodo":
@@ -112,8 +112,8 @@ LogLevel VERBOSE
             raise RuntimeError("isolated SSH key-authentication preflight failed")
         registry = directory / "registry" / "hosts.json"
 
-        def cli(*args, required=True):
-            return command([str(options.binary.resolve()), "--config", str(registry), *args], required=required)
+        def cli(*args, required=True, data=None, pass_fds=()):
+            return command([str(options.binary.resolve()), "--config", str(registry), *args], required=required, data=data, pass_fds=pass_fds)
 
         command(["docker", "create", "--name", legacy, "--label", "com.docker.compose.project=vpn-example", options.image, "version"])
         legacy_created = True
@@ -169,6 +169,123 @@ LogLevel VERBOSE
         ready()
         assert json.loads(command(["docker", "inspect", "vpnmodo-controller"]).stdout)[0]["State"]["StartedAt"] == inspect["State"]["StartedAt"]
         print("PASS: non-PTY SSH RPC and bridge EOF preserve the running controller", flush=True)
+        # Profile input and secrets are synthetic; keep input bytes off argv/logs.
+        profile_file = directory / "profile.json"
+        source = Path(__file__).resolve().parents[1] / "examples/profiles/v1"
+        definition = json.loads((source / "example-l2tp.json").read_text())
+        profile_file.write_text(json.dumps(definition))
+        credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
+        sensitive = list(credentials.values())
+
+        def safe_result(result):
+            output = result.stdout + result.stderr
+            assert all(value.encode() not in output for value in sensitive)
+            return json.loads(result.stdout) if result.returncode == 0 else None
+
+        created = safe_result(cli("profile", "create", "example-profile", "--host", "example", "--file", str(profile_file), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
+        assert created["revision"] == 1 and created["credentials_present"]
+        assert cli("profile", "create", "example-profile", "--host", "example", "--file", str(profile_file), "--credentials-stdin", data=b"{}", required=False).returncode != 0
+        profile_name = definition["name"]
+        owned_name = "vpnmodo-active-test-" + uuid.uuid4().hex[:12]
+        owned_id = command(["docker", "run", "--detach", "--network", "none", "--tmpfs", "/tmp:mode=1777", "--name", owned_name,
+                            "--label", "io.vpnmodo.managed-by=vpnmodo", "--label", f"io.vpnmodo.profile={profile_name}",
+                            "--label", f"com.docker.compose.project=vpnmodo-{profile_name}", options.image,
+                            "serve", "--socket", "/tmp/run/controller.sock", "--state-dir", "/tmp/state"]).stdout.decode().strip()
+        try:
+            definition["health"]["port"] = 443
+            profile_file.write_text(json.dumps(definition))
+            refused = cli("profile", "update", "example-profile", "--file", str(profile_file), "--revision", "1", required=False)
+            assert refused.returncode != 0 and b"disconnect" in refused.stderr
+        finally:
+            command(["docker", "rm", "-f", owned_id])
+        updated = safe_result(cli("profile", "update", "example-profile", "--file", str(profile_file), "--revision", "1", "--json"))
+        assert updated["revision"] == 2
+        assert cli("profile", "update", "example-profile", "--file", str(profile_file), "--revision", "1", required=False).returncode != 0
+        read_fd, write_fd = os.pipe()
+        try:
+            os.write(write_fd, json.dumps(credentials).encode())
+            os.close(write_fd)
+            write_fd = None
+            rotated = safe_result(cli("profile", "rotate-credentials", "example-profile", "--revision", "2", "--credentials-fd", str(read_fd), "--json", pass_fds=(read_fd,)))
+            assert rotated["revision"] == 3
+        finally:
+            os.close(read_fd)
+            if write_fd is not None:
+                os.close(write_fd)
+        # Exercise the actual hidden prompts and recovery when local registration
+        # fails after a successful remote commit. No plaintext input files needed.
+        interactive = json.loads((source / "example-xauth.json").read_text())
+        profile_file.write_text(json.dumps(interactive))
+        references = Path(str(registry) + ".profiles.json")
+        saved_references = references.read_bytes()
+        import fcntl
+        import pty
+        import select
+        import termios
+
+        def controlling_tty():
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+        def prompted_create(alias, cancel=False):
+            master, slave = pty.openpty()
+            previous = termios.tcgetattr(slave)
+            process = subprocess.Popen([str(options.binary.resolve()), "--config", str(registry), "profile", "create", alias,
+                                        "--host", "example", "--file", str(profile_file), "--json"],
+                                       stdin=slave, stdout=slave, stderr=slave, preexec_fn=controlling_tty)
+            transcript = bytearray()
+
+            def until(marker):
+                deadline = time.monotonic() + 20
+                while marker not in transcript:
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("hidden prompt did not appear")
+                    ready, _, _ = select.select([master], [], [], 0.2)
+                    if ready:
+                        transcript.extend(os.read(master, 8192))
+            try:
+                until(b"Username: ")
+                if cancel:
+                    os.write(master, b"\x03")
+                else:
+                    references.write_text("invalid-local-registry")
+                    for label, value in zip((b"Username: ", b"Password: ", b"Pre-shared key: "), credentials.values()):
+                        until(label)
+                        assert all(item.encode() not in Path(f"/proc/{process.pid}/cmdline").read_bytes() for item in sensitive)
+                        os.write(master, value.encode() + b"\r")
+                code = process.wait(timeout=20)
+                while select.select([master], [], [], 0)[0]:
+                    transcript.extend(os.read(master, 8192))
+                assert code != 0  # explicit cancellation or local registration failure
+                assert all(value.encode() not in transcript for value in sensitive)
+                assert termios.tcgetattr(slave) == previous
+                if not cancel:
+                    assert b"local registration failed" in transcript
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+                os.close(master)
+                os.close(slave)
+
+        prompted_create("recovery-profile")
+        references.write_bytes(saved_references)
+        assert any(item["name"] == interactive["name"] for item in safe_result(cli("profile", "list", "--host", "example", "--json")))
+        safe_result(cli("profile", "register", "recovery-profile", "--host", "example", "--profile", interactive["name"], "--json"))
+        interactive["name"] = "cancelled-profile"
+        profile_file.write_text(json.dumps(interactive))
+        prompted_create("cancelled-profile", cancel=True)
+        assert all(item["name"] != "cancelled-profile" for item in safe_result(cli("profile", "list", "--host", "example", "--json")))
+        state = data_root / "controller-state"
+        for file in (state / "profiles").iterdir():
+            assert file.stat().st_mode & 0o777 == 0o600
+            assert all(value.encode() not in file.read_bytes() for value in sensitive)
+        for file in (state / "credentials").iterdir():
+            assert file.stat().st_mode & 0o777 == 0o600
+        assert (state / "credentials").stat().st_mode & 0o777 == 0o700
+        assert all(value.encode() not in references.read_bytes() for value in sensitive)
+        assert all(value.encode() not in command(["docker", "logs", "vpnmodo-controller"]).stdout for value in sensitive)
+        print("PASS: secure profile creation/rotation, active/stale refusal, hidden prompts/cancellation and registration recovery", flush=True)
         marker = data_root / "controller-state" / "acceptance-marker"
         marker.write_text("synthetic-state")
         command(["docker", "stop", "vpnmodo-controller"])
@@ -179,6 +296,13 @@ LogLevel VERBOSE
         assert result["action"] == "replaced"
         ready()
         assert marker.read_text() == "synthetic-state"
+        retained = safe_result(cli("profile", "inspect", "example-profile", "--json"))
+        assert retained["revision"] == 3 and retained["credentials_present"]
+        safe_result(cli("profile", "delete", "example-profile", "--revision", "3", "--json"))
+        safe_result(cli("profile", "delete", "recovery-profile", "--revision", "1", "--json"))
+        assert list((state / "credentials").iterdir()) == []
+        assert safe_result(cli("profile", "list", "--host", "example", "--json")) == []
+        print("PASS: profile/credential restart persistence and explicit deletion/disposal", flush=True)
         assert command(["docker", "inspect", legacy]).stdout == legacy_before
         print("PASS: stopped-controller repair, explicit recreation, persistent state and legacy isolation", flush=True)
     finally:

@@ -2,7 +2,8 @@
 
 This stage supplies runnable `vpnmodo` and `vpnmodo-controller` binaries, verified
 SSH transport, schema discovery and controller/Docker readiness. VPN profile
-creation, connection operations, recovery and XAuth enforcement are later stages.
+management is now available through the [profile guide](../../docs/design/002-profile-storage.md).
+Connection operations, recovery and XAuth enforcement are later stages.
 The status field `runtime_enabled` is false; backend descriptors describe schema
 requirements, not usable VPN sessions.
 
@@ -84,12 +85,13 @@ requires existing host-key trust and noninteractive authentication. The bridge
 forwards bounded frames to the persistent service's private Unix socket. Closing
 stdin drains replies; closing a bridge leaves the service running. The service
 requires `system.hello` negotiation per connection and exposes `system.status`,
-`backend.list` and `backend.describe`. Mutation methods are reserved but return
-method-not-found at this stage. Request/response logging is disabled.
+`backend.list` and `backend.describe`. Profile management methods validate and provision protected VM storage;
+connection/operation methods remain reserved. Request/response logging is disabled.
 
 The service bounds connections, outstanding calls, frame size/depth, idle reads
-and writes. Docker readiness uses only the local `GET /_ping` endpoint. It does
-not inspect or mutate existing VPN deployments. Container health checks verify
+and writes. Docker readiness uses the local `GET /_ping` endpoint. Profile mutations also
+query exactly labeled managed containers to verify inactivity. These read-only
+checks do not change existing VPN deployments. Container health checks verify
 the management process; status separately reports Docker readiness.
 
 ## Validation

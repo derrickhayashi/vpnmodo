@@ -8,6 +8,10 @@
 !internal/jsonstrict/*.go
 !internal/operation/
 !internal/operation/*.go
+!internal/privatefile/
+!internal/privatefile/*.go
+!internal/profilestore/
+!internal/profilestore/*.go
 !internal/profile/
 !internal/profile/*.go
 !internal/protocol/

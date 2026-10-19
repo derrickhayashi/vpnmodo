@@ -154,8 +154,9 @@ Reserved method surface:
 The method constants reserve a vocabulary, not implemented handlers. Exact
 mutation/list/doctor payloads are completed with their owning implementation
 issues. The controller skeleton implements hello, system status and backend
-discovery over verified SSH and a private Unix socket. Profile/operation
-mutations remain reserved; `runtime_enabled` is false.
+discovery over verified SSH and a private Unix socket. Profile management is implemented as described in the
+[storage guide](002-profile-storage.md). Connection/operation mutations remain
+reserved; `runtime_enabled` is false.
 
 `operation.changed` is a server notification without an ID. Client notifications
 must never mutate state and receive no response, including when rejected. Request

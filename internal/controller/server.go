@@ -1,5 +1,5 @@
-// Package controller runs the VM-local management service. This stage implements
-// read-only discovery/status only; profile and VPN mutation handlers come later.
+// Package controller runs VM-local discovery, status and profile administration.
+// VPN connection/operation handlers come in subsequent stages.
 package controller
 
 import (
@@ -16,6 +16,7 @@ import (
 	"github.com/creachadair/jrpc2"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/rpcio"
 )
@@ -33,6 +34,7 @@ type Status struct {
 }
 type Config struct{ Socket, StateDir, DockerSocket, Version string }
 type Server struct {
+	profiles    *profilestore.Store
 	config      Config
 	listener    net.Listener
 	mu          sync.Mutex
@@ -60,6 +62,10 @@ func Listen(config Config) (*Server, error) {
 	name := probe.Name()
 	_ = probe.Close()
 	_ = os.Remove(name)
+	profiles, err := profilestore.Open(config.StateDir, func(ctx context.Context, name string) error { return profileInactive(ctx, config.DockerSocket, name) })
+	if err != nil {
+		return nil, ErrService
+	}
 	listener, err := net.Listen("unix", config.Socket)
 	if err != nil {
 		return nil, ErrService
@@ -68,7 +74,7 @@ func Listen(config Config) (*Server, error) {
 		_ = listener.Close()
 		return nil, ErrService
 	}
-	return &Server{config: config, listener: listener, connections: make(map[net.Conn]bool), slots: make(chan struct{}, 32)}, nil
+	return &Server{profiles: profiles, config: config, listener: listener, connections: make(map[net.Conn]bool), slots: make(chan struct{}, 32)}, nil
 }
 func privateDirectory(path string) error {
 	if err := os.MkdirAll(path, 0700); err != nil {
@@ -130,7 +136,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			defer func() { <-s.slots }()
 			defer conn.Close()
 			defer func() { s.mu.Lock(); delete(s.connections, conn); s.mu.Unlock() }()
-			mux := &dispatcher{config: s.config}
+			mux := &dispatcher{config: s.config, profiles: s.profiles}
 			server := jrpc2.NewServer(mux, &jrpc2.ServerOptions{DisableBuiltin: true, Concurrency: 1, AllowPush: true, NewContext: func() context.Context { return ctx }})
 			server.Start(rpcio.New(conn, true))
 			_ = server.Wait()
@@ -139,8 +145,9 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 type dispatcher struct {
-	config  Config
-	session protocol.Session
+	profiles *profilestore.Store
+	config   Config
+	session  protocol.Session
 }
 
 func (d *dispatcher) Assign(_ context.Context, _ string) jrpc2.Handler { return d.handle }
@@ -185,6 +192,47 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 			return nil, fault(protocol.CodeBackendUnavailable)
 		}
 		return descriptor, nil
+	case protocol.ProfileCreate:
+		params, err := protocol.DecodeProfileCreate(raw)
+		if err != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		result, err := d.profiles.Create(ctx, params.Profile, params.Credentials)
+		return result, profileFault(err)
+	case protocol.ProfileList:
+		if jsonstrict.Decode(raw, &struct{}{}, profile.MaxProfileBytes) != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		result, err := d.profiles.List(ctx)
+		return result, profileFault(err)
+	case protocol.ProfileInspect:
+		params, err := protocol.DecodeProfileParams(raw)
+		if err != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		result, err := d.profiles.Inspect(ctx, params.Profile)
+		return result, profileFault(err)
+	case protocol.ProfileUpdate:
+		params, err := protocol.DecodeProfileUpdate(raw)
+		if err != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		result, err := d.profiles.Update(ctx, params.Profile, params.ExpectedRevision)
+		return result, profileFault(err)
+	case protocol.CredentialRotate:
+		params, err := protocol.DecodeCredentialRotate(raw)
+		if err != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		result, err := d.profiles.Rotate(ctx, params.Profile, params.ExpectedRevision, params.Credentials)
+		return result, profileFault(err)
+	case protocol.ProfileDelete:
+		params, err := protocol.DecodeProfileChange(raw)
+		if err != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		result, err := d.profiles.Delete(ctx, params.Profile, params.ExpectedRevision)
+		return result, profileFault(err)
 	case protocol.SystemStatus:
 		if jsonstrict.Decode(raw, &struct{}{}, protocol.MaxMessageBytes) != nil {
 			return nil, fault(protocol.CodeInvalidParams)
@@ -247,5 +295,24 @@ func copyFrames(input io.Reader, output io.Writer) error {
 		if err := writer.Write(data); err != nil {
 			return err
 		}
+	}
+}
+
+func profileFault(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, profilestore.ErrNotFound):
+		return fault(protocol.CodeNotFound)
+	case errors.Is(err, profilestore.ErrConflict):
+		return fault(protocol.CodeConflict)
+	case errors.Is(err, profilestore.ErrBusy):
+		return fault(protocol.CodeProfileActive)
+	case errors.Is(err, profilestore.ErrUnavailable):
+		return fault(protocol.CodeBackendUnavailable)
+	case errors.Is(err, profilestore.ErrUncertain):
+		return fault(protocol.CodeInterrupted)
+	default:
+		return fault(protocol.CodeInternal)
 	}
 }
