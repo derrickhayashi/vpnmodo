@@ -173,6 +173,9 @@ class Lab:
             command(["docker", "exec", "--user", "65534:65534", cid, "sh", "-c", script], required=False)
 
     def close(self):
+        if getattr(self, "services", None):
+            self.services.close()
+            self.services = None
         if self.profile_created:
             self.cli("connection", "disconnect", NAME, "--wait", "--json", required=False)
         for name in self.created:
@@ -391,6 +394,9 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
         print("PASS: controller crash discards interrupted MFA namespace without fresh login", flush=True)
         # Establish another real session for controller replacement acceptance.
         lab.authenticate(interactive=True)
+        from service_acceptance import ServiceLab
+        lab.services = ServiceLab(cli, directory, lab)
+        lab.services.begin()
         lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
         return lab
     except Exception:
@@ -413,6 +419,8 @@ def after_restart(cli, state_root, lab):
     command(["docker", "exec", lab.vpn_before_restart, "vpn-servicecheck"])
     last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
     assert lab.ids()["vpn"]["Id"] == lab.vpn_before_restart
+    lab.services.after_restart()
+    lab.services = None
     lab.disconnect()
     assert not list((state_root / "deployments" / NAME / "credentials").glob("*/*"))
     lab.close()

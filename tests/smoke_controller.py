@@ -27,6 +27,15 @@ def command(args, *, data=None, required=True, pass_fds=()):
             # This binary emits only fixed safe errors. Never dump wire data,
             # Docker inspection payloads, private keys or arbitrary remote output.
             detail = ": " + result.stderr.decode("utf-8", errors="replace").strip()
+            try:
+                report=json.loads(result.stdout.decode().splitlines()[-1])
+                if report.get("type")=="access":
+                    # Only fixed result/layer codes and booleans, never aliases,
+                    # endpoints, identities, configuration or raw SSH output.
+                    detail+=" "+json.dumps({"error":report.get("error"),"checks":[(c["layer"],c["code"],c["ok"]) for c in report.get("checks",[])],"services":[(s["code"],s["listener_ready"],s["destination_ssh_ready"],s["remote_service_ready"]) for s in report.get("services",[])]})
+            except (ValueError,IndexError,KeyError,TypeError):
+                pass
+
         raise RuntimeError("acceptance command failed: " + Path(str(args[0])).name + detail)
     return result
 
@@ -40,7 +49,10 @@ def main():
     parser.add_argument("--operations", action="store_true", help="use only the synthetic Go test-binary image")
     parser.add_argument("--l2tp", action="store_true", help="real L2TP in an isolated synthetic gateway lab")
     parser.add_argument("--xauth", action="store_true", help="real XAuth MFA and packet isolation lab")
+    parser.add_argument("--services-only", action="store_true", help="debug the real L2TP/service subset; not the full recovery suite")
     options = parser.parse_args()
+    if options.services_only and (not options.l2tp or options.xauth or options.operations):
+        parser.error("--services-only requires only --l2tp")
     data_root = Path.home() / ".local/share/vpnmodo"
     if data_root.exists() or data_root.is_symlink():
         raise RuntimeError("refusing existing vpnmodo data directory")
@@ -301,7 +313,7 @@ LogLevel VERBOSE
             lab = xauth_acceptance.begin(cli, directory, state, bridge, [str(options.binary.resolve()), "--config", str(registry)])
         if options.l2tp:
             import l2tp_acceptance
-            lab = l2tp_acceptance.begin(cli, directory, state)
+            lab = l2tp_acceptance.begin(cli, directory, state, services_only=options.services_only)
         marker = data_root / "controller-state" / "acceptance-marker"
         marker.write_text("synthetic-state")
         command(["docker", "stop", "vpnmodo-controller"])

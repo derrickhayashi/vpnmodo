@@ -22,6 +22,9 @@ class Lab:
         self.profile_created = False
 
     def close(self):
+        if getattr(self, "services", None):
+            self.services.close()
+            self.services = None
         if self.profile_created:
             self.cli("connection", "disconnect", NAME, "--wait", "--json", required=False)
         if self.created:
@@ -63,7 +66,7 @@ class Lab:
         assert vpn == app and vpn.startswith(b"net:[")
 
 
-def begin(cli, directory, state_root):
+def begin(cli, directory, state_root, services_only=False):
     lab = Lab(cli)
     try:
         assert command(["docker", "network", "inspect", NETWORK], required=False).returncode != 0
@@ -116,6 +119,8 @@ def begin(cli, directory, state_root):
         for path in (state_root / "deployments" / NAME / "credentials").glob("*/*"):
             assert path.stat().st_mode & 0o777 == 0o600
         print("PASS: real IKEv1/IPsec transport, L2TP/PPP and private TCP access; healthy reuse and isolated credential mounts", flush=True)
+        if services_only:
+            return service_stage(lab, cli, directory)
         watchdog = "vpnmodo-foreign-watchdog-" + uuid.uuid4().hex[:12]
         command(["docker", "create", "--name", watchdog, "--network", "none", "--label", "com.docker.compose.project=" + PROJECT, "--label", "com.docker.compose.service=watchdog", "alpine:3.22", "sleep", "infinity"])
         untouched = command(["docker", "inspect", watchdog]).stdout
@@ -210,8 +215,7 @@ def begin(cli, directory, state_root):
             last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
             lab.namespaces()
         print("PASS: idle-sleep TERM cleans the peer within Docker's stop budget, and three fresh reconnects work", flush=True)
-        lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
-        return lab
+        return service_stage(lab, cli, directory)
     except Exception:
         # Sanitized protocol/process presence only; never dump configs or logs.
         if lab.created:
@@ -226,14 +230,35 @@ def begin(cli, directory, state_root):
             if role in ids:
                 cid = ids[role]["Id"]
                 print("L2TP diagnostic:", role, "running=", ids[role]["State"]["Running"], "exit=", ids[role]["State"]["ExitCode"], "tunnel_check=", command(["docker", "exec", cid, "vpn-tunnelcheck"], required=False).returncode, flush=True)
+                if role == "vpn":
+                    import tempfile
+                    evidence=Path(tempfile.mkdtemp(prefix="vpnmodo-synthetic-startup-"))
+                    evidence.chmod(0o700)
+                    output=evidence/"startup.log"
+                    copied=command(["docker","cp",cid+":/run/vpn/lab-startup-output",str(output)],required=False)
+                    if copied.returncode==0:
+                        output.chmod(0o600)
+                        text=output.read_text(errors="replace")
+                        print("Synthetic startup flags:", {key:key in text for key in ("Cannot find device", "RTNETLINK", "IPsec did not connect", "PPP interface ppp0 did not become ready", "Connection terminated", "Starting L2TP and PPP")}, "private evidence:",str(output),flush=True)
+
         lab.close()
         raise
+
+
+def service_stage(lab, cli, directory):
+    from service_acceptance import ServiceLab
+    lab.services = ServiceLab(cli, directory, lab)
+    lab.services.begin()
+    lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
+    return lab
 
 
 def after_restart(cli, state_root, lab):
     lab.wait(lambda c: c["observed"] == "connected" and c["recovery_enabled"])
     assert lab.ids()["vpn"]["Id"] == lab.vpn_before_restart
     lab.namespaces()
+    lab.services.after_restart()
+    lab.services = None
     last_json(cli("connection", "disconnect", NAME, "--wait", "--json"))
     assert not list((state_root / "deployments" / NAME / "credentials").glob("*/*"))
     # The gateway is a test resource using the managed network; remove it before

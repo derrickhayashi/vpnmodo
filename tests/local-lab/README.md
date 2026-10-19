@@ -86,11 +86,56 @@ container. For remote automation, capture output and poll this file so a held
 output stream cannot hide the result. An exit code of zero is required to claim
 the whole suite passed.
 
+## Service access and targeted diagnosis
+
+Both real VPN suites now create a synthetic private OpenSSH server in the
+lab gateway's network namespace and a separate destination-loopback HTTP service.
+They exercise the workstation's managed two-hop proxy, named loopback forwards,
+port conflicts/partial success, independent VM/controller/service failures,
+strict private SSH keys/authentication, stale ownership, master-process crash,
+controller replacement and composed disconnect. XAuth also exercises composed
+JSON `up` with a fresh real MFA challenge and separate secure code submission.
+No private keys are copied into the VPN/application containers.
+
+The default runner keeps the full protocol/recovery and packet tests. After its
+images are built, a focused L2TP/service subset can shorten diagnosis inside the
+same outer lab:
+
+```sh
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py \
+  --binary /opt/lab/vpnmodo --image vpnmodo-controller:l2tp-acceptance \
+  --l2tp --services-only
+```
+
+This subset does not establish that the full recovery/packet suite passed.
+A test-only L2TP client image redirects the unchanged production entrypoint's
+startup output to a private runtime file. On failure, the harness retains that
+synthetic evidence outside the checkout and prints only allowlisted flags.
+Production images and logs retain their existing behavior.
+
 ## Current validation
 
 The complete production controller Dockerfile also builds successfully on the
 local ARM64 VM. Go race tests and vet pass; the CLI cross-builds for macOS/Linux
 arm64/amd64 and the controller for Linux arm64/amd64.
+
+The default full runner completes with exit 0 at runtime revision `6c5181a`,
+including real L2TP/XAuth service access, both SSH hops, port-conflict/partial
+results, missing VM/destination Python diagnosis, strict destination key/auth
+refusal, master crash recovery and controller-preserving forwarding. Composed
+XAuth JSON `up` handles a fresh real challenge through separate code submission.
+
+A native macOS arm64 workstation smoke check also passes verified SSH forwarding,
+real private HTTP traffic, live doctor, owned teardown and explicit VPN reconnect
+with a changed application ID. The Linux fixture's own forwards then reconnect
+and survive controller replacement. All synthetic test keys/state stay outside
+the checkout and are removed after teardown.
+
+One initial cold-lab manual L2TP replacement exited during startup while the
+controller was paused, before service acceptance. Later full runs at `1b05777`
+and `6c5181a` pass with unchanged startup/recovery/stop budgets. Its cause remains
+unconfirmed and is tracked in [issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
+The private test-only startup capture supports diagnosis if it recurs.
 
 Ubuntu 24.04 ARM64 local acceptance passes verified SSH/controller/profile
 handling and the full real IKEv1/IPsec/L2TP/PPP/TCP/DNS suite, including endpoint

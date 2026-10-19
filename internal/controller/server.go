@@ -16,6 +16,7 @@ import (
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/managedvpn"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
@@ -329,6 +330,28 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 		return result, profileFault(err)
 	case protocol.ConnectionEnsure, protocol.ConnectionDisconnect, protocol.ConnectionStatus, protocol.OperationStatus, protocol.OperationCancel, protocol.OperationSubscribe, protocol.OperationSubmitMFA:
 		return d.lifecycle(ctx, req, raw, guard.Method)
+	case protocol.Doctor, protocol.ConnectionApplication:
+		params, err := protocol.DecodeProfileParams(raw)
+		if err != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		view, err := d.operations.Runtime(ctx, params.Profile)
+		if err != nil {
+			return nil, lifecycleFault(err)
+		}
+		if guard.Method == protocol.ConnectionApplication {
+			if view.ApplicationID == "" {
+				return nil, fault(protocol.CodeBackendUnavailable)
+			}
+			return struct {
+				ContainerID string `json:"container_id"`
+			}{view.ApplicationID}, nil
+		}
+		return struct {
+			Controller Status                `json:"controller"`
+			Runtime    operation.RuntimeView `json:"runtime"`
+		}{
+			Status{Version: d.config.Version, API: protocol.CurrentAPI(), StateReady: d.operations.Ready(), RuntimeEnabled: d.config.Adapter != nil, DockerReady: dockerReady(ctx, d.config.DockerSocket)}, view}, nil
 	case protocol.SystemStatus:
 		if jsonstrict.Decode(raw, &struct{}{}, protocol.MaxMessageBytes) != nil {
 			return nil, fault(protocol.CodeInvalidParams)

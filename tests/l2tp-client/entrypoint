@@ -1,0 +1,6 @@
+#!/bin/sh
+# Synthetic lab only: retain startup output privately for failed-process diagnosis.
+set -eu
+umask 077
+mkdir -p /run/vpn
+exec /usr/local/sbin/docker-entrypoint.sh > /run/vpn/lab-startup-output 2>&1

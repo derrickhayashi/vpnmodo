@@ -1,5 +1,8 @@
 # Reach a private service through the VPN
 
+For controller-managed profiles, use the [vpnmodo service commands](design/007-service-access.md).
+The guide below remains the standalone deployment workflow.
+
 Keep the workstation SSH configuration in the consumer project. This example
 works with either VPN backend after its VPN and application containers are
 connected. All addresses and account names below are placeholders.
