@@ -22,12 +22,13 @@ Absolute login deadlines cannot be extended by a stream of diagnostic lines.
 Once a CHILD_SA is established, quiet periods have no login timeout; kernel and
 service checks determine readiness. Unexpected prompts, EOF and timeouts fail.
 
-Three small changes to pinned strongSwan 5.9.14 apply only when the managed entry
+Managed changes to pinned strongSwan 5.9.14 apply only when the managed entry
 point selects them. The username comes from its protected credential mount rather
 than a process argument. Password/PIN values are not added to the credential
 cache, preventing a repeated XAuth request from replaying them. Legacy operation
 keeps the original credential handling. A managed CHILD_SA also sets a native
-XFRM output mark after ESP encryption. Both modes retain the existing
+XFRM output mark after ESP encryption. Managed IKEv1 scheduled reauthentication is
+disabled; CHILD rekeying with the current IKE SA remains enabled. Both modes retain the existing
 XAUTH_PASSCODE compatibility patch.
 
 The lifecycle manager owns operation/challenge IDs and expiry. `connection ensure

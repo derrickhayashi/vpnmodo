@@ -208,12 +208,16 @@ def begin(cli, directory, state_root, bridge, cli_args):
         cid = ids["vpn"]["Id"]
         command(["docker", "exec", cid, "vpn-tunnelcheck"])
         command(["docker", "exec", ids["application"]["Id"], "nc", "-z", "-w", "3", "198.51.100.1", "28080"])
-        command(["docker", "exec", ids["application"]["Id"], "nslookup", "private.example", "127.0.0.1"])
+        command(["docker", "exec", ids["application"]["Id"], "nslookup", "-type=A", "private.example", "127.0.0.1"])
         assert command(["docker", "exec", cid, "test", "-e", "/run/vpn/code"], required=False).returncode != 0
         assert ids["application"]["Config"]["User"] == "65534:65534"
         assert ids["application"]["HostConfig"]["CapDrop"] == ["ALL"]
         for name in ("username", "password", "psk"):
             assert credentials[name].encode() not in json.dumps(ids).encode()
+        # The kernel alone can supply the post-encryption mark. A workload
+        # with the same UID/capability boundary cannot forge it through SO_MARK.
+        mark_probe = "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)\ntry: s.setsockopt(socket.SOL_SOCKET,socket.SO_MARK,0x76706e6d)\nexcept PermissionError: sys.exit(0)\nsys.exit(1)"
+        command(["docker", "run", "--rm", "--network", "container:" + cid, "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--entrypoint", "python3", "vpnmodo-xauth-gateway:acceptance", "-c", mark_probe])
         print("PASS: real aggressive PSK + XAUTH_PASSCODE, secure code consumption, private TCP/DNS", flush=True)
         def rekey():
             command(["docker", "exec", lab.gateway, "swanctl", "--rekey", "--child", "lab"])

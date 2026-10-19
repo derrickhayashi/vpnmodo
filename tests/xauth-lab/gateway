@@ -61,7 +61,7 @@ secrets { ike-lab { secret = synthetic-shared } }
 CONFIG
 python3 /usr/local/bin/radius.py >/run/lab/radius-output 2>&1 &
 python3 /usr/local/bin/sink.py >/run/lab/sink-output 2>&1 &
-dnsmasq --keep-in-foreground --no-resolv --no-hosts --address=/private.example/198.51.100.1 >/dev/null 2>&1 &
+dnsmasq --keep-in-foreground --no-resolv --no-hosts --address=/private.example/198.51.100.1 --local=/private.example/ >/dev/null 2>&1 &
 /usr/lib/ipsec/charon >/run/lab/charon-output 2>&1 &
 i=0
 until swanctl --load-all >/run/lab/load-output 2>&1; do i=$((i+1)); test "$i" -lt 30; sleep 1; done
