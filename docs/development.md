@@ -17,10 +17,21 @@ scripts/check-secrets
 
 The hook rejects pushes if Gitleaks is missing or finds secrets. It checks all
 local Git history and the working tree with redacted output. Git hooks are local
-configuration and must be enabled in every clone. CI also scans pushes and PRs;
-CI detects problems after upload and cannot prevent the initial exposure.
+configuration and must be enabled in every clone. GitHub Actions is disabled
+for this private repository to avoid paid runner usage, so the local scan and
+manual review must run before each push.
 Hooks can be bypassed, and scanners do not reliably identify customer data.
 Review every diff and keep real configuration outside this checkout.
+
+## Validation without paid CI
+
+GitHub Actions was disabled on 2026-10-19 at the user's request. Keep it
+disabled unless the user explicitly authorizes re-enabling it. Do not provision
+paid runners or test infrastructure. Run Go tests, vet, build checks and secret
+scans on the workstation. Protocol acceptance requires an existing authorized
+Linux environment with Docker and the required kernel features; record the
+checks actually run and any validation still pending. Existing workflow files
+remain as references, but their presence does not mean hosted CI is active.
 
 ## Public contribution
 
