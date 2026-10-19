@@ -88,6 +88,10 @@ the whole suite passed.
 
 ## Current validation
 
+The complete production controller Dockerfile also builds successfully on the
+local ARM64 VM. Go race tests and vet pass; the CLI cross-builds for macOS/Linux
+arm64/amd64 and the controller for Linux arm64/amd64.
+
 Ubuntu 24.04 ARM64 local acceptance passes verified SSH/controller/profile
 handling and the full real IKEv1/IPsec/L2TP/PPP/TCP/DNS suite, including endpoint
 outage, namespace repair, tunnel-loss recovery, failed recovery, explicit
