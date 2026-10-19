@@ -12,14 +12,23 @@ x86_64/amd64), its trusted checksum, and the matching source/docs and VM image
 bundle. Check the checksum before extracting. For example:
 
 ```sh
-shasum -a 256 -c SHA256SUMS-cli
+shasum -a 256 vpnmodo-v0.1.0-rc.1-darwin-arm64.tar.gz
+```
+
+Compare the printed hash with the matching entry in the trusted
+`SHA256SUMS-cli` file before extracting. You need only your Mac architecture
+archive; the complete checksum file also lists the other architecture and source.
+If it matches, create a private extraction directory and install:
+
+```sh
+mkdir -m 700 /absolute/private/cli
 tar -xzf vpnmodo-v0.1.0-rc.1-darwin-arm64.tar.gz -C /absolute/private/cli
 cd /absolute/private/cli
 sh install.sh --prefix "$HOME/.local"
 "$HOME/.local/bin/vpnmodo" version
 ```
 
-Create the extraction directory first. The installer needs macOS command-line
+The installer needs macOS command-line
 utilities (`shasum`, `install`, `mktemp`) and no Go or Homebrew runtime. It checks
 the binary checksum and architecture again and refuses unexpected symlinks.
 Ensure `$HOME/.local/bin` is on `PATH`, or use the absolute executable path.

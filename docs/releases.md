@@ -104,6 +104,9 @@ sessions are active. CLI rollback does not disconnect a VPN.
 
 ## Validation scope
 
+See the [candidate validation record](release-validation.md) for tested revisions,
+platform results and remaining release gates.
+
 The release targets are macOS arm64/amd64 and Ubuntu 24.04 Linux arm64/amd64.
 A successful cross-build alone does not establish runtime acceptance. Record
 native CLI installation, verified SSH onboarding, real VPN/service use,
@@ -116,3 +119,20 @@ authentication, private service access and controller replacement; it does not
 replace the full packet/failure/rekey suite. Legacy coexistence, explicit cutover
 and rollback with fresh MFA remain separate release-gate checks in #9. Keep the
 unreproduced startup observation #19 open; it is not a reproducible release blocker.
+
+Inside the isolated lab, after preparing the gateway/service fixture images from
+its normal runner, the production onboarding check accepts a different controller
+image for upgrade rehearsal:
+
+```sh
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py \
+  --binary /opt/lab/vpnmodo --image sha256:<candidate-controller-id> \
+  --upgrade-image sha256:<compatible-upgrade-controller-id> \
+  --xauth --onboarding-only
+```
+
+Repeat with `--l2tp` instead of `--xauth`. These are synthetic fixtures, not commands
+to run on the VM host daemon. The L2TP gateway build uses `vpnmodo-l2tp:dev`, and
+the XAuth pre-login guard uses `vpnmodo-xauth:dev`; when testing release-only images,
+point these fixture aliases at the verified corresponding image IDs inside the
+isolated daemon. Actual managed profiles continue using their pinned image IDs.

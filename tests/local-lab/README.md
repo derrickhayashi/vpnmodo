@@ -113,6 +113,12 @@ startup output to a private runtime file. On failure, the harness retains that
 synthetic evidence outside the checkout and prints only allowlisted flags.
 Production images and logs retain their existing behavior.
 
+The packaged production-image onboarding subset and compatible controller
+upgrade rehearsal are described in the [release guide](../../docs/releases.md).
+Its [validation record](../../docs/release-validation.md) distinguishes tested
+architectures from cross-builds and the remaining adoption gate. The full default
+backend suite is unchanged.
+
 ## Current validation
 
 The complete production controller Dockerfile also builds successfully on the
