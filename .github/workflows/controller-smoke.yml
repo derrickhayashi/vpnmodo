@@ -62,7 +62,8 @@ jobs:
           sudo apt-get install -y -qq openssh-server
           sudo modprobe ppp_generic
           sudo modprobe ppp_async
-          sudo modprobe l2tp_ppp
+          # xl2tpd supports userspace L2TP when this optional accelerator is absent.
+          if modinfo l2tp_ppp >/dev/null 2>&1; then sudo modprobe l2tp_ppp; fi
           sudo modprobe xfrm_user
           if [ ! -e /dev/ppp ]; then sudo mknod /dev/ppp c 108 0; fi
       - name: Build real VPN backend, synthetic gateway and real-adapter test controller
