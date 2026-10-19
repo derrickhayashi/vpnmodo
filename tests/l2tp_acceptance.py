@@ -66,7 +66,7 @@ class Lab:
         assert vpn == app and vpn.startswith(b"net:[")
 
 
-def begin(cli, directory, state_root):
+def begin(cli, directory, state_root, services_only=False):
     lab = Lab(cli)
     try:
         assert command(["docker", "network", "inspect", NETWORK], required=False).returncode != 0
@@ -119,6 +119,8 @@ def begin(cli, directory, state_root):
         for path in (state_root / "deployments" / NAME / "credentials").glob("*/*"):
             assert path.stat().st_mode & 0o777 == 0o600
         print("PASS: real IKEv1/IPsec transport, L2TP/PPP and private TCP access; healthy reuse and isolated credential mounts", flush=True)
+        if services_only:
+            return service_stage(lab, cli, directory)
         watchdog = "vpnmodo-foreign-watchdog-" + uuid.uuid4().hex[:12]
         command(["docker", "create", "--name", watchdog, "--network", "none", "--label", "com.docker.compose.project=" + PROJECT, "--label", "com.docker.compose.service=watchdog", "alpine:3.22", "sleep", "infinity"])
         untouched = command(["docker", "inspect", watchdog]).stdout
@@ -213,11 +215,7 @@ def begin(cli, directory, state_root):
             last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
             lab.namespaces()
         print("PASS: idle-sleep TERM cleans the peer within Docker's stop budget, and three fresh reconnects work", flush=True)
-        from service_acceptance import ServiceLab
-        lab.services = ServiceLab(cli, directory, lab)
-        lab.services.begin()
-        lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
-        return lab
+        return service_stage(lab, cli, directory)
     except Exception:
         # Sanitized protocol/process presence only; never dump configs or logs.
         if lab.created:
@@ -245,6 +243,14 @@ def begin(cli, directory, state_root):
 
         lab.close()
         raise
+
+
+def service_stage(lab, cli, directory):
+    from service_acceptance import ServiceLab
+    lab.services = ServiceLab(cli, directory, lab)
+    lab.services.begin()
+    lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
+    return lab
 
 
 def after_restart(cli, state_root, lab):

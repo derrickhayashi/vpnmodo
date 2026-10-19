@@ -56,7 +56,7 @@ class ServiceLab:
             assert b'vpnmodo-service-ok' in data, 'forward did not reach the private service'
 
     def start_http(self):
-        command(['docker', 'exec', '-d', self.name, 'sh', '-c', 'python3 /run/service/http.py >/dev/null 2>&1 & echo $! >/run/service/http.pid; wait'])
+        command(['docker', 'exec', '-d', self.name, 'sh', '-c', 'python3 /run/service/endpoint.py >/dev/null 2>&1 & echo $! >/run/service/http.pid; wait'])
         for _ in range(40):
             if command(['docker', 'exec', self.name, 'python3', '-c', 'import socket;s=socket.create_connection(("127.0.0.1",28082),timeout=1);s.close()'], required=False).returncode == 0: return
             time.sleep(.1)
@@ -94,7 +94,7 @@ class H(BaseHTTPRequestHandler):
  def log_message(self,*a):pass
 HTTPServer(('127.0.0.1',28082),H).serve_forever()
 ''')
-        for src,dst in ((server,'host-key'),(auth,'authorized'),(sshd,'sshd_config'),(http,'http.py')):
+        for src,dst in ((server,'host-key'),(auth,'authorized'),(sshd,'sshd_config'),(http,'endpoint.py')):
             command(['docker','cp',str(src),self.name+':/run/service/'+dst])
         command(['docker','exec',self.name,'chmod','0600','/run/service/host-key','/run/service/authorized'])
         command(['docker','exec','-d',self.name,'/usr/sbin/sshd','-D','-e','-f','/run/service/sshd_config'])
