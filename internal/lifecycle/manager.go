@@ -330,6 +330,11 @@ func (m *Manager) submit(ctx context.Context, name string, kind operation.Kind, 
 		if m.options.Adapter == nil {
 			return ErrUnavailable
 		}
+		if supported, ok := m.options.Adapter.(interface {
+			Supports(profile.BackendType) bool
+		}); ok && !supported.Supports(snapshot.Profile.Backend.Type) {
+			return ErrUnavailable
+		}
 		if kind != operation.DisconnectConnection && !snapshot.CredentialsPresent {
 			return ErrCredentials
 		}

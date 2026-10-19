@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--image", required=True)
     parser.add_argument("--operations", action="store_true", help="use only the synthetic Go test-binary image")
+    parser.add_argument("--l2tp", action="store_true", help="real L2TP in an isolated synthetic gateway lab")
     options = parser.parse_args()
     data_root = Path.home() / ".local/share/vpnmodo"
     if data_root.exists() or data_root.is_symlink():
@@ -52,6 +53,7 @@ def main():
     legacy = "vpnmodo-legacy-test-" + uuid.uuid4().hex[:12]
     legacy_created = False
     logfile = None
+    lab = None
     try:
         client_key, server_key = directory / "client-key", directory / "server-key"
         for key in (client_key, server_key):
@@ -136,7 +138,7 @@ LogLevel VERBOSE
                 result = cli("host", "check", "example", "--json", required=False)
                 if result.returncode == 0:
                     status = json.loads(result.stdout)
-                    assert status["docker_ready"] and status["state_ready"] and status["runtime_enabled"] == options.operations
+                    assert status["docker_ready"] and status["state_ready"] and status["runtime_enabled"]
                     return
                 time.sleep(0.5)
             raise RuntimeError("controller did not become ready over SSH")
@@ -293,6 +295,9 @@ LogLevel VERBOSE
             interrupted_id = operations_acceptance.begin(cli, bridge, [str(options.binary.resolve()), "--config", str(registry)], directory, state)
             import recovery_acceptance
             cooldown = recovery_acceptance.begin(cli, directory, state)
+        if options.l2tp:
+            import l2tp_acceptance
+            lab = l2tp_acceptance.begin(cli, directory, state)
         marker = data_root / "controller-state" / "acceptance-marker"
         marker.write_text("synthetic-state")
         command(["docker", "stop", "vpnmodo-controller"])
@@ -306,6 +311,8 @@ LogLevel VERBOSE
         if options.operations:
             operations_acceptance.after_restart(cli, state, interrupted_id)
             recovery_acceptance.after_restart(cli, state, cooldown)
+        if options.l2tp:
+            l2tp_acceptance.after_restart(cli, state, lab)
         retained = safe_result(cli("profile", "inspect", "example-profile", "--json"))
         assert retained["revision"] == 3 and retained["credentials_present"]
         safe_result(cli("profile", "delete", "example-profile", "--revision", "3", "--json"))
@@ -316,6 +323,8 @@ LogLevel VERBOSE
         assert command(["docker", "inspect", legacy]).stdout == legacy_before
         print("PASS: stopped-controller repair, explicit recreation, persistent state and legacy isolation", flush=True)
     finally:
+        if lab is not None:
+            lab.close()
         # No wildcard cleanup or Compose down: remove only this test's resources.
         inspected = command(["docker", "inspect", "vpnmodo-controller"], required=False)
         if inspected.returncode == 0:

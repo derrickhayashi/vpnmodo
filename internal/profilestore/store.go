@@ -361,3 +361,24 @@ func (s *Store) WithProfile(ctx context.Context, name string, fn func(Snapshot) 
 		return fn(s.snapshot(r))
 	})
 }
+
+// WithCredentials is an internal provisioning boundary, never an RPC read-back.
+// fn must not retain credentials or reenter the store. Runtime writers must use
+// protected files; no external commands run while the profile transaction is held.
+func (s *Store) WithCredentials(ctx context.Context, name string, fn func(Snapshot, profile.Credentials) error) error {
+	if !profile.ValidName(name) {
+		return profile.ErrProfile
+	}
+	return s.transaction(ctx, func(records map[string]record) error {
+		r, ok := records[name]
+		if !ok {
+			return ErrNotFound
+		}
+		data, err := privatefile.Read(s.credentialPath(r.CredentialRef), profile.MaxProfileBytes)
+		var c profile.Credentials
+		if err != nil || jsonstrict.Decode(data, &c, profile.MaxProfileBytes) != nil || c.Validate() != nil {
+			return profile.ErrCredentials
+		}
+		return fn(s.snapshot(r), c)
+	})
+}

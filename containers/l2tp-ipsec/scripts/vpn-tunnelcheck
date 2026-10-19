@@ -1,0 +1,8 @@
+#!/bin/sh
+# Tunnel invariants only. An endpoint outage must not be treated as a lost VPN.
+set -eu
+test -f /run/vpn/ready
+ip link show ppp0 | grep -q 'UP'
+ip -4 route show default | grep -q 'dev ppp0'
+iptables -C OUTPUT -o ppp0 -j ACCEPT
+ipsec status l2tp-psk | grep -q 'INSTALLED'

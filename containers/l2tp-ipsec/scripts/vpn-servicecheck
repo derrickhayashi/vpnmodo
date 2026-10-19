@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+exec timeout 5 bash -c 'exec 3<>/dev/tcp/$1/$2' -- \
+    "${VPN_HEALTH_HOST:?VPN_HEALTH_HOST is required}" "${VPN_HEALTH_PORT:-22}"
