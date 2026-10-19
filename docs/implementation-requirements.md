@@ -5,8 +5,9 @@ The v1 profile, protocol and operation implementation is tracked in issue #2.
 Controller/profile/lifecycle management and managed L2TP/XAuth are implemented
 in the private stage branches. Workstation [service access and diagnostics](design/007-service-access.md)
 are implemented. Private release packaging supplies candidate artifacts;
-ARM64 bundle and protocol acceptance remain the final release gate. Real
-adoption/cutover has passed; legacy rollback testing is outside release scope. See
+ARM64 bundle and protocol acceptance pass, along with real adoption/cutover.
+Packaging review remains in #20; legacy rollback testing is outside release
+scope. See the [validation record](release-validation.md) and
 [v1 profiles, protocol and operations](design/001-v1-model.md)
 for the initial scope, ownership and lifecycle defaults selected for implementation.
 

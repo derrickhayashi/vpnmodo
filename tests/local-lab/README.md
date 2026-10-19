@@ -135,11 +135,16 @@ The complete production controller Dockerfile also builds successfully on the
 local ARM64 VM. Go race tests and vet pass; the CLI cross-builds for macOS/Linux
 arm64/amd64 and the controller for Linux arm64/amd64.
 
-The default full runner completes with exit 0 at runtime revision `6c5181a`,
+The default full runner completes with exit 0 at revision `990dc2fe7cae`,
 including real L2TP/XAuth service access, both SSH hops, port-conflict/partial
 results, missing VM/destination Python diagnosis, strict destination key/auth
 refusal, master crash recovery and controller-preserving forwarding. Composed
 XAuth JSON `up` handles a fresh real challenge through separate code submission.
+The current XAuth checks also require 256 KiB each way without route MTU/MSS
+overrides after fresh authentication, authenticated CHILD replacement and
+controller recreation. The payload probe runs before service teardown explicitly
+disconnects the VPN. Fresh full-production bundle build/load and packaged
+onboarding/upgrade acceptance also pass; see the validation record above.
 
 A native macOS arm64 workstation smoke check also passes verified SSH forwarding,
 real private HTTP traffic, live doctor, owned teardown and explicit VPN reconnect

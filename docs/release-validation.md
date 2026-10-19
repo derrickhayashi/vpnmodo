@@ -1,122 +1,91 @@
-# Private candidate validation — 2026-10-19
+# Private ARM64 candidate validation — 2026-10-19
 
-Tested source: `728b9a4b3a97c74df2b16ba7d58d7935b6ef331f`.
-Candidate binary identity: `v0.1.0-rc.1+git.728b9a4b3a97`.
-Subsequent edits in this PR document the results and clarify installation steps.
-At that initial revision, no release was published and no existing deployment
-was adopted. Later ARM64 trial adoption/cutover evidence is recorded below.
+Validated source: `990dc2fe7caec4e1b68cf2b54788b996937e66c5`.
+Candidate identity: `v0.1.0-rc.6+git.990dc2fe7cae`.
+Subsequent documentation commits record these results without changing runtime code.
 
-| Target | Evidence | Remaining |
-| --- | --- | --- |
-| macOS arm64 | Native archive installation/version/help; explicit replacement; checksum/symlink refusal; temporary-prefix cleanup | No further native-platform gate |
-| macOS amd64 | Cross-built archive and checksum | Outside the agreed release gate; native runtime unvalidated |
-| Ubuntu 24.04 arm64 | Full production Dockerfile build; verified offline image load; real L2TP and XAuth onboarding, two-hop forwarding, controller replacement and disposal | Fresh current-source bundle and full protocol acceptance |
-| Ubuntu 24.04 amd64 | Controller binary cross-build | Outside the agreed release gate; native build/runtime unvalidated |
+Both agreed validation gates pass: the complete isolated protocol/recovery/packet
+suite, and a fresh ARM64 release bundle built from the production Dockerfiles.
+The candidate remains private. No registry, GitHub release or public artifact was
+published. GitHub Actions remains disabled; all work used the existing Mac and VM.
 
-The agreed first-release qualification scope is macOS arm64 and Ubuntu 24.04
-arm64. Intel/amd64 native testing is not required for this release. Existing
-amd64 cross-build evidence remains recorded above without claiming native
-runtime validation.
+## Qualified scope and results
 
-The image bundle's Docker archive contains content IDs without repository tags.
-Loading it preserves deliberately conflicting pre-existing tags. The loader
-verifies archive and image configuration hashes, architecture, version, and
-controller backend/application IDs. Its production build and loader passed.
+Qualification covers macOS arm64 and Ubuntu 24.04 arm64. Intel/amd64 native testing
+and legacy rollback testing are outside the agreed release scope. Cross-built
+amd64 CLI artifacts have checksums but no native runtime qualification.
 
-The isolated onboarding checks use the packaged production controller/backend
-images and their normal operation/MFA/recovery settings. L2TP authentication,
-PPP, private TCP/DNS and named service forwarding passed. XAuth authentication,
-challenge-bound code consumption, pre-login packet enforcement, private TCP/DNS,
-structured JSON MFA and named service forwarding passed. Established sessions
-and private access survive explicit controller replacement. The rehearsal
-controller has a different binary version and different backend/application
-image IDs (test-only labels distinguish otherwise unchanged backend code).
-Existing sessions retain their saved IDs; later connections use the new defaults.
+| Check | Result |
+| --- | --- |
+| Native Mac ARM64 CLI | Fresh archive checksums, install, version/help, explicit replacement, corrupt/symlink refusal and temporary-prefix cleanup pass |
+| Hidden terminal input | Native credential/MFA waiting, echo suppression, cancellation and terminal restoration pass |
+| Full isolated Linux suite | Controller/profile/operation, L2TP, XAuth and PMTU suites complete with exit 0 |
+| XAuth authenticated CHILD rekey | Replacement CHILD_SA confirmed; 256 KiB each way passes before/after rekey with no route MTU/MSS override and zero observed plaintext |
+| XAuth controller replacement | Same VPN retained; 256 KiB each way and private service access pass before explicit disconnect |
+| Fresh VM bundle | Full production L2TP, XAuth and controller Dockerfile builds, pinned backend/application IDs, source inventory and SHA-256 verification pass |
+| Classic Docker image store | Docker 29.1.3, vfs, ARM64: schema-2 bundle import and immutable-ID receipt pass; existing development image tags remain unchanged |
+| Containerd image store | Docker 29.1.3, ARM64: checksum-verified import and repeat import pass; receipts verify all four images/version and report activation false |
+| Packaged onboarding/upgrade | Production-policy L2TP and XAuth authentication, private TCP/DNS, two-hop service access, credential disposal and controller upgrade pass; final exit 0 |
+| Local checks | Go race tests, vet and all 84 Python tests pass |
 
-The first XAuth invocation failed before authentication because its synthetic
-pre-login guard expected the `vpnmodo-xauth:dev` fixture alias. Image inspection
-confirmed it was absent. Pointing that alias at the verified release image
-satisfied the prerequisite; the repeated XAuth onboarding/upgrade run exited 0.
-The L2TP invocation had already completed successfully. This was a fixture
-prerequisite failure, not evidence of a VPN authentication failure.
+The complete suite includes endpoint outage, namespace repair, automatic L2TP
+recovery and failed recovery, graceful stop and three fresh reconnects. XAuth
+covers real aggressive PSK/XAUTH_PASSCODE, a 95-second quiet session, expired,
+incorrect and repeated MFA, controller crash, DNS/IPv6 bypass refusal and SO_MARK
+forgery refusal. Captures require zero plaintext when SAs/policies disappear
+while the client and controller are suspended; reachable positive controls prove
+the observer and escape paths work.
 
-Go race tests and vet pass. All 76 Python tests pass, including source-inventory,
-checksum, architecture, image identity and legacy-tag refusal cases. The native
-Mac installation changes only a temporary prefix. Both Mac archives, the source
-archive and the ARM64 VM bundle have verified SHA-256 checksums. Full history and
-working-tree secret scans pass; distribution artifacts and raw synthetic evidence
-remain outside Git. GitHub Actions remains disabled and the exact disposable lab
-and remote bundle were removed after verifying no nested test containers remained.
+The separate PMTU fixture uses fresh ESP/NAT-T peers across a routed 1280-byte
+bottleneck. The uncorrected filter drops 16 related fragmentation-needed errors
+and times out. The narrow ICMP correction permits 256 KiB each way without route
+MTU/MSS overrides. Unrelated forged ICMP and protected plaintext/post-policy
+probes remain blocked; all five scenarios pass.
 
-These onboarding checks are a subset, not a replacement for the previous full
-[packet/rekey/recovery evidence](../tests/local-lab/README.md). Issue #9 stays open
-for the remaining ARM64 bundle and protocol acceptance.
-The unconfirmed startup observation #19 remains open after its separate 20-pass
-replacement investigation; no backend fix was claimed for it.
+The bundle onboarding subset uses production operation/recovery settings. Its
+upgrade rehearsal changes the controller binary identity and backend/application
+image IDs while preserving the established VPN and service access. Full failure
+and packet acceptance use the separate test controller with shortened lab-only
+timings; the two suites provide complementary evidence.
 
-Native macOS terminal acceptance also runs `python3 tests/smoke_terminal.py`.
-This uses synthetic input on a controlling PTY to verify idle waiting, hidden
-MFA/credential input, cancellation and restored terminal settings. Version/help
-checks alone do not exercise these prompts.
+## Adoption and known observations
 
-## Native onboarding follow-up: Docker stores and hidden input
+The earlier native ARM64 functional trial completed real adoption/cutover:
+existing settings became a managed profile, credentials remained on the VM, the
+legacy session was stopped and retained, and the existing workstation wrapper
+and SSH aliases selected the managed application. Fresh MFA, authenticated SSH
+and 256 KiB uploads/downloads passed on both configured targets with interface
+MTU 1500 and no route MTU/MSS override. That trial used reviewed changes layered
+on verified base images; the newly validated bundle above is a fresh full build.
+Repeating real adoption/cutover or rehearsing legacy rollback is not a release gate.
 
-Revision `8deb0974a931` includes explicit noninteractive-sudo host registration,
-the schema-2 portable image loader/installed receipt, a stable public SSH proxy,
-and native hidden-terminal input fixes. The portable loader was exercised against
-Docker 29.1.3 with its containerd image store using the existing verified ARM64
-production image content. All four destination-local IDs resolved and the
-controller binary identity matched. Classic-store ID resolution and reserved-tag
-collision refusal have unit coverage; a fresh complete native classic-store
-bundle build/load remains to be repeated for the schema-2 format.
+The intermittent post-MFA client exit (fixed diagnostic 27) and disappearance of
+established kernel IPsec state still have unconfirmed causes and are tracked in
+[issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
+These successes do not establish long-term stability or resolve that follow-up.
+The earlier unconfirmed synthetic L2TP startup observation remains tracked in
+[issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
 
-The native macOS terminal harness passed hidden credential/MFA input, waiting,
-cancellation and terminal restoration. Local Go race tests/vet and 84 Python
-tests passed. Synthetic Expect replay distinguishes repeated PIN, client exit
-after MFA, post-MFA timeout and an established idle session. The controller also
-preserves authentication classification when a concurrent health exec is killed
-as the VPN process exits.
+The first attempt at the extended full suite reached deliberate service teardown
+before a new payload probe, so the probe found no VPN. This was a fixture ordering
+mistake: the service test had explicitly disconnected it. Moving the probe before
+teardown corrected the test; the complete committed-source rerun exits 0.
 
-A native ARM64 functional trial used these compiled controller changes and the
-updated Expect script layered on the previously verified production base images.
-It completed managed XAuth login and private TCP checks, then authenticated SSH
-through the public proxy. A protected-route MTU/MSS workaround was required for
-the larger SSH exchange; lowering only the namespace interface MTU did not help.
-Follow-up isolation reproduced the stall with synthetic ESP/NAT-T across a
-1280-byte bottleneck: the managed INPUT filter dropped related ICMP
-fragmentation-needed errors. A narrow RELATED/type-3-code-4 exception restores
-256 KiB transfers each way without route MTU/MSS overrides. Unrelated ICMP and
-plaintext/post-policy probes remain blocked. A fresh native ARM64 trial login
-with this correction also passes authenticated SSH and 256 KiB uploads/downloads
-on both configured targets, with a 1500-byte container interface and no route
-MTU/MSS override. Issue #21 retains the authenticated rekey application gate.
-The focused packet fixture passes; the full protocol/lifetime suite has not
-been rerun for this correction. These
-patched trial images are not a new full production-Dockerfile release bundle.
+## Import isolation and cleanup
 
-PR #20 remains draft. Issue #9 stays open for #21 and fresh schema-2 bundle
-acceptance on the agreed ARM64 targets.
-No raw deployment settings, credentials, transcripts or packet metadata belong
-in this record. GitHub Actions remains disabled.
+Both VM image-store imports verify immutable IDs and leave activation false.
+Every pre-existing named image tag is preserved. Immediate before/after snapshots
+around repeated containerd import show unchanged container IDs, running/stopped
+states and start times. The existing managed XAuth VPN/controller retain their
+identities and start times throughout the run.
 
-One preceding fresh trial attempt exited after MFA with fixed diagnostic 27.
-The explicitly authorized next attempt succeeded. That diagnostic identifies
-the stage, not the peer-side cause or code validity. Earlier spontaneous loss of
-kernel IPsec state remains unexplained; short application success does not
-establish that the PMTU correction addresses session lifetime.
+An independent watchdog-managed legacy VPN was recreated during the longer test
+window, before the image import. Lifecycle timestamps distinguish that event
+from import; the whole-run snapshot is not claimed to show every unrelated
+container unchanged. No unrelated configuration or VPN logs were read.
 
-## Existing-deployment adoption and cutover
-
-The native ARM64 trial completed real adoption and cutover: an existing VPN
-configuration became a managed profile, credentials stayed on the VM, the legacy
-session was stopped and retained, and the existing workstation wrapper/SSH
-aliases selected the managed application. Fresh MFA, authenticated SSH and
-256 KiB transfers in both directions passed. This counts as functional adoption
-and cutover evidence; repeating that real cutover is not a remaining gate.
-
-The reverse transition back to the retained legacy deployment has a documented
-procedure but has not been exercised in this trial. The user explicitly excluded
-legacy rollback testing from release scope; no rollback rehearsal is pending or
-claimed as passed. Optional fallback notes remain available. Customer settings
-and raw evidence stay outside this repository. Fresh full-bundle and
-rekey/protocol acceptance remain the release gates.
+After both suites pass, the nested daemon has no remaining acceptance containers.
+The exact outer lab and VM staging directory are removed. Verified candidate
+archives, receipts and raw synthetic evidence remain privately outside source.
+Customer settings, credentials, transcripts and packet metadata are excluded
+from this repository and issue artifacts.

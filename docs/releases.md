@@ -1,9 +1,10 @@
 # Private release artifacts
 
-Issue #9 supplies an offline distribution path. These are private release
-candidates until the adoption/onboarding release gate is complete; no registry,
-Homebrew tap or GitHub release is published by the build scripts. GitHub Actions
-stays disabled. Build and test on the workstation and authorized local VM.
+Issue #9 supplies an offline distribution path. ARM64 candidate qualification
+passes as recorded in the [validation record](release-validation.md). These are
+private release candidates; the build scripts publish no registry, Homebrew tap
+or GitHub release. GitHub Actions stays disabled. Build and test on the
+workstation and authorized local VM.
 
 ## Artifacts and trust
 
