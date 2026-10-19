@@ -1,6 +1,6 @@
 # This fixed program executes on the VM. Operator values arrive only in a bounded
 # JSON stdin header; byte reads preserve the following SSH stream without buffering.
-import json, os, re, subprocess, sys
+import json, os, re, signal, subprocess, sys, time
 
 def main():
     header = bytearray()
@@ -18,26 +18,29 @@ def main():
     docker = ['docker','--host','unix:///var/run/docker.sock']
     bridge = docker + ['exec','-i','vpnmodo-controller','/usr/local/bin/vpnmodo-controller','bridge']
     frames = [dict(jsonrpc='2.0',id='hello',method='system.hello',params={'api':{'major':1,'minor':0}}),dict(jsonrpc='2.0',id='application',method='connection.application',params={'profile':p['profile']})]
-    child = subprocess.Popen(bridge,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
-    try:
-        child.stdin.write(b''.join(json.dumps(x,separators=(',',':')).encode()+b'\n' for x in frames))
-        child.stdin.close()
-        # One reader, bounded replies, no subscription or untrusted stdout forwarding.
-        import signal
-        signal.signal(signal.SIGALRM,lambda *_: (_ for _ in ()).throw(TimeoutError()))
-        signal.alarm(30)
-        replies = [json.loads(child.stdout.readline(1048577)) for _ in frames]
-        if child.stdout.read(1): raise ValueError()
-        if child.wait(timeout=3) != 0: raise ValueError()
-        signal.alarm(0)
-        if replies[0].get('id') != 'hello' or replies[0].get('result',{}).get('api',{}).get('major') != 1: raise ValueError()
-        result = replies[1]
-        if result.get('id') != 'application' or 'error' in result: raise ValueError()
-        cid = result.get('result',{}).get('container_id')
-        if not isinstance(cid,str) or not re.fullmatch(r'[0-9a-f]{64}',cid): raise ValueError()
-    finally:
-        if child.poll() is None: child.kill()
-        child.wait()
+    deadline=time.monotonic()+20
+    cid=None
+    signal.signal(signal.SIGALRM,lambda *_: (_ for _ in ()).throw(TimeoutError()))
+    signal.alarm(25)
+    while cid is None:
+        child=subprocess.Popen(bridge,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+        try:
+            child.stdin.write(json.dumps(frames[0],separators=(',',':')).encode()+b'\n');child.stdin.flush()
+            hello=json.loads(child.stdout.readline(1048577))
+            if hello.get('id')!='hello' or hello.get('result',{}).get('api',{}).get('major')!=1:raise ValueError()
+            child.stdin.write(json.dumps(frames[1],separators=(',',':')).encode()+b'\n');child.stdin.close()
+            result=json.loads(child.stdout.readline(1048577))
+            if child.stdout.read(1) or child.wait(timeout=3)!=0:raise ValueError()
+            if result.get('id')!='application':raise ValueError()
+            if result.get('error',{}).get('code')==-32004 and time.monotonic()<deadline:
+                time.sleep(.1)
+                continue
+            cid=result.get('result',{}).get('container_id')
+            if not isinstance(cid,str) or not re.fullmatch(r'[0-9a-f]{64}',cid):raise ValueError()
+        finally:
+            if child.poll() is None:child.kill()
+            child.wait()
+    signal.alarm(0)
     # The stream runs in the verified application, independently of the controller
     # container. No SSH keys/agent enter the VM or the VPN/application containers.
     os.execvp('docker',docker+['exec','-i',cid,'nc',p['host'],str(p['port'])])

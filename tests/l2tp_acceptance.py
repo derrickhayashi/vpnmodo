@@ -232,6 +232,17 @@ def begin(cli, directory, state_root):
             if role in ids:
                 cid = ids[role]["Id"]
                 print("L2TP diagnostic:", role, "running=", ids[role]["State"]["Running"], "exit=", ids[role]["State"]["ExitCode"], "tunnel_check=", command(["docker", "exec", cid, "vpn-tunnelcheck"], required=False).returncode, flush=True)
+                if role == "vpn":
+                    import tempfile
+                    evidence=Path(tempfile.mkdtemp(prefix="vpnmodo-synthetic-startup-"))
+                    evidence.chmod(0o700)
+                    output=evidence/"startup.log"
+                    copied=command(["docker","cp",cid+":/run/vpn/lab-startup-output",str(output)],required=False)
+                    if copied.returncode==0:
+                        output.chmod(0o600)
+                        text=output.read_text(errors="replace")
+                        print("Synthetic startup flags:", {key:key in text for key in ("Cannot find device", "RTNETLINK", "IPsec did not connect", "PPP interface ppp0 did not become ready", "Connection terminated", "Starting L2TP and PPP")}, "private evidence:",str(output),flush=True)
+
         lab.close()
         raise
 
