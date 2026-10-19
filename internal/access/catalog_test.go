@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
 )
 
@@ -72,7 +73,7 @@ func TestConfigureCannotLoseOwnedSessionState(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-	b, _ := json.Marshal([]state{{Service: definition().Services[0], Directory: dir}})
+	b, _ := json.Marshal([]state{{Alias: "example", Service: definition().Services[0], Directory: dir}})
 	privatefile.Write(statePath(registry, "example"), b)
 	if Configure(ctx, registry, "example", definition()) == nil {
 		t.Fatal("live/stale ownership discarded")
@@ -123,4 +124,34 @@ func TestStopPreservesOtherAliasesAndUnrelatedListeners(t *testing.T) {
 		t.Fatal("unrelated listener stopped")
 	}
 	conn.Close()
+}
+
+func TestStopRejectsDescriptorBoundToAnotherProfileAlias(t *testing.T) {
+	registry := filepath.Join(t.TempDir(), "hosts.json")
+	ctx := context.Background()
+	if err := Configure(ctx, registry, "example", definition()); err != nil {
+		t.Fatal(err)
+	}
+	token, _ := privatefile.Token()
+	dir := "/tmp/vpnmodo-" + strconv.Itoa(os.Geteuid()) + "-" + token
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	svc := definition().Services[0]
+	descriptor := Descriptor{Alias: "other", Service: svc, Host: host.Host{Name: "vm", SSH: "192.0.2.1"}, Request: host.ProxyRequest{Profile: "other", Host: "192.0.2.10", Port: 22}}
+	data, _ := json.Marshal(descriptor)
+	privatefile.Write(filepath.Join(dir, "proxy.json"), data)
+	saveStates(registry, "example", []state{{Alias: "example", Service: svc, Directory: dir}})
+	results, err := Stop(ctx, registry, "example", "")
+	if err != nil || len(results) != 1 || results[0].Code != "stop_failed" {
+		t.Fatal("foreign binding accepted", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "proxy.json")); err != nil {
+		t.Fatal("other alias descriptor removed")
+	}
+	states, err := readStates(registry, "example")
+	if err != nil || len(states) != 1 {
+		t.Fatal("uncertain ownership discarded")
+	}
 }

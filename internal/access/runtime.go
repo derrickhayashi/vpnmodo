@@ -24,10 +24,13 @@ import (
 )
 
 type Descriptor struct {
+	Alias   string            `json:"alias"`
+	Service Service           `json:"service"`
 	Host    host.Host         `json:"vm"`
 	Request host.ProxyRequest `json:"request"`
 }
 type state struct {
+	Alias     string  `json:"alias"`
 	Service   Service `json:"service"`
 	Directory string  `json:"directory"`
 }
@@ -77,7 +80,7 @@ func readStates(registry, alias string) ([]state, error) {
 	}
 	seen := map[string]bool{}
 	for _, s := range states {
-		if s.Service.Validate() != nil || seen[s.Service.Name] {
+		if s.Alias != alias || s.Service.Validate() != nil || seen[s.Service.Name] {
 			return nil, ErrConfig
 		}
 		seen[s.Service.Name] = true
@@ -177,6 +180,10 @@ func cleanup(s state) error {
 }
 func stopOne(ctx context.Context, s state) error {
 	if checkDir(s.Directory) == nil {
+		descriptor, err := ReadDescriptor(filepath.Join(s.Directory, "proxy.json"))
+		if err != nil || descriptor.Alias != s.Alias || descriptor.Service != s.Service {
+			return ErrConfig
+		}
 		if control(ctx, s, "check") == nil {
 			if control(ctx, s, "exit") != nil {
 				return ErrConfig
@@ -252,7 +259,7 @@ func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Re
 		if current != nil {
 			descriptor, e := ReadDescriptor(filepath.Join(current.Directory, "proxy.json"))
 			expected, e2 := destination(ctx, svc)
-			if e != nil || e2 != nil || current.Service != svc || descriptor.Host != h || descriptor.Request.Profile != ref.Profile || descriptor.Request.Host != expected.Host || descriptor.Request.Port != expected.Port {
+			if e != nil || e2 != nil || current.Service != svc || descriptor.Alias != alias || descriptor.Service != svc || descriptor.Host != h || descriptor.Request.Profile != ref.Profile || descriptor.Request.Host != expected.Host || descriptor.Request.Port != expected.Port {
 				r.Code = "service_binding_changed_stop_first"
 				results = append(results, r)
 				continue
@@ -296,8 +303,8 @@ func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Re
 		if os.Mkdir(dir, 0700) != nil {
 			return results, ErrConfig
 		}
-		s := state{svc, dir}
-		data, _ := json.Marshal(Descriptor{h, request})
+		s := state{Alias: alias, Service: svc, Directory: dir}
+		data, _ := json.Marshal(Descriptor{Host: h, Request: request, Alias: alias, Service: svc})
 		if _, err = privatefile.Write(filepath.Join(dir, "proxy.json"), data); err != nil {
 			_ = os.Remove(dir)
 			return results, ErrConfig
@@ -342,6 +349,9 @@ func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Re
 	return results, nil
 }
 func Stop(ctx context.Context, registry, alias, selected string) ([]Result, error) {
+	if !profile.ValidName(alias) {
+		return nil, ErrConfig
+	}
 	if privatefile.Dir(registry+".access") != nil {
 		return nil, ErrConfig
 	}
@@ -374,6 +384,9 @@ func Stop(ctx context.Context, registry, alias, selected string) ([]Result, erro
 	return results, nil
 }
 func Status(ctx context.Context, registry, alias string) ([]Result, error) {
+	if !profile.ValidName(alias) {
+		return nil, ErrConfig
+	}
 	if privatefile.Dir(registry+".access") != nil {
 		return nil, ErrConfig
 	}
@@ -400,7 +413,7 @@ func Status(ctx context.Context, registry, alias string) ([]Result, error) {
 		for _, s := range states {
 			if s.Service.Name == svc.Name {
 				descriptor, e := ReadDescriptor(filepath.Join(s.Directory, "proxy.json"))
-				if refErr != nil || hostErr != nil || e != nil || s.Service != svc || descriptor.Host != h || descriptor.Request.Profile != ref.Profile {
+				if refErr != nil || hostErr != nil || e != nil || s.Service != svc || descriptor.Alias != alias || descriptor.Service != svc || descriptor.Host != h || descriptor.Request.Profile != ref.Profile {
 					r.Code = "service_binding_changed_stop_first"
 				} else {
 					r = inspectOne(ctx, s)
@@ -423,7 +436,7 @@ func ReadDescriptor(path string) (Descriptor, error) {
 		return d, ErrConfig
 	}
 	b, e := privatefile.Read(path, 8192)
-	if e != nil || jsonstrict.Decode(b, &d, 8192) != nil || d.Host.Validate() != nil || !profile.ValidName(d.Request.Profile) || !Endpoint(d.Request.Host) || d.Request.Port < 1 || d.Request.Port > 65535 {
+	if e != nil || jsonstrict.Decode(b, &d, 8192) != nil || d.Host.Validate() != nil || !profile.ValidName(d.Alias) || d.Service.Validate() != nil || !profile.ValidName(d.Request.Profile) || !Endpoint(d.Request.Host) || d.Request.Port < 1 || d.Request.Port > 65535 {
 		return Descriptor{}, ErrConfig
 	}
 	return d, nil
