@@ -195,68 +195,72 @@ func (a *Adapter) Verify(ctx context.Context, p profile.Profile) error {
 	return nil
 }
 func (a *Adapter) Check(ctx context.Context, p profile.Profile) (operation.HealthState, error) {
+	health, _, err := a.Access(ctx, p)
+	return health, err
+}
+func (a *Adapter) Access(ctx context.Context, p profile.Profile) (operation.HealthState, string, error) {
 	d, cs, err := a.owned(ctx, p)
 	if errors.Is(err, ErrOwnership) {
-		return operation.HealthOwnerConflict, nil
+		return operation.HealthOwnerConflict, "", nil
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	c := cs["vpn"]
 	if c.ID == "" {
 		if d == nil {
-			return operation.HealthStopped, nil
+			return operation.HealthStopped, "", nil
 		}
-		return operation.HealthTunnelDown, nil
+		return operation.HealthTunnelDown, "", nil
 	}
 	if c.State.Paused || c.State.Restarting {
-		return operation.HealthUnavailable, nil
+		return operation.HealthUnavailable, "", nil
 	}
 	if !c.State.Running {
 		if c.State.ExitCode == 0 && !c.State.OOMKilled {
-			return operation.HealthStopped, nil
+			return operation.HealthStopped, "", nil
 		}
-		return operation.HealthTunnelDown, nil
+		return operation.HealthTunnelDown, "", nil
 	}
 	ok, err := a.tunnel(ctx, c)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if !ok {
 		_, ready := a.exec(ctx, c, "test", "-f", "/run/vpn/ready")
 		if ready != nil && time.Since(c.State.StartedAt) < 150*time.Second {
-			return operation.HealthStarting, nil
+			return operation.HealthStarting, "", nil
 		}
-		return operation.HealthTunnelDown, nil
+		return operation.HealthTunnelDown, "", nil
 	}
 	if _, err = a.exec(ctx, c, "/usr/local/bin/vpn-servicecheck"); err != nil {
-		return operation.HealthServiceUnavailable, nil
+		return operation.HealthServiceUnavailable, "", nil
 	}
 	app := cs["application"]
 	if app.ID == "" {
-		return operation.HealthDetached, nil
+		return operation.HealthDetached, "", nil
 	}
 	if !app.State.Running {
 		if app.State.ExitCode == 0 && !app.State.OOMKilled {
-			return operation.HealthStopped, nil
+			return operation.HealthStopped, "", nil
 		}
-		return operation.HealthDetached, nil
+		return operation.HealthDetached, "", nil
 	}
 	vpnNet, err := a.exec(ctx, c, "readlink", "/proc/self/ns/net")
 	if err != nil {
-		return "", ErrRuntime
+		return "", "", ErrRuntime
 	}
 	appNet, err := a.exec(ctx, app, "readlink", "/proc/self/ns/net")
 	if err != nil {
-		return "", ErrRuntime
+		return "", "", ErrRuntime
 	}
 	if !namespacePattern.MatchString(strings.TrimSpace(string(vpnNet))) || !namespacePattern.MatchString(strings.TrimSpace(string(appNet))) {
-		return "", ErrRuntime
+		return "", "", ErrRuntime
 	}
 	if string(vpnNet) != string(appNet) {
-		return operation.HealthDetached, nil
+		return operation.HealthDetached, "", nil
 	}
-	return operation.HealthHealthy, nil
+	return operation.HealthHealthy, app.ID, nil
 }
 func (a *Adapter) CanRecover(p profile.Profile) bool { return a.Supports(p.Backend.Type) }
 func (a *Adapter) Quiesce(ctx context.Context, p profile.Profile) error {

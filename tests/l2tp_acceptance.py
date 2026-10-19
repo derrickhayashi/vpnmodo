@@ -22,6 +22,9 @@ class Lab:
         self.profile_created = False
 
     def close(self):
+        if getattr(self, "services", None):
+            self.services.close()
+            self.services = None
         if self.profile_created:
             self.cli("connection", "disconnect", NAME, "--wait", "--json", required=False)
         if self.created:
@@ -210,6 +213,9 @@ def begin(cli, directory, state_root):
             last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
             lab.namespaces()
         print("PASS: idle-sleep TERM cleans the peer within Docker's stop budget, and three fresh reconnects work", flush=True)
+        from service_acceptance import ServiceLab
+        lab.services = ServiceLab(cli, directory, lab)
+        lab.services.begin()
         lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
         return lab
     except Exception:
@@ -234,6 +240,8 @@ def after_restart(cli, state_root, lab):
     lab.wait(lambda c: c["observed"] == "connected" and c["recovery_enabled"])
     assert lab.ids()["vpn"]["Id"] == lab.vpn_before_restart
     lab.namespaces()
+    lab.services.after_restart()
+    lab.services = None
     last_json(cli("connection", "disconnect", NAME, "--wait", "--json"))
     assert not list((state_root / "deployments" / NAME / "credentials").glob("*/*"))
     # The gateway is a test resource using the managed network; remove it before

@@ -33,30 +33,31 @@ func (server APIVersion) Compatible(client APIVersion) bool {
 type Method string
 
 const (
-	Hello                Method = "system.hello"
-	SystemStatus         Method = "system.status"
-	BackendList          Method = "backend.list"
-	BackendDescribe      Method = "backend.describe"
-	ProfileCreate        Method = "profile.create"
-	ProfileList          Method = "profile.list"
-	ProfileInspect       Method = "profile.inspect"
-	ProfileUpdate        Method = "profile.update"
-	CredentialRotate     Method = "profile.rotate_credentials"
-	ProfileDelete        Method = "profile.delete"
-	ConnectionEnsure     Method = "connection.ensure"
-	ConnectionStatus     Method = "connection.status"
-	ConnectionDisconnect Method = "connection.disconnect"
-	OperationStatus      Method = "operation.status"
-	OperationSubscribe   Method = "operation.subscribe"
-	OperationCancel      Method = "operation.cancel"
-	OperationSubmitMFA   Method = "operation.submit_mfa"
-	Doctor               Method = "system.doctor"
-	OperationChanged     Method = "operation.changed"
+	Hello                 Method = "system.hello"
+	SystemStatus          Method = "system.status"
+	BackendList           Method = "backend.list"
+	BackendDescribe       Method = "backend.describe"
+	ProfileCreate         Method = "profile.create"
+	ProfileList           Method = "profile.list"
+	ProfileInspect        Method = "profile.inspect"
+	ProfileUpdate         Method = "profile.update"
+	CredentialRotate      Method = "profile.rotate_credentials"
+	ProfileDelete         Method = "profile.delete"
+	ConnectionEnsure      Method = "connection.ensure"
+	ConnectionStatus      Method = "connection.status"
+	ConnectionApplication Method = "connection.application"
+	ConnectionDisconnect  Method = "connection.disconnect"
+	OperationStatus       Method = "operation.status"
+	OperationSubscribe    Method = "operation.subscribe"
+	OperationCancel       Method = "operation.cancel"
+	OperationSubmitMFA    Method = "operation.submit_mfa"
+	Doctor                Method = "system.doctor"
+	OperationChanged      Method = "operation.changed"
 )
 
 func (m Method) Known() bool {
 	switch m {
-	case Hello, SystemStatus, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionStatus, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
+	case Hello, SystemStatus, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionStatus, ConnectionApplication, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
 		return true
 	default:
 		return false
