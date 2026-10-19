@@ -4,7 +4,10 @@ Status: discussion captured for implementation review, 2026-10-19.
 The v1 profile, protocol and operation implementation is tracked in issue #2.
 Controller/profile/lifecycle management and managed L2TP/XAuth are implemented
 in the private stage branches. Workstation [service access and diagnostics](design/007-service-access.md)
-are implemented in the next private feature stage; release packaging remains subsequent. See
+are implemented. Private release packaging supplies candidate artifacts;
+ARM64 bundle and protocol acceptance pass, along with real adoption/cutover.
+Packaging review remains in #20; legacy rollback testing is outside release
+scope. See the [validation record](release-validation.md) and
 [v1 profiles, protocol and operations](design/001-v1-model.md)
 for the initial scope, ownership and lifecycle defaults selected for implementation.
 
@@ -257,7 +260,7 @@ controller. The following defaults are recommendations, not yet user decisions:
 | Decision | Recommended initial behavior |
 | --- | --- |
 | Backend scope | L2TP/IPsec and IPsec/XAuth first; decide whether Tailscale must ship with v1. |
-| Supported systems | macOS arm64/amd64 workstation, Ubuntu LTS VM amd64/arm64; add Linux workstation/Windows only if required. Pin tested Ubuntu versions before release. |
+| Supported systems | Agreed first-release qualification: macOS arm64 workstation and Ubuntu 24.04 arm64 VM. Intel/amd64 native testing is outside the release gate; cross-built artifacts remain unvalidated on native Intel hardware. |
 | Profile authority | VM is authoritative for managed VPN configuration and credentials. Workstation keeps host/profile references and local forward bindings. No automatic bidirectional file synchronization. |
 | Lifecycle policy | SSH loss leaves operations running; MFA expires normally. On controller restart reconcile established sessions and mark interrupted logins as requiring explicit retry. Fresh authentication is not silently triggered by reboot. |
 | Changes and deletion | Reject active-profile configuration changes by default; require explicit disconnect/apply. Disconnect preserves credentials. Delete requires a separate explicit operation and reports credential disposal. |
@@ -271,8 +274,9 @@ engineering decisions to record in the design, not additional user prerequisites
 The proposed small-stack candidates are jrpc2, bbolt and the Go standard library.
 
 Existing-deployment compatibility/adoption and mandatory XAuth fail-closed
-behavior are now agreed above. The remaining product scope choices are supported
-platforms and first-release backend coverage. Profile authority, lifecycle and
+behavior are now agreed above, along with the ARM64 release qualification scope.
+The remaining product scope choice is first-release backend coverage.
+Profile authority, lifecycle and
 forward-configuration defaults above remain recommendations to settle in the
 design. Implementation can begin with schemas and the controller skeleton.
 
@@ -293,8 +297,9 @@ design. Implementation can begin with schemas and the controller skeleton.
    Validate the complete path from installation to profile creation, connection,
    local service use and disconnect in a synthetic lab. Verify a legacy deployment
    remains operational alongside the new controller and exercise explicit adoption
-   and rollback using synthetic settings. Live customer-network
-   acceptance is separate and requires its own authorized deployment context.
+   using synthetic settings. Legacy rollback testing is outside the agreed release
+   scope. Live customer-network acceptance is separate and requires its own
+   authorized deployment context.
 
 For release, verify no secret values appear in protocol responses, error output,
 logs, CLI arguments or operation records. Credentials must remain usable only at

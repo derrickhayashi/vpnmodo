@@ -483,7 +483,7 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 		}
 		c := cs["vpn"]
 		if c.ID == "" || !c.State.Running {
-			if p.Backend.Type == profile.XAuth && c.ID != "" && c.State.ExitCode == 2 {
+			if p.Backend.Type == profile.XAuth && c.ID != "" && (c.State.ExitCode == 2 || c.State.ExitCode >= 20 && c.State.ExitCode <= 31) {
 				return lifecycle.ErrAuthentication
 			}
 			return ErrRuntime
@@ -525,6 +525,13 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 			}
 		}
 		if ok, err := a.tunnel(ctx, c); err != nil {
+			if p.Backend.Type == profile.XAuth {
+				_, latest, observeErr := a.owned(ctx, p)
+				stopped := latest["vpn"]
+				if observeErr == nil && stopped.ID == c.ID && !stopped.State.Running && (stopped.State.ExitCode == 2 || stopped.State.ExitCode >= 20 && stopped.State.ExitCode <= 31) {
+					return lifecycle.ErrAuthentication
+				}
+			}
 			return err
 		} else if ok {
 			return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,7 @@ import (
 )
 
 type fakeDocker struct {
+	exitDuringProbe int
 	authState       string
 	codeAccepted    bool
 	repeatChallenge bool
@@ -68,6 +70,13 @@ func (f *fakeDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 		case "/usr/local/bin/vpn-auth-state":
 			return []byte(f.authState), nil
 		case "/usr/local/bin/vpn-tunnelcheck":
+			if f.codeAccepted && f.exitDuringProbe != 0 {
+				c := f.containers[args[1]]
+				c.State.Running = false
+				c.State.ExitCode = f.exitDuringProbe
+				f.containers[c.ID] = c
+				return nil, commandError{137}
+			}
 			if !f.tunnel {
 				return nil, commandError{1}
 			}
@@ -507,5 +516,33 @@ func TestApplicationRepairCannotReconcileVPNService(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("missing application create")
+	}
+}
+
+func TestXAuthContainerExitDuringProbeKeepsAuthenticationClassification(t *testing.T) {
+	for _, code := range []int{2, 22, 27, 99} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			a, f, store, p := setup(t)
+			if err := a.EnableXAuth(""); err != nil {
+				t.Fatal(err)
+			}
+			p.Name = "xauth-exit-example"
+			p.Backend = profile.Backend{Type: profile.XAuth, XAuth: &profile.XAuthConfig{Server: "192.0.2.1"}}
+			_, err := store.Create(context.Background(), p, profile.Credentials{Username: secret.New("synthetic-user"), Password: secret.New("synthetic-password"), PSK: secret.New("synthetic-shared")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.authState = "mfa"
+			f.tunnel = false
+			f.exitDuringProbe = code
+			err = a.Connect(context.Background(), p, func(context.Context) (secret.Value, error) { return secret.New("9876543210"), nil })
+			expected := lifecycle.ErrAuthentication
+			if code == 99 {
+				expected = ErrRuntime
+			}
+			if !errors.Is(err, expected) {
+				t.Fatalf("expected %v, got %v", expected, err)
+			}
+		})
 	}
 }

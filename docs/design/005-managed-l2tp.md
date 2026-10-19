@@ -21,11 +21,13 @@ are `vpnmodo-l2tp:dev` and `alpine:3.22` for the application namespace. Routine
 connect/recovery uses `--pull never`; it never builds, pulls, provisions the VM or
 changes unrelated deployments. The application currently supplies a namespace and
 local VPN DNS resolver configuration; named workstation forwards come in #8.
-Image publication, release pinning/checksums and upgrades remain #9. Manual
+Private [candidate bundles](../releases.md) supply offline image pinning/checksums
+and explicit controller upgrades; the final adoption/platform gate remains #9. Manual
 controller deployments may set `VPNMODO_L2TP_IMAGE` and
 `VPNMODO_APPLICATION_IMAGE`; image references are operator configuration and are
-not accepted through profile JSON. Workstation bootstrap uses the development
-image defaults in this stage.
+not accepted through profile JSON. Development controller builds retain those defaults. Release controller images
+bake exact backend/application image IDs; workstation bootstrap preserves the
+selected image's baked defaults.
 
 ## Ownership and lifecycle
 

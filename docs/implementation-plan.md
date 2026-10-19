@@ -139,11 +139,14 @@ Dependencies: 5, 6, 7.
 
 Deliver supported CLI binaries and controller images with pinned release identity,
 checksums, upgrade instructions, legacy-to-managed adoption/cutover/rollback guide,
-and lab acceptance evidence. Acceptance: fresh onboarding works on the supported
-matrix; a legacy deployment continues working beside the controller; explicit
-adoption and rollback work with synthetic credentials and fresh MFA when needed;
+and lab acceptance evidence. The agreed qualification targets are macOS arm64
+and Ubuntu 24.04 arm64; Intel/amd64 native testing is outside the release gate.
+Acceptance: fresh onboarding works on those targets; a legacy deployment
+continues working beside the controller; explicit
+adoption works with securely provisioned credentials and fresh MFA when needed;
 controller upgrades preserve VPN containers/state; no legacy layout importer or
-VM creation integration is required.
+VM creation integration is required. Real ARM64 adoption/cutover has passed;
+legacy rollback testing is excluded from the agreed release scope.
 
 ## Release gate
 

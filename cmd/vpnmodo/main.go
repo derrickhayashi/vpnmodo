@@ -32,7 +32,7 @@ func run(base context.Context, args []string, output io.Writer) error {
 		return proxyCommand(base, args)
 	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME --image IMAGE [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo profile help\n       vpnmodo connection {ensure|disconnect|status} ALIAS [--wait] [--json]\n       vpnmodo operation {status|cancel|watch} ID --host HOST [--json]\n       vpnmodo operation submit-mfa ID --host HOST --challenge ID [--code-stdin] [--json]\n       vpnmodo service {configure|start|stop|status} ALIAS [--file FILE] [--service NAME] [--json]\n       vpnmodo {up|down|status|doctor} ALIAS [--json]\n       vpnmodo version")
+		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE] [--sudo]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME {--image IMAGE | --release INSTALLED.json} [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo profile help\n       vpnmodo connection {ensure|disconnect|status} ALIAS [--wait] [--json]\n       vpnmodo operation {status|cancel|watch} ID --host HOST [--json]\n       vpnmodo operation submit-mfa ID --host HOST --challenge ID [--code-stdin] [--json]\n       vpnmodo service {configure|start|stop|status} ALIAS [--file FILE] [--service NAME] [--json]\n       vpnmodo {up|down|status|doctor} ALIAS [--json]\n       vpnmodo [--config FILE] proxy ALIAS HOST PORT\n       vpnmodo version")
 		return nil
 	}
 	root := flag.NewFlagSet("vpnmodo", flag.ContinueOnError)
@@ -45,6 +45,9 @@ func run(base context.Context, args []string, output io.Writer) error {
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintln(output, version)
 		return nil
+	}
+	if len(args) > 0 && args[0] == "proxy" {
+		return streamCommand(base, *registry, args, os.Stdin, output)
 	}
 	if len(args) > 0 && (args[0] == "service" || args[0] == "up" || args[0] == "down" || args[0] == "status" || args[0] == "doctor") {
 		if *registry == "" {
@@ -101,7 +104,9 @@ func run(base context.Context, args []string, output io.Writer) error {
 	flags.SetOutput(io.Discard)
 	target := flags.String("ssh", "", "")
 	config := flags.String("ssh-config", "", "")
+	sudo := flags.Bool("sudo", false, "")
 	image := flags.String("image", "", "")
+	release := flags.String("release", "", "")
 	replace := flags.Bool("replace", false, "")
 	machine := flags.Bool("json", false, "")
 	if flags.Parse(args[3:]) != nil || flags.NArg() != 0 {
@@ -109,10 +114,10 @@ func run(base context.Context, args []string, output io.Writer) error {
 	}
 	switch args[1] {
 	case "add":
-		if *image != "" || *replace {
+		if *image != "" || *release != "" || *replace {
 			return errors.New("setup options are invalid for host registration")
 		}
-		if err := host.Add(*registry, host.Host{Name: name, SSH: *target, SSHConfig: *config}); err != nil {
+		if err := host.Add(*registry, host.Host{Name: name, SSH: *target, SSHConfig: *config, Sudo: *sudo}); err != nil {
 			return err
 		}
 		if *machine {
@@ -124,7 +129,9 @@ func run(base context.Context, args []string, output io.Writer) error {
 		fmt.Fprintln(output, "Registered host:", name)
 		return nil
 	case "check", "setup":
-		if *target != "" || *config != "" {
+		sudoOption := false
+		flags.Visit(func(f *flag.Flag) { sudoOption = sudoOption || f.Name == "sudo" })
+		if *target != "" || *config != "" || sudoOption {
 			return errors.New("update the registered host separately")
 		}
 		h, err := host.Find(*registry, name)
@@ -134,13 +141,24 @@ func run(base context.Context, args []string, output io.Writer) error {
 		duration := 20 * time.Second
 		if args[1] == "setup" {
 			duration = 4 * time.Minute
-		} else if *image != "" || *replace {
+		} else if *image != "" || *release != "" || *replace {
 			return errors.New("setup options are invalid for host check")
 		}
 		ctx, cancel := context.WithTimeout(base, duration)
 		defer cancel()
 		if args[1] == "setup" {
-			result, err := host.Setup(ctx, h, host.SetupParams{Image: *image, Replace: *replace})
+			params := host.SetupParams{Image: *image, Replace: *replace}
+			if *release != "" {
+				if *image != "" {
+					return errors.New("choose an image or an installed release file")
+				}
+				loaded, err := host.ReadInstalledRelease(*release)
+				if err != nil {
+					return err
+				}
+				params.Image, params.BackendImages = loaded.ControllerImage, loaded.BackendImages
+			}
+			result, err := host.Setup(ctx, h, params)
 			if err != nil {
 				return err
 			}

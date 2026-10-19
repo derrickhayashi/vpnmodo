@@ -75,6 +75,16 @@ MFA failure/expiry/repetition and controller restart. Only the test binary short
 the MFA window to 45 seconds; production keeps its normal deadline. The quiet
 session interval exceeds 90 seconds while controller probes are paused.
 
+A separate packet regression creates fresh kernel ESP/NAT-T peers across a
+1280-byte routed bottleneck. It compares the legacy unfiltered path, a managed
+filter missing PMTU feedback, the locked-route workaround, and the corrected
+filter with and without a route MTU override. Each working path must transfer
+256 KiB in both directions. Counter checks require conntrack-related ICMP
+fragmentation-needed feedback to arrive and be accepted by the correction.
+Unrelated forged ICMP remains dropped. Plaintext TCP/UDP, unprivileged IKE-port
+UDP and traffic after IPsec policy loss remain blocked, with reachable unfiltered
+positive controls. No customer profiles or packet payload captures are used.
+
 The synthetic observer runs the tcpdump binary under a lab-specific executable
 path. Ubuntu's host tcpdump AppArmor attachment otherwise prevents the nested
 container's helper from signalling it, even with a container unconfined setting.
@@ -113,17 +123,28 @@ startup output to a private runtime file. On failure, the harness retains that
 synthetic evidence outside the checkout and prints only allowlisted flags.
 Production images and logs retain their existing behavior.
 
+The packaged production-image onboarding subset and compatible controller
+upgrade rehearsal are described in the [release guide](../../docs/releases.md).
+Its [validation record](../../docs/release-validation.md) distinguishes tested
+architectures from cross-builds and the remaining adoption gate. The full default
+backend suite is unchanged.
+
 ## Current validation
 
 The complete production controller Dockerfile also builds successfully on the
 local ARM64 VM. Go race tests and vet pass; the CLI cross-builds for macOS/Linux
 arm64/amd64 and the controller for Linux arm64/amd64.
 
-The default full runner completes with exit 0 at runtime revision `6c5181a`,
+The default full runner completes with exit 0 at revision `990dc2fe7cae`,
 including real L2TP/XAuth service access, both SSH hops, port-conflict/partial
 results, missing VM/destination Python diagnosis, strict destination key/auth
 refusal, master crash recovery and controller-preserving forwarding. Composed
 XAuth JSON `up` handles a fresh real challenge through separate code submission.
+The current XAuth checks also require 256 KiB each way without route MTU/MSS
+overrides after fresh authentication, authenticated CHILD replacement and
+controller recreation. The payload probe runs before service teardown explicitly
+disconnects the VPN. Fresh full-production bundle build/load and packaged
+onboarding/upgrade acceptance also pass; see the validation record above.
 
 A native macOS arm64 workstation smoke check also passes verified SSH forwarding,
 real private HTTP traffic, live doctor, owned teardown and explicit VPN reconnect
@@ -174,3 +195,11 @@ observer is stopped and reaped after its phase; it holds no VPN namespace
 reference. Avoid external nsenter captures in a dynamic VPN namespace: they can
 retain a retired namespace and change reconnect behavior. Keep all captures and
 runtime diagnostics outside the checkout.
+
+The focused PMTU regression passes on Ubuntu 24.04 ARM64: removing the ICMP
+exception causes an eight-second transfer timeout and drops all 16 observed
+fragmentation-needed errors. The correction accepts the related feedback and
+completes 256 KiB each way without a route MTU or MSS override. The locked-route
+workaround also passes. Unrelated ICMP and every protected plaintext/post-policy
+probe remain blocked. This packet fixture does not authenticate to a real VPN or
+establish that a full protocol/lifetime suite passed at this revision.

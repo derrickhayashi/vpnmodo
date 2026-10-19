@@ -42,10 +42,13 @@ def inspect(kind, name):
 
 
 def setup(params):
-    if set(params) != {"image", "replace"} or type(params["replace"]) is not bool:
+    if not {"image", "replace"}.issubset(params) or set(params) - {"image", "replace", "backend_images"} or type(params["replace"]) is not bool:
         raise SetupError("input")
     image = params["image"]
     if not isinstance(image, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._/:@-]{0,254}", image):
+        raise SetupError("input")
+    backends = params.get("backend_images")
+    if backends is not None and (not isinstance(backends, dict) or set(backends) != {"l2tp", "xauth", "application"} or any(not isinstance(v, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", v) for v in backends.values())):
         raise SetupError("input")
     if json.loads(docker("info", "--format", "{{json .OSType}}")) != "linux":
         raise SetupError("prerequisites")
@@ -81,12 +84,19 @@ def activate(params, root, state):
         desired = inspect("image", image)
     if desired is None:
         raise SetupError("image")
+    overrides = {}
+    for role, image_id in params.get("backend_images", {}).items():
+        backend = inspect("image", image_id)
+        if backend is None or backend.get("Id") != image_id:
+            raise SetupError("image")
+        overrides["VPNMODO_" + role.upper() + "_IMAGE"] = image_id
     socket = SOCKET
     if existing:
         mounts = existing.get("Mounts") or []
         if not any(m.get("Type") == "bind" and m.get("Source") == str(root) and m.get("Destination") == str(root) for m in mounts):
             raise SetupError("ownership")
-        changed = existing["Image"] != desired["Id"]
+        current_env = existing["Config"].get("Env") or []
+        changed = existing["Image"] != desired["Id"] or any(k + "=" + v not in current_env for k, v in overrides.items())
         if changed and not params["replace"]:
             raise SetupError("replace_required")
         if not params["replace"]:
@@ -106,7 +116,7 @@ def activate(params, root, state):
         "cap_drop": ["ALL"],
         "security_opt": ["no-new-privileges:true"],
         "tmpfs": [f"/run/vpnmodo:rw,noexec,nosuid,nodev,mode=0700,uid={os.getuid()},gid={os.getgid()}"],
-        "environment": {"VPNMODO_STATE_DIR": str(state)},
+        "environment": {"VPNMODO_STATE_DIR": str(state), **overrides},
         "volumes": [
             {"type": "bind", "source": socket, "target": socket, "bind": {"create_host_path": False}},
             {"type": "bind", "source": str(root), "target": str(root), "bind": {"create_host_path": False}},

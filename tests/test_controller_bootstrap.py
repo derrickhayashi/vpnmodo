@@ -94,3 +94,16 @@ class ControllerBootstrapTests(unittest.TestCase):
         self.root.symlink_to(self.home, target_is_directory=True)
         with self.assertRaisesRegex(bootstrap.SetupError, "storage"):
             bootstrap.setup(self.params)
+
+    def test_destination_local_backend_ids_are_written_to_controller(self):
+        self.params['backend_images'] = {role:self.image['Id'] for role in ('l2tp','xauth','application')}
+        self.assertTrue(bootstrap.setup(self.params)['ok'])
+        service = json.loads((self.root/'controller.compose.json').read_text())['services']['controller']
+        for role in ('L2TP','XAUTH','APPLICATION'):
+            self.assertEqual(service['environment']['VPNMODO_'+role+'_IMAGE'], self.image['Id'])
+
+    def test_new_backend_defaults_require_explicit_replacement(self):
+        self.existing = self.owned()
+        self.params['backend_images'] = {role:self.image['Id'] for role in ('l2tp','xauth','application')}
+        with self.assertRaisesRegex(bootstrap.SetupError,'replace_required'):
+            bootstrap.setup(self.params)

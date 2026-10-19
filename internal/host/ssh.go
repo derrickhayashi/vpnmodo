@@ -32,6 +32,9 @@ func SSHArgs(h Host, command string) ([]string, error) {
 	if h.SSHConfig != "" {
 		args = append(args, "-F", h.SSHConfig)
 	}
+	if h.Sudo {
+		command = "sudo -n -- " + command
+	}
 	return append(args, "--", h.SSH, command), nil
 }
 
@@ -88,8 +91,9 @@ func Connect(ctx context.Context, h Host) (*rpcio.Client, error) {
 }
 
 type SetupParams struct {
-	Image   string `json:"image"`
-	Replace bool   `json:"replace"`
+	Image         string            `json:"image"`
+	Replace       bool              `json:"replace"`
+	BackendImages map[string]string `json:"backend_images,omitempty"`
 }
 type SetupResult struct {
 	OK     bool   `json:"ok"`
@@ -100,7 +104,7 @@ type SetupResult struct {
 var imagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._/:@-]{0,254}$`)
 
 func Setup(ctx context.Context, h Host, params SetupParams) (SetupResult, error) {
-	if !imagePattern.MatchString(params.Image) {
+	if !imagePattern.MatchString(params.Image) || !validBackendImages(params.BackendImages) {
 		return SetupResult{}, errors.New("supply a valid controller image reference")
 	}
 	// Only the embedded program enters the remote shell command. All operator

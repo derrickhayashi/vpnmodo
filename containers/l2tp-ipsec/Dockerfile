@@ -27,3 +27,7 @@ RUN chmod 0755 \
         /usr/local/bin/vpn-healthcheck /usr/local/bin/vpn-tunnelcheck /usr/local/bin/vpn-servicecheck
 
 ENTRYPOINT ["/usr/local/sbin/docker-entrypoint.sh"]
+
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.version=$VERSION org.opencontainers.image.revision=$REVISION

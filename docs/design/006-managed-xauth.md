@@ -71,6 +71,13 @@ cannot use that exception: their UID is unprivileged and they lack raw-socket
 capability. Managed `charon-cmd` explicitly binds those ports instead of its default
 ephemeral ports. No ordinary DNS or arbitrary peer TCP/UDP exception exists.
 
+Inbound IPv4 ICMP fragmentation-needed errors are accepted only when conntrack
+classifies their quoted flow as RELATED. This permits path MTU discovery for
+ESP/NAT-T across smaller routed links. Unrelated ICMP remains dropped; this adds
+no general RELATED exception or outbound plaintext permission. No fixed route
+MTU or MSS override is installed by this correction. Existing legacy entrypoints
+are unchanged.
+
 IPv6 is disabled for all/default interfaces and its filter policies drop traffic.
 Loopback egress is limited to 127.0.0.1, excluding Docker's embedded resolver at
 127.0.0.11. An optional XAuth `dns` list names IPv4 VPN resolvers; local dnsmasq
