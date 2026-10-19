@@ -201,6 +201,7 @@ def begin(cli, directory, state_root, bridge, cli_args):
         finally:
             command(["docker", "exec", cid, "vpn-enforce"])
         lab.capture("waiting-mfa", lab.probes)
+        command(["docker", "exec", cid, "vpn-enforce", "check"])
         cli("operation", "submit-mfa", challenge["id"], "--host", "example", "--challenge", challenge["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
         lab.wait_operation(challenge["id"], "succeeded")
         ids = lab.ids()

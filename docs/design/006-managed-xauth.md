@@ -74,7 +74,8 @@ resolver file pointing to 127.0.0.1. This fixed nonsecret file is mode 0444 for 
 workload UID; its host parent remains 0700. Credentials remain 0600.
 
 Enforcement verification compares the complete filter rules with their installed
-digest, omitting `iptables-save` timestamp comments and mutable packet counters.
+digest, using `iptables -S`/`ip6tables -S` so timestamps and mutable chain/rule
+counters are excluded.
 This detects accidental filter changes before attachment and during checks. The
 VM user/root/Docker administrators remain trusted; they can alter namespaces and
 are outside this isolation boundary.

@@ -5,7 +5,7 @@ case "$VPN_SERVER" in ''|*[!0-9.]*) exit 1;; esac
 test "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" = 1
 test "$(cat /proc/sys/net/ipv6/conf/default/disable_ipv6)" = 1
 if [ "${1:-}" = check ]; then
-    (iptables-save -t filter; ip6tables-save -t filter) | sed '/^#/d' | sha256sum | cmp -s - /run/vpn/enforcement.sha256
+    (iptables -t filter -S; ip6tables -t filter -S) | sha256sum | cmp -s - /run/vpn/enforcement.sha256
     exit $?
 fi
 # Loopback egress is limited to 127.0.0.1: Docker's embedded resolver at
@@ -37,5 +37,5 @@ ip6tables-restore <<'RULES'
 :OUTPUT DROP [0:0]
 COMMIT
 RULES
-(iptables-save -t filter; ip6tables-save -t filter) | sed '/^#/d' | sha256sum > /run/vpn/enforcement.sha256
+(iptables -t filter -S; ip6tables -t filter -S) | sha256sum > /run/vpn/enforcement.sha256
 vpn-enforce check
