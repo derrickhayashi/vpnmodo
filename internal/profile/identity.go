@@ -1,4 +1,4 @@
-package contract
+package profile
 
 const (
 	ManagerLabel = "io.vpnmodo.managed-by"

@@ -1,4 +1,4 @@
-package contract
+package protocol
 
 import (
 	"bytes"
@@ -9,6 +9,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
 )
 
 func assertRPC(t *testing.T, err error, code ErrorCode) {
@@ -133,10 +136,10 @@ func TestResponseAndNotificationEnvelopes(t *testing.T) {
 	if _, err := EncodeResult(nil, true); err == nil {
 		t.Fatal("invalid response ID")
 	}
-	if _, err := EncodeResult(json.RawMessage(`1`), NewSecret("synthetic-sensitive")); err == nil {
+	if _, err := EncodeResult(json.RawMessage(`1`), secret.New("synthetic-sensitive")); err == nil {
 		t.Fatal("secret in result")
 	}
-	event, err := EncodeOperationChanged(testOperation(Queued))
+	event, err := EncodeOperationChanged(testOperation(operation.Queued))
 	if err != nil {
 		t.Fatal(err)
 	}

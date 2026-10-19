@@ -1,8 +1,9 @@
 # vpnmodo implementation requirements
 
 Status: discussion captured for implementation review, 2026-10-19.
-The v1 contract implementation is tracked in issue #2; controller runtime
-functionality is not implemented yet. See [v1 contracts and ownership](design/001-v1-contracts.md)
+The v1 profile, protocol and operation implementation is tracked in issue #2.
+Controller runtime functionality is not implemented yet. See
+[v1 profiles, protocol and operations](design/001-v1-model.md)
 for the initial scope, ownership and lifecycle defaults selected for implementation.
 
 ## Goal and deployment model

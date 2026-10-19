@@ -1,4 +1,5 @@
-package contract
+// Package protocol defines versioned JSON-RPC messages and stream framing.
+package protocol
 
 import (
 	"bytes"
@@ -9,6 +10,8 @@ import (
 	"sync/atomic"
 
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 )
 
 const JSONRPCVersion = "2.0"
@@ -105,9 +108,9 @@ type HelloParams struct {
 	API APIVersion `json:"api"`
 }
 type HelloResult struct {
-	API               APIVersion    `json:"api"`
-	ControllerVersion string        `json:"controller_version"`
-	Backends          []BackendType `json:"backends"`
+	API               APIVersion            `json:"api"`
+	ControllerVersion string                `json:"controller_version"`
+	Backends          []profile.BackendType `json:"backends"`
 }
 
 func DecodeHello(data []byte) (HelloParams, error) {
@@ -253,14 +256,14 @@ type OperationParams struct {
 
 func DecodeProfileParams(data []byte) (ProfileParams, error) {
 	var p ProfileParams
-	if decodeParams(data, &p) != nil || !ValidName(p.Profile) {
+	if decodeParams(data, &p) != nil || !profile.ValidName(p.Profile) {
 		return ProfileParams{}, NewRPCError(CodeInvalidParams)
 	}
 	return p, nil
 }
 func DecodeOperationParams(data []byte) (OperationParams, error) {
 	var p OperationParams
-	if decodeParams(data, &p) != nil || !operationID.MatchString(p.OperationID) {
+	if decodeParams(data, &p) != nil || !operation.ValidID(p.OperationID) {
 		return OperationParams{}, NewRPCError(CodeInvalidParams)
 	}
 	return p, nil

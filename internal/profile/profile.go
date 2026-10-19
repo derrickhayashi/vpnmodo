@@ -1,6 +1,6 @@
-// Package contract defines the v1 domain and wire contracts shared by vpnmodo
-// and its controller. It performs no filesystem, Docker, or network operations.
-package contract
+// Package profile defines backend-specific VPN settings, credential validation
+// and managed deployment identities without transport or runtime side effects.
+package profile
 
 import (
 	"encoding/json"

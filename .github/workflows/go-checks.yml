@@ -1,4 +1,4 @@
-name: Go contracts
+name: Go checks
 
 on: [push, pull_request]
 
@@ -24,7 +24,7 @@ jobs:
         run: test -z "$(gofmt -l internal)"
       - name: Vet
         run: go vet ./...
-      - name: Race and contract tests
+      - name: Race and unit tests
         run: go test -race ./...
       - name: Compile packages for target architectures
         if: runner.os == 'Linux'

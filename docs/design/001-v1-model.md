@@ -1,8 +1,24 @@
-# V1 contracts and ownership
+# V1 profiles, protocol and operation model
 
 Status: implementation baseline for issue #2. Runtime work remains in subsequent
 issues. This document records defaults selected from the requirements so those
 issues have a concrete interface to implement.
+
+## Package ownership
+
+| Package | Responsibility |
+| --- | --- |
+| `internal/profile` | Backend-specific settings, credential validation and managed deployment identities |
+| `internal/protocol` | JSON-RPC requests/responses, wire operation snapshots, MFA input and framing |
+| `internal/operation` | Lifecycle states, transitions and operation/challenge identity rules |
+| `internal/secret` | Shared redacted values with explicit transport encoding |
+| `internal/jsonstrict` | Bounded, exact-shape JSON parsing |
+
+`protocol` depends on the domain packages. `profile` and `operation` do not depend
+on RPC types; in particular, RPC errors belong to wire snapshots in `protocol`.
+`secret` and `jsonstrict` are focused shared helpers. There is no catch-all
+`contract` package. JSON field names, method names and validation behavior stay
+unchanged by this package split.
 
 ## Scope and build targets
 
@@ -61,8 +77,9 @@ line-based backend credential files. The encoded create payload must also fit th
 64 KiB limit. Credentials travel via hidden prompts or protected stdin/file
 descriptors, never flags/environment variables. No guided creation wizard.
 
-The `Secret` type redacts fmt formatting and refuses normal JSON encoding.
-Only explicit credential/MFA transport encoders release secret strings to bytes.
+The `secret.Value` type redacts fmt formatting and refuses normal JSON encoding.
+Only explicit transport encoders release secret strings to bytes; secret checks
+use predicates that must not retain or log plaintext.
 Raw wire bytes remain sensitive: never log, dump or persist them. Go cannot
 guarantee memory erasure, and wrapping a value does not protect arbitrary strings
 or external logger/reflection integrations. Runtime logging must allowlist fields.
@@ -194,7 +211,7 @@ XAuth is released through the new controller. Legacy instances are unchanged.
 This stage uses only the Go standard library. `encoding/json` defaults accept
 case-insensitive struct keys and duplicate members, so trust-boundary decoding
 adds bounded duplicate/exact-shape checks and sanitizes errors. `fmt.Formatter`
-and `json.Marshaler` provide the explicit Secret policy. Go tests include malformed
+and `json.Marshaler` provide the explicit secret-value policy. Go tests include malformed
 input, round-trip fuzz seeds, framing/resource bounds and the state machine.
 
 For issue #3, evaluate jrpc2 for dispatch/notifications behind these bounds and
