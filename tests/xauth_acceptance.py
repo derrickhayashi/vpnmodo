@@ -112,6 +112,8 @@ class Lab:
         peer_index = int(command(["docker", "exec", vpn, "cat", "/sys/class/net/eth0/iflink"]).stdout)
         names = [name for index, name in socket.if_nameindex() if index == peer_index]
         assert len(names) == 1, "VPN veth peer is outside this isolated Docker host"
+        mac = command(["docker", "exec", vpn, "cat", "/sys/class/net/eth0/address"]).stdout.decode().strip()
+        assert re.fullmatch(r"[0-9a-f]{2}(?::[0-9a-f]{2}){5}",mac)
         observer = "/usr/local/bin/lab-capture"
         path = self.directory / ("wire-" + uuid.uuid4().hex)
         pcap, logfile = path.with_suffix(".pcap"), path.with_suffix(".log")
@@ -120,7 +122,11 @@ class Lab:
         # Capture from the outer lab's stable network namespace. This retains no
         # VPN namespace descriptor, and sees the physical egress after encryption
         # before a plaintext route could forward through another bridge peer.
-        process = subprocess.Popen(["sudo", "-n", observer, "--immediate-mode", "-Z", "root", "-Q", "in", "-n", "-i", names[0], "-U", "-w", str(pcap), "tcp port 28080 or udp port 28081 or port 53 or (udp and udp[8:4] = 0x76706e6d and udp[12:4] = 0x6f646f2d)"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=output, start_new_session=True)
+        # Linux receive statistics include packets discarded by pcap's -Q
+        # direction check. Filter the client's source MAC in kernel BPF too, so
+        # received-by-filter measures only actual client egress on this veth.
+        rule = "ether src " + mac + " and (tcp port 28080 or udp port 28081 or port 53 or (udp and udp[8:4] = 0x76706e6d and udp[12:4] = 0x6f646f2d))"
+        process = subprocess.Popen(["sudo", "-n", observer, "--immediate-mode", "-Z", "root", "-Q", "in", "-n", "-i", names[0], "-U", "-w", str(pcap), rule], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=output, start_new_session=True)
         try:
             deadline = time.monotonic() + 5
             while not pcap.exists() or pcap.stat().st_size < 24:
