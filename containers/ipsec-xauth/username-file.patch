@@ -1,6 +1,20 @@
 --- a/src/charon-cmd/cmd/cmd_connection.c
 +++ b/src/charon-cmd/cmd/cmd_connection.c
-@@ -587,5 +587,22 @@
+@@ -350,6 +350,13 @@
+ 		.mode = MODE_TUNNEL,
+ 	};
+ 
++	/* Only the kernel's completed ESP transform may mark NAT-T packets for
++	 * the namespace firewall. Workloads have no capability to set SO_MARK. */
++	if (getenv("VPNMODO_MANAGED_XAUTH"))
++	{
++		child.set_mark_out.value = 0x76706e6d;
++		child.set_mark_out.mask = 0xffffffff;
++	}
+ 	child_cfg = child_cfg_create("cmd", &child);
+ 	if (this->child_proposals->get_count(this->child_proposals))
+ 	{
+@@ -587,5 +594,22 @@
  			(callback_job_cb_t)initiate, this, NULL,
  			(callback_job_cancel_t)return_false, JOB_PRIO_CRITICAL));
  

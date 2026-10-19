@@ -25,7 +25,8 @@ iptables-restore <<RULES
 -A OUTPUT -d $VPN_SERVER -p udp --sport 500 --dport 500 -m owner --uid-owner 0 -j ACCEPT
 -A OUTPUT -d $VPN_SERVER -p udp --sport 4500 --dport 4500 -m owner --uid-owner 0 -j ACCEPT
 -A INPUT -s $VPN_SERVER -p esp -j ACCEPT
--A OUTPUT -d $VPN_SERVER -p esp -j ACCEPT
+-A OUTPUT -d $VPN_SERVER -p esp -m mark --mark 0x76706e6d/0xffffffff -j ACCEPT
+-A OUTPUT -d $VPN_SERVER -p udp --sport 4500 --dport 4500 -m mark --mark 0x76706e6d/0xffffffff -j ACCEPT
 -A INPUT -m policy --dir in --pol ipsec --proto esp --mode tunnel --tunnel-src $VPN_SERVER -j ACCEPT
 -A OUTPUT -m policy --dir out --pol ipsec --proto esp --mode tunnel --tunnel-dst $VPN_SERVER -j ACCEPT
 COMMIT
