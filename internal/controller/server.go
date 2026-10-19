@@ -38,6 +38,7 @@ type Config struct {
 	Socket, StateDir, DockerSocket, Version string
 	Adapter                                 lifecycle.Adapter
 	OperationTimeout, MFATimeout            time.Duration
+	Recovery                                lifecycle.RecoveryPolicy
 }
 type Server struct {
 	profiles    *profilestore.Store
@@ -95,7 +96,7 @@ func Listen(config Config) (*Server, error) {
 		return nil, ErrService
 	}
 	serviceCtx, cancel := context.WithCancel(context.Background())
-	operations, err = lifecycle.Open(serviceCtx, journal, lifecycle.Options{Adapter: config.Adapter, WithProfile: profiles.WithProfile, OperationTimeout: config.OperationTimeout, MFATimeout: config.MFATimeout})
+	operations, err = lifecycle.Open(serviceCtx, journal, lifecycle.Options{Adapter: config.Adapter, WithProfile: profiles.WithProfile, OperationTimeout: config.OperationTimeout, MFATimeout: config.MFATimeout, Recovery: config.Recovery})
 	if err != nil {
 		cancel()
 		_ = journal.Close()

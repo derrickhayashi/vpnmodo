@@ -5,7 +5,9 @@ SSH transport, schema discovery and controller/Docker readiness. VPN profile
 management is now available through the [profile guide](../../docs/design/002-profile-storage.md).
 Persistent operation coordination is described in the
 [operation guide](../../docs/design/003-persistent-operations.md). Real backend
-connection handlers, recovery and XAuth enforcement remain later stages.
+connection handlers and XAuth enforcement remain later stages. The
+[recovery policy](../../docs/design/004-recovery-policy.md) is implemented against
+the test adapter; production Docker/Compose control is the next integration PR.
 The status field `runtime_enabled` is false; backend descriptors describe schema
 requirements, not usable VPN sessions.
 

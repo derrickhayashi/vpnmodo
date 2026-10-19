@@ -48,6 +48,7 @@ type Options struct {
 	Adapter                                      Adapter
 	WithProfile                                  WithProfile
 	OperationTimeout, MFATimeout, CleanupTimeout time.Duration
+	Recovery                                     RecoveryPolicy
 }
 type slot struct{ gate chan struct{} }
 type worker struct {
@@ -59,6 +60,7 @@ type worker struct {
 	cancel        context.CancelFunc
 	code          chan secret.Value
 	challengeUsed bool
+	recoveryRetry bool
 }
 type Manager struct {
 	mu                            sync.Mutex
@@ -69,6 +71,7 @@ type Manager struct {
 	cancel                        context.CancelFunc
 	closed, unhealthy, reconciled bool
 	recoveryWanted                map[string]bool
+	monitoring                    map[string]bool
 	slots                         map[string]*slot
 	workers                       map[string]*worker
 	subscribers                   map[string]map[chan operation.Record]bool
@@ -88,12 +91,13 @@ func Open(parent context.Context, journal operationstore.Journal, options Option
 	if options.CleanupTimeout <= 0 {
 		options.CleanupTimeout = 5 * time.Second
 	}
+	options.Recovery = options.Recovery.defaults()
 	state, err := journal.Load()
 	if err != nil {
 		return nil, ErrPersistence
 	}
 	ctx, cancel := context.WithCancel(parent)
-	m := &Manager{journal: journal, state: state, options: options, ctx: ctx, cancel: cancel, slots: map[string]*slot{}, workers: map[string]*worker{}, subscribers: map[string]map[chan operation.Record]bool{}, recoveryWanted: map[string]bool{}, closeDone: make(chan struct{})}
+	m := &Manager{journal: journal, state: state, options: options, ctx: ctx, cancel: cancel, slots: map[string]*slot{}, workers: map[string]*worker{}, subscribers: map[string]map[chan operation.Record]bool{}, recoveryWanted: map[string]bool{}, monitoring: map[string]bool{}, closeDone: make(chan struct{})}
 	next := state.Clone()
 	now := time.Now().UTC()
 	for id, r := range next.Operations {
@@ -250,6 +254,10 @@ func (m *Manager) Connection(name string) (operation.Connection, error) {
 	if !ok {
 		return operation.Connection{Profile: name, Generation: 1, Revision: 1, Desired: operation.Disconnected, Observed: operation.Unknown}, nil
 	}
+	if c.Recovery != nil {
+		v := *c.Recovery
+		c.Recovery = &v
+	}
 	return c, nil
 }
 
@@ -332,7 +340,11 @@ func (m *Manager) submit(ctx context.Context, name string, kind operation.Kind, 
 			}
 			c = operation.Connection{Profile: name, Revision: 1, Generation: 1, Desired: operation.Disconnected, Observed: operation.Unknown}
 		}
-		if expectedGeneration != 0 && (c.Generation != expectedGeneration || c.Desired != operation.Disconnected || c.ActiveOperation != "") {
+		expectedIntent := operation.Disconnected
+		if kind == operation.RecoverConnection {
+			expectedIntent = operation.Connected
+		}
+		if expectedGeneration != 0 && (c.Generation != expectedGeneration || c.Desired != expectedIntent || c.ActiveOperation != "") {
 			return ErrIntent
 		}
 		if kind == operation.RecoverConnection && (c.Desired != operation.Connected || !c.RecoveryEnabled || !m.options.Adapter.CanRecover(snapshot.Profile)) {
@@ -346,6 +358,14 @@ func (m *Manager) submit(ctx context.Context, name string, kind operation.Kind, 
 			}
 			if kind != operation.DisconnectConnection {
 				return ErrBusy
+			}
+		}
+		if kind == operation.RecoverConnection {
+			if _, ok := m.options.Adapter.(RecoveryAdapter); !ok {
+				return ErrUnavailable
+			}
+			if c.Recovery != nil && (c.Recovery.Attempts >= operation.MaxRecoveryAttempts || time.Now().Before(c.Recovery.NotBefore)) {
+				return ErrIntent
 			}
 		}
 		if c.Generation == math.MaxUint64 || c.Revision == math.MaxUint64 {
@@ -373,6 +393,20 @@ func (m *Manager) submit(ctx context.Context, name string, kind operation.Kind, 
 		c.ActiveOperation = r.ID
 		c.LastOperation = r.ID
 		c.RecoveryEnabled = false
+		if _, ok := m.options.Adapter.(RecoveryAdapter); ok {
+			if c.Recovery == nil {
+				c.Recovery = &operation.Recovery{Health: operation.HealthUnknown}
+			} else {
+				v := *c.Recovery
+				c.Recovery = &v
+			}
+			if kind == operation.RecoverConnection {
+				c.Recovery.NotBefore = now.Add(m.options.Recovery.backoff(c.Recovery.Attempts))
+				c.Recovery.Attempts++
+			} else if kind == operation.EnsureConnection {
+				c.Recovery.Attempts = 0
+			}
+		}
 		if kind == operation.DisconnectConnection {
 			c.Desired = operation.Disconnected
 		} else {
@@ -432,6 +466,19 @@ func (m *Manager) transition(w *worker, state operation.State, failure operation
 	if state.Terminal() {
 		c.ActiveOperation = ""
 		c.RecoveryEnabled = state == operation.Succeeded && c.Desired == operation.Connected && m.options.Adapter.CanRecover(w.p)
+		if c.Recovery != nil {
+			v := *c.Recovery
+			c.Recovery = &v
+			if state == operation.Succeeded && c.Desired == operation.Connected {
+				c.Recovery.Attempts = 0
+				c.Recovery.NotBefore = r.UpdatedAt.Add(m.options.Recovery.Cooldown)
+				c.Recovery.Health = operation.HealthHealthy
+				c.Recovery.CheckedAt = r.UpdatedAt
+			}
+			if state == operation.Failed && w.kind == operation.RecoverConnection && w.recoveryRetry && c.Desired == operation.Connected && c.Recovery.Attempts < operation.MaxRecoveryAttempts {
+				c.RecoveryEnabled = true
+			}
+		}
 	}
 	next.Connections[c.Profile] = c
 	return m.commitLocked(next)

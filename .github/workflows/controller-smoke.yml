@@ -21,6 +21,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq openssh-server
+      - name: Check standalone watchdog recovery and ownership decisions
+        run: |
+          python3 -m venv "$RUNNER_TEMP/watchdog-tests"
+          "$RUNNER_TEMP/watchdog-tests/bin/pip" install --quiet pytest==8.4.2
+          "$RUNNER_TEMP/watchdog-tests/bin/python" -m pytest -q tests/test_vpn_watchdog.py
       - name: Build workstation test binary and controller image
         run: |
           go build -trimpath -o "$RUNNER_TEMP/vpnmodo" ./cmd/vpnmodo

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
@@ -83,7 +84,7 @@ func runSyntheticProcess(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		server, err := Listen(Config{Socket: *socket, StateDir: *root, DockerSocket: "/var/run/docker.sock", Version: "synthetic-test-only", Adapter: adapter, OperationTimeout: time.Minute, MFATimeout: 20 * time.Second})
+		server, err := Listen(Config{Socket: *socket, StateDir: *root, DockerSocket: "/var/run/docker.sock", Version: "synthetic-test-only", Adapter: adapter, OperationTimeout: time.Minute, MFATimeout: 20 * time.Second, Recovery: lifecycle.RecoveryPolicy{Interval: 100 * time.Millisecond, ProbeTimeout: 3 * time.Second, Cooldown: 2 * time.Second, MaxBackoff: 8 * time.Second}})
 		if err != nil {
 			return err
 		}
@@ -93,9 +94,14 @@ func runSyntheticProcess(ctx context.Context, args []string) error {
 }
 
 type syntheticState struct {
-	Established bool `json:"established"`
-	Connects    int  `json:"connects"`
-	Stops       int  `json:"stops"`
+	Health       operation.HealthState `json:"health,omitempty"`
+	Forwarding   bool                  `json:"forwarding"`
+	Repairs      int                   `json:"repairs"`
+	Quiesces     int                   `json:"quiesces"`
+	FailRecovery bool                  `json:"fail_recovery"`
+	Established  bool                  `json:"established"`
+	Connects     int                   `json:"connects"`
+	Stops        int                   `json:"stops"`
 }
 type fileAdapter struct {
 	mu   sync.Mutex
@@ -144,6 +150,9 @@ func (f *fileAdapter) Connect(ctx context.Context, p profile.Profile, challenge 
 	if err != nil {
 		return err
 	}
+	if state.FailRecovery {
+		return lifecycle.ErrUnavailable
+	}
 	if p.Name == "pending-mfa" || p.Name == "interactive-mfa" {
 		code, err := challenge(ctx)
 		if err != nil {
@@ -167,6 +176,7 @@ func (f *fileAdapter) Connect(ctx context.Context, p profile.Profile, challenge 
 		return err
 	}
 	state.Established = true
+	state.Health = ""
 	return f.write(p.Name, state)
 }
 func (f *fileAdapter) Verify(ctx context.Context, p profile.Profile) error {
@@ -190,7 +200,64 @@ func (f *fileAdapter) Disconnect(ctx context.Context, p profile.Profile) error {
 		return err
 	}
 	state.Established = false
+	state.Forwarding = false
 	state.Stops++
 	return f.write(p.Name, state)
 }
 func (f *fileAdapter) CanRecover(p profile.Profile) bool { return p.Backend.Type == profile.L2TP }
+
+// Test-only controls are private state files in the isolated acceptance VM.
+func (f *fileAdapter) Check(ctx context.Context, p profile.Profile) (operation.HealthState, error) {
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	state, err := f.read(p.Name)
+	if err != nil {
+		return "", err
+	}
+	if state.Health != "" {
+		return state.Health, nil
+	}
+	if !state.Established {
+		return operation.HealthStopped, nil
+	}
+	if !state.Forwarding {
+		return operation.HealthDetached, nil
+	}
+	return operation.HealthHealthy, nil
+}
+func (f *fileAdapter) Quiesce(ctx context.Context, p profile.Profile) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	state, err := f.read(p.Name)
+	if err != nil {
+		return err
+	}
+	state.Quiesces++
+	state.Forwarding = false
+	return f.write(p.Name, state)
+}
+func (f *fileAdapter) RepairForwarding(ctx context.Context, p profile.Profile) error {
+	if err := f.Verify(ctx, p); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	state, err := f.read(p.Name)
+	if err != nil {
+		return err
+	}
+	if !state.Forwarding {
+		state.Repairs++
+	}
+	state.Forwarding = true
+	if state.Health == operation.HealthDetached {
+		state.Health = ""
+	}
+	return f.write(p.Name, state)
+}

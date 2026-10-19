@@ -73,17 +73,21 @@ const (
 )
 
 type Connection struct {
-	Profile         string   `json:"profile"`
-	Generation      uint64   `json:"generation"`
-	Revision        uint64   `json:"revision"`
-	Desired         Intent   `json:"desired"`
-	Observed        Observed `json:"observed"`
-	RecoveryEnabled bool     `json:"recovery_enabled"`
-	ActiveOperation string   `json:"active_operation,omitempty"`
-	LastOperation   string   `json:"last_operation,omitempty"`
+	Profile         string    `json:"profile"`
+	Generation      uint64    `json:"generation"`
+	Revision        uint64    `json:"revision"`
+	Desired         Intent    `json:"desired"`
+	Observed        Observed  `json:"observed"`
+	RecoveryEnabled bool      `json:"recovery_enabled"`
+	Recovery        *Recovery `json:"recovery,omitempty"`
+	ActiveOperation string    `json:"active_operation,omitempty"`
+	LastOperation   string    `json:"last_operation,omitempty"`
 }
 
 func (c Connection) Validate() error {
+	if c.Recovery != nil && c.Recovery.Validate() != nil {
+		return ErrOperation
+	}
 	if !profile.ValidName(c.Profile) || c.Generation == 0 || c.Revision == 0 || c.Desired != Connected && c.Desired != Disconnected || c.Observed != Unknown && c.Observed != ObservedConnected && c.Observed != ObservedDisconnected || c.ActiveOperation != "" && !ValidID(c.ActiveOperation) || c.LastOperation != "" && !ValidID(c.LastOperation) || c.Desired == Disconnected && c.RecoveryEnabled {
 		return ErrOperation
 	}

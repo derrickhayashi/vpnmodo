@@ -291,6 +291,8 @@ LogLevel VERBOSE
         if options.operations:
             import operations_acceptance
             interrupted_id = operations_acceptance.begin(cli, bridge, [str(options.binary.resolve()), "--config", str(registry)], directory, state)
+            import recovery_acceptance
+            cooldown = recovery_acceptance.begin(cli, directory, state)
         marker = data_root / "controller-state" / "acceptance-marker"
         marker.write_text("synthetic-state")
         command(["docker", "stop", "vpnmodo-controller"])
@@ -303,6 +305,7 @@ LogLevel VERBOSE
         assert marker.read_text() == "synthetic-state"
         if options.operations:
             operations_acceptance.after_restart(cli, state, interrupted_id)
+            recovery_acceptance.after_restart(cli, state, cooldown)
         retained = safe_result(cli("profile", "inspect", "example-profile", "--json"))
         assert retained["revision"] == 3 and retained["credentials_present"]
         safe_result(cli("profile", "delete", "example-profile", "--revision", "3", "--json"))

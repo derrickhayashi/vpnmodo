@@ -1,9 +1,12 @@
 package operationstore
 
 import (
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+	"time"
 )
 
 func TestPrivateJournalRejectsUnsafeAndCorruptFiles(t *testing.T) {
@@ -49,5 +52,30 @@ func TestPrivateJournalRejectsUnsafeAndCorruptFiles(t *testing.T) {
 	if opened, err := Open(root); err == nil {
 		opened.Close()
 		t.Fatal("truncated journal silently reset")
+	}
+}
+
+func TestRecoveryCloneAndRoundTripPreserveBudget(t *testing.T) {
+	s := Empty()
+	s.Connections["example"] = operation.Connection{Profile: "example", Generation: 1, Revision: 1, Desired: operation.Connected, Observed: operation.Unknown, RecoveryEnabled: true, Recovery: &operation.Recovery{Attempts: 2, NotBefore: time.Now().UTC().Add(time.Hour), Health: operation.HealthDetached}}
+	copy := s.Clone()
+	copy.Connections["example"].Recovery.Attempts = 3
+	if s.Connections["example"].Recovery.Attempts != 2 {
+		t.Fatal("clone aliases mutable recovery state")
+	}
+	store, err := Open(filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err = store.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(s, loaded) {
+		t.Fatal("budget or cooldown lost")
 	}
 }

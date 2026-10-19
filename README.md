@@ -115,7 +115,9 @@ and runnable host registration/setup/check and profile management commands. See 
 SSH/container skeleton, and the
 [profile guide](docs/design/002-profile-storage.md) for secure creation/updates.
 See the [operation guide](docs/design/003-persistent-operations.md) for persistent
-intent, status and cancellation. Real VPN runtime remains disabled. See
+intent, status and cancellation, and the
+[recovery policy](docs/design/004-recovery-policy.md) for bounded retries and
+health classification. Real VPN runtime remains disabled. See
 [v1 profiles, protocol and operations](docs/design/001-v1-model.md) for schemas, API
 rules, lifecycle policy and release targets. Synthetic JSON profile examples live
 in `examples/profiles/v1/`. Existing scripts and deployments remain unchanged.
