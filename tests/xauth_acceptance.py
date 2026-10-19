@@ -464,8 +464,8 @@ def after_restart(cli, state_root, lab):
     command(["docker", "exec", lab.vpn_before_restart, "vpn-servicecheck"])
     last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
     assert lab.ids()["vpn"]["Id"] == lab.vpn_before_restart
-    lab.services.after_restart()
     lab.large_transfer("controller replacement")
+    lab.services.after_restart()
     lab.services = None
     lab.disconnect()
     assert not list((state_root / "deployments" / NAME / "credentials").glob("*/*"))
