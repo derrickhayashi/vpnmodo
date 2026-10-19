@@ -32,6 +32,9 @@ func SSHArgs(h Host, command string) ([]string, error) {
 	if h.SSHConfig != "" {
 		args = append(args, "-F", h.SSHConfig)
 	}
+	if h.Sudo {
+		command = "sudo -n -- " + command
+	}
 	return append(args, "--", h.SSH, command), nil
 }
 

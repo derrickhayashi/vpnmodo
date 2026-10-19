@@ -78,6 +78,15 @@ vpnmodo host setup personal-vm --image sha256:<controller-id-from-loader> --json
 vpnmodo host check personal-vm --json
 ```
 
+If the account has passwordless sudo instead of direct Docker access, register
+with `host add personal-vm --ssh personal-vm --sudo`. Fixed VM management commands
+then use noninteractive sudo, including controller bootstrap, the bridge and
+forwarding. This does not change group membership or sudo policy. Bootstrap in
+this mode owns state under root's home; use that same mode for later access and
+upgrades. Load the verified image bundle with `sudo -n python3 install-vm.py`.
+Do not enable sudo mode for a pre-existing user-owned controller without an
+explicit state migration; bootstrap refuses its mismatched storage mount.
+
 For a separate SSH configuration, add `--ssh-config /absolute/path/to/config` to
 `host add`. Registration records a workstation reference; setup explicitly starts
 the controller and provisions its private state directory. It does not touch

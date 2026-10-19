@@ -64,3 +64,30 @@ func TestRegistryAndSSHValidation(t *testing.T) {
 		t.Fatal("untrusted remote error echoed")
 	}
 }
+
+func TestSudoIsExplicitAndFixedCommandOnly(t *testing.T) {
+	for _, sudo := range []bool{false, true} {
+		h := Host{Name: "example", SSH: "vm.example.com", Sudo: sudo}
+		for _, command := range []string{bridgeCommand, "python3 -c 'import json'", "true"} {
+			args, err := SSHArgs(h, command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected := command
+			if sudo {
+				expected = "sudo -n -- " + command
+			}
+			if args[len(args)-1] != expected || args[len(args)-2] != h.SSH {
+				t.Fatal("privilege mode changed SSH target or fixed command")
+			}
+		}
+		file := filepath.Join(t.TempDir(), "private", "hosts.json")
+		if err := Add(file, h); err != nil {
+			t.Fatal(err)
+		}
+		got, err := Find(file, h.Name)
+		if err != nil || got != h {
+			t.Fatal("privilege mode did not round trip")
+		}
+	}
+}

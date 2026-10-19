@@ -22,6 +22,7 @@ type Host struct {
 	Name      string `json:"name"`
 	SSH       string `json:"ssh"`
 	SSHConfig string `json:"ssh_config,omitempty"`
+	Sudo      bool   `json:"sudo,omitempty"`
 }
 
 func (h Host) Validate() error {
