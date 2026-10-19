@@ -19,12 +19,16 @@ class Lab:
         self.gateway = "vpnmodo-lab-gateway-" + uuid.uuid4().hex[:12]
         self.created = False
         self.network = False
+        self.profile_created = False
 
     def close(self):
-        self.cli("connection", "disconnect", NAME, "--wait", "--json", required=False)
+        if self.profile_created:
+            self.cli("connection", "disconnect", NAME, "--wait", "--json", required=False)
         if self.created:
             command(["docker", "rm", "-f", self.gateway], required=False)
         # Exact manager/profile/project intersection, never broad Docker cleanup.
+        if not self.network:
+            return
         raw = command(["docker", "ps", "-aq", "--filter", "label=io.vpnmodo.managed-by=vpnmodo", "--filter", "label=io.vpnmodo.profile=" + NAME, "--filter", "label=com.docker.compose.project=" + PROJECT], required=False)
         for cid in raw.stdout.decode().split():
             command(["docker", "rm", "-f", cid], required=False)
@@ -63,6 +67,7 @@ def begin(cli, directory, state_root):
     lab = Lab(cli)
     try:
         assert command(["docker", "network", "inspect", NETWORK], required=False).returncode != 0
+        assert not command(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + PROJECT]).stdout.strip()
         args = ["docker", "network", "create", "--subnet", "192.0.2.0/24", "--gateway", "192.0.2.254"]
         for label in ("io.vpnmodo.managed-by=vpnmodo", "io.vpnmodo.profile=" + NAME, "io.vpnmodo.backend=l2tp-ipsec", "com.docker.compose.project=" + PROJECT, "com.docker.compose.network=default"):
             args += ["--label", label]
@@ -82,6 +87,7 @@ def begin(cli, directory, state_root):
         source.write_text(json.dumps(definition))
         credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
         last_json(cli("profile", "create", NAME, "--host", "example", "--file", str(source), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
+        lab.profile_created = True
         ready = last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
         assert ready["state"] == "succeeded"
         ids = lab.ids()
@@ -194,4 +200,5 @@ def after_restart(cli, state_root, lab):
     last_json(cli("profile", "delete", NAME, "--revision", "1", "--json"))
     assert not (state_root / "deployments" / NAME).exists()
     lab.network = False
+    lab.profile_created = False
     print("PASS: controller recreation preserves real VPN session; disconnect disposes runtime copies and deletion removes deployment state", flush=True)
