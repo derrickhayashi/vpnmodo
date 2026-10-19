@@ -2,13 +2,14 @@
 
 Private development workspace: see [development boundaries and checks](docs/development.md).
 
-The planned `vpnmodo` CLI manages VPN profiles through a containerized
+The `vpnmodo` CLI manages VPN profiles through a containerized
 `vpnmodo-controller` on each user's Linux VM. See the
 [implementation requirements](docs/implementation-requirements.md) and
-[staged delivery plan](docs/implementation-plan.md). The host/controller transport
-skeleton, secure profile management and persistent operation coordination are
-available for development. Real VPN backend integration is a subsequent stage. Existing backend commands
-below remain available.
+[staged delivery plan](docs/implementation-plan.md). The private implementation
+includes verified SSH transport, secure profiles, persistent operations, managed
+L2TP/XAuth, and [named service access with diagnostics](docs/design/007-service-access.md).
+Release packaging and teammate adoption remain a later stage. Existing backend
+commands below remain available.
 
 Reusable Docker VPN backends for SSH, Ansible and private service access.
 Customer projects own their profiles, deployment settings and runtime state;
@@ -56,7 +57,8 @@ scripts/
 
 The IPsec directories use the same image filenames. `compose.yaml` runs an image;
 `compose.build.yaml` supplies its local build context. Select one backend per
-consumer profile. Each running profile has VPN, application, and watchdog containers. The VPN
+consumer profile. Standalone launcher profiles have VPN, application, and watchdog containers.
+Managed profiles use controller-owned monitoring instead. The VPN
 backends are independent; both use the shared watchdog image.
 
 Tailscale uses the official upstream image with persistent enrollment, a shared

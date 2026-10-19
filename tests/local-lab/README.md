@@ -86,6 +86,33 @@ container. For remote automation, capture output and poll this file so a held
 output stream cannot hide the result. An exit code of zero is required to claim
 the whole suite passed.
 
+## Service access and targeted diagnosis
+
+Both real VPN suites now create a synthetic private OpenSSH server in the
+lab gateway's network namespace and a separate destination-loopback HTTP service.
+They exercise the workstation's managed two-hop proxy, named loopback forwards,
+port conflicts/partial success, independent VM/controller/service failures,
+strict private SSH keys/authentication, stale ownership, master-process crash,
+controller replacement and composed disconnect. XAuth also exercises composed
+JSON `up` with a fresh real MFA challenge and separate secure code submission.
+No private keys are copied into the VPN/application containers.
+
+The default runner keeps the full protocol/recovery and packet tests. After its
+images are built, a focused L2TP/service subset can shorten diagnosis inside the
+same outer lab:
+
+```sh
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/smoke_controller.py \
+  --binary /opt/lab/vpnmodo --image vpnmodo-controller:l2tp-acceptance \
+  --l2tp --services-only
+```
+
+This subset does not establish that the full recovery/packet suite passed.
+A test-only L2TP client image redirects the unchanged production entrypoint's
+startup output to a private runtime file. On failure, the harness retains that
+synthetic evidence outside the checkout and prints only allowlisted flags.
+Production images and logs retain their existing behavior.
+
 ## Current validation
 
 The complete production controller Dockerfile also builds successfully on the
