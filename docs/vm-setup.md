@@ -1,5 +1,8 @@
 # Prepare an Ubuntu VM for vpnmodo
 
+On Apple Silicon, [Lima setup](lima.md) can create and prepare a local VM.
+The steps below prepare an existing VM with Ansible.
+
 Each teammate supplies an existing **Ubuntu 24.04 ARM64 (aarch64)** VM and owns
 its management account. UTM on Apple Silicon or a remotely hosted VM are suitable
 choices. Install Ubuntu, create an administrator account, and provide SSH and

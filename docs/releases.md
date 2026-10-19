@@ -11,7 +11,9 @@ workstation and authorized local VM.
 The bundle contains Docker images that run inside an existing Ubuntu VM: the
 controller, L2TP backend, XAuth backend and application helper. Each teammate
 provides their own local or remote VM. These artifacts do not contain an Ubuntu
-or UTM VM disk image and do not create a VM.
+or UTM VM disk image and do not create a VM. The optional [Lima template](lima.md)
+creates a local VM separately; it is available in the source checkout, not the
+CLI or image bundle.
 
 A release has macOS arm64/amd64 CLI archives, a committed source archive, and a
 separate Linux arm64 or amd64 container image bundle. Each artifact group has SHA-256 sums.

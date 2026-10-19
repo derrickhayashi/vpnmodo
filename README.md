@@ -75,7 +75,10 @@ software policy. The installer does not change Gatekeeper settings.
 
 ## 2. Prepare the Ubuntu VM and SSH access
 
-Follow [prepare an Ubuntu VM](docs/vm-setup.md) to establish verified SSH and run
+For a local VM on Apple Silicon, [the Lima setup guide](docs/lima.md) creates
+and prepares Ubuntu automatically using Lima's SSH configuration.
+
+For an existing VM, follow [prepare an Ubuntu VM](docs/vm-setup.md) to establish verified SSH and run
 the dedicated `vpn_sidecar.client.vm_prepare` Ansible role from your Mac. You
 supply an existing Ubuntu 24.04 ARM64 VM with Python 3 and administrative access.
 The role prepares rootful Docker Engine, Compose, utilities, management-account

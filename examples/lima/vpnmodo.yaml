@@ -1,0 +1,58 @@
+# Copy into the consumer's private configuration before creating the VM.
+minimumLimaVersion: 2.2.1
+vmType: vz
+arch: aarch64
+cpus: 2
+memory: 2GiB
+disk: 20GiB
+images:
+  - location: https://cloud-images.ubuntu.com/releases/noble/release-20261017/ubuntu-24.04-server-cloudimg-arm64.img
+    arch: aarch64
+    digest: sha256:50e24e1fb79e89116e939d90aa7738f7af48c442fa1bc2510131e0b39c50348e
+user:
+  name: vpnadmin
+  home: /home/vpnadmin
+  shell: /bin/bash
+  passwordlessSudo: true
+ssh:
+  localPort: 0
+  loadDotSSHPubKeys: false
+  forwardAgent: false
+mounts: []
+containerd:
+  system: false
+  user: false
+# Only explicitly configured vpnmodo service tunnels expose services on the Mac.
+portForwards:
+  - guestIP: 0.0.0.0
+    guestIPMustBeZero: false
+    guestPortRange: [1, 65535]
+    proto: any
+    ignore: true
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      if ! command -v python3 >/dev/null || ! command -v docker >/dev/null ||
+         ! docker compose version >/dev/null 2>&1; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update
+        apt-get install -y python3 docker.io docker-compose-v2 kmod iproute2 ca-certificates
+      fi
+      systemctl enable --now docker
+      for module in xfrm_user esp4 ppp_generic ppp_async; do
+        modprobe "$module"
+      done
+      printf '%s\n' xfrm_user esp4 ppp_generic ppp_async > /etc/modules-load.d/vpnmodo.conf
+      test -c /dev/ppp
+probes:
+  - mode: readiness
+    description: Rootful Docker, Compose, Python and PPP are ready
+    script: |
+      #!/bin/sh
+      set -eu
+      python3 --version
+      sudo -n docker --host unix:///var/run/docker.sock info >/dev/null
+      sudo -n docker compose version
+      test -c /dev/ppp

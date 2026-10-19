@@ -7,8 +7,9 @@ backend-specific profile, connect, and verify private access. For a fresh guest
 OS, follow [VM preparation](vm-setup.md).
 
 The qualified first-release path is macOS ARM64 and Ubuntu 24.04 ARM64. Each
-teammate owns their local or remote VM. There is no creation wizard or automated
-VM provisioning. The bundle contains four Docker images for an existing VM,
+teammate owns their local or remote VM. [Lima provisioning](lima.md) is an
+optional source workflow for creating a local VM on Apple Silicon.
+The bundle contains four Docker images for an existing VM,
 not a VM disk image. See [release packaging](releases.md) for maintainer builds
 and explicit upgrades.
 
