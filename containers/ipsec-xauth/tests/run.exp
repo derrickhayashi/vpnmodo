@@ -1,0 +1,51 @@
+#!/usr/bin/env expect -f
+# Run interactive CLI regressions against a fake Docker backend on a Linux host.
+# No real gateway or Docker service is used by these scenarios.
+set timeout 25
+log_user 0
+if {$argc != 2} {
+    puts stderr "Usage: expect tests/run.exp SSH_HOST REMOTE_PROJECT_DIRECTORY"
+    exit 2
+}
+lassign $argv ssh_host project_dir
+if {![regexp {^[A-Za-z0-9][A-Za-z0-9_.@:-]*$} $ssh_host] ||
+    ![regexp {^/[A-Za-z0-9_./-]+$} $project_dir]} {
+    puts stderr "Expected an SSH alias and an absolute remote directory without spaces."
+    exit 2
+}
+foreach scenario {success failure invalid cancel} {
+    if {$ssh_host eq "local"} {
+        spawn -noecho bash $project_dir/tests/scenario $scenario
+    } else {
+        spawn -noecho ssh -tt -o BatchMode=yes -- $ssh_host $project_dir/tests/scenario $scenario
+    }
+    set transcript ""
+    if {$scenario ne "failure"} {
+        expect {
+            -exact "Enter emailed code: " {append transcript $expect_out(buffer)}
+            timeout {puts stderr "FAIL: $scenario did not prompt"; exit 1}
+            eof {puts stderr "FAIL: $scenario exited before prompt"; exit 1}
+        }
+        switch $scenario {
+            success {send -- "123456\r"}
+            invalid {send -- "invalid\r"}
+            cancel {send -- "\003"}
+        }
+    }
+    expect {
+        eof {append transcript $expect_out(buffer)}
+        timeout {puts stderr "FAIL: $scenario timed out"; exit 1}
+    }
+    set result [wait]
+    if {[lindex $result 3] != 0 ||
+        [string first "TEST PASSED: $scenario" $transcript] < 0} {
+        puts stderr "FAIL: $scenario"
+        puts stderr $transcript
+        exit 1
+    }
+    if {[string first "123456" $transcript] >= 0} {
+        puts stderr "FAIL: code was echoed"
+        exit 1
+    }
+    puts "PASS: $scenario (no code echoed)"
+}

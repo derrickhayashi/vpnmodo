@@ -1,0 +1,570 @@
+---
+- name: Validate deployment scope and settings
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - vpn_sidecar_package_version is match('^[0-9a-f]{7,40}$')
+      - vpn_sidecar_backend in ['l2tp-ipsec', 'ipsec-xauth']
+      - vpn_sidecar_instance is match('^[a-z0-9]+(-[a-z0-9]+)*$')
+      - vpn_sidecar_instance | length <= 48
+      - vpn_sidecar_runtime_dir is match('^/')
+      - vpn_sidecar_credentials_dir is match('^/')
+      - vpn_sidecar_server | length > 0
+      - vpn_sidecar_health_host | length > 0
+      - vpn_sidecar_health_port | int > 0
+      - vpn_sidecar_health_port | int <= 65535
+      - vpn_sidecar_watchdog_cooldown | int >= 0
+      - vpn_sidecar_watchdog_interval | int > 0
+      - vpn_sidecar_retired_timer == '' or vpn_sidecar_retired_timer is match('^[a-zA-Z0-9][a-zA-Z0-9@_.-]*[.]timer$')
+      - vpn_sidecar_retired_timer | length <= 255
+      - vpn_sidecar_retired_timer is not match('.*@[.]timer$')
+
+- name: Validate XAuth launcher layout and gateway
+  ansible.builtin.assert:
+    that:
+      - vpn_sidecar_runtime_dir is match('^/[A-Za-z0-9_./-]+/instances/' ~ vpn_sidecar_instance ~ '$')
+      - "'/../' not in vpn_sidecar_runtime_dir"
+      - "'/./' not in vpn_sidecar_runtime_dir"
+      - "'//' not in vpn_sidecar_runtime_dir"
+      - vpn_sidecar_credentials_dir == vpn_sidecar_runtime_dir ~ '/secrets'
+      - vpn_sidecar_project_name == 'vpn-' ~ vpn_sidecar_instance
+      - vpn_sidecar_server is match('^[0-9]{1,3}([.][0-9]{1,3}){3}$')
+      - vpn_sidecar_server.split('.') | map('int') | max <= 255
+      - vpn_sidecar_health_host is match('^[A-Za-z0-9][A-Za-z0-9._:-]*$')
+      - vpn_sidecar_health_port | string is match('^[0-9]{1,5}$')
+      - vpn_sidecar_watchdog_interval | string is match('^[0-9]{1,5}$')
+      - vpn_sidecar_watchdog_cooldown | string is match('^[0-9]{1,6}$')
+    fail_msg: >-
+      XAuth uses scripts/vpn: runtime must be <consumer>/instances/<instance>,
+      credentials must be <runtime>/secrets, project must be vpn-<instance>,
+      and the VPN gateway must be a numeric IPv4 address.
+  when: vpn_sidecar_backend == 'ipsec-xauth'
+
+- name: Validate encrypted credential values without logging them
+  ansible.builtin.assert:
+    that:
+      - vpn_sidecar_credentials.keys() | list | sort == ['password', 'psk', 'username']
+      - item is string
+      - item | length > 0
+      - "'\n' not in item"
+      - "'\r' not in item"
+      - "'\u0000' not in item"
+  loop: "{{ vpn_sidecar_credentials.values() | list }}"
+  no_log: true
+
+- name: Resolve the pinned package commit on the controller
+  ansible.builtin.command:
+    argv: [git, -C, "{{ vpn_sidecar_package_dir }}", rev-parse, "{{ vpn_sidecar_package_version }}^{commit}"]
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: vpn_sidecar_commit
+
+- name: Validate pinned backend assets before changing the VPN host
+  ansible.builtin.command:
+    argv: [git, -C, "{{ vpn_sidecar_package_dir }}", cat-file, -e,
+           "{{ vpn_sidecar_commit.stdout }}:{{ item }}"]
+  loop: >-
+    {{ ['containers/' ~ vpn_sidecar_backend ~ '/Dockerfile',
+        'containers/' ~ vpn_sidecar_backend ~ '/compose.yaml',
+        'watchdog/Dockerfile', 'watchdog/compose.yaml',
+        'watchdog/vpn-watchdog', 'watchdog/watchdog-loop']
+       + (['scripts/vpn', 'containers/ipsec-xauth/vpn',
+           'containers/ipsec-xauth/connect.exp', 'containers/ipsec-xauth/strongswan.conf']
+          if vpn_sidecar_backend == 'ipsec-xauth' else
+          ['containers/l2tp-ipsec/scripts/docker-entrypoint.sh',
+           'containers/l2tp-ipsec/scripts/ppp-ip-up',
+           'containers/l2tp-ipsec/scripts/vpn-healthcheck']) }}
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+
+- name: Provision and validate native VM prerequisites
+  ansible.builtin.include_tasks: prerequisites.yaml
+
+- name: Define package paths and consumer configuration
+  ansible.builtin.set_fact:
+    vpn_sidecar_source: "{{ vpn_sidecar_runtime_dir }}/source/{{ vpn_sidecar_package_version }}"
+    vpn_sidecar_image: >-
+      {{ vpn_sidecar_registry_image or
+         (('local/l2tp-ipsec-vpn-sidecar:' if vpn_sidecar_backend == 'l2tp-ipsec'
+           else 'local/vpn-sidecar-ipsec-xauth:') ~ vpn_sidecar_package_version) }}
+    vpn_sidecar_watchdog_image: "{{ vpn_sidecar_watchdog_registry_image or ('local/vpn-sidecar-watchdog:' ~ vpn_sidecar_package_version) }}"
+    vpn_sidecar_archive: "{{ playbook_dir }}/../.cache/vpn-sidecar-{{ vpn_sidecar_commit.stdout }}.tar"
+    vpn_sidecar_profiles_dir: "{{ vpn_sidecar_runtime_dir | dirname | dirname }}/profiles"
+    vpn_sidecar_environment:
+      VPN_BACKEND_DIR: "{{ vpn_sidecar_runtime_dir }}/source/{{ vpn_sidecar_package_version }}/containers/{{ vpn_sidecar_backend }}"
+      COMPOSE_PROJECT_NAME: "{{ vpn_sidecar_project_name }}"
+      VPN_WATCHDOG_IMAGE: "{{ vpn_sidecar_watchdog_registry_image or ('local/vpn-sidecar-watchdog:' ~ vpn_sidecar_package_version) }}"
+      VPN_PROJECT_DIR: "{{ vpn_sidecar_runtime_dir }}"
+      VPN_SOURCE_ROOT: "{{ vpn_sidecar_runtime_dir }}/source/{{ vpn_sidecar_package_version }}"
+      VPN_WATCHDOG_MODE: "{{ 'manual' if vpn_sidecar_backend == 'ipsec-xauth' else 'auto' }}"
+      VPN_WATCHDOG_COOLDOWN: "{{ vpn_sidecar_watchdog_cooldown | string }}"
+      VPN_WATCHDOG_INTERVAL: "{{ vpn_sidecar_watchdog_interval | string }}"
+      VPN_IMAGE: >-
+        {{ vpn_sidecar_registry_image or
+           (('local/l2tp-ipsec-vpn-sidecar:' if vpn_sidecar_backend == 'l2tp-ipsec'
+             else 'local/vpn-sidecar-ipsec-xauth:') ~ vpn_sidecar_package_version) }}
+      VPN_CREDENTIALS_DIR: "{{ vpn_sidecar_credentials_dir }}"
+      VPN_SERVER: "{{ vpn_sidecar_server }}"
+      VPN_DNS: "{{ vpn_sidecar_dns }}"
+      VPN_FORCE_ENCAPS: "{{ vpn_sidecar_force_encaps }}"
+      VPN_IKE_PROPOSALS: "{{ vpn_sidecar_ike_proposals }}"
+      VPN_ESP_PROPOSALS: "{{ vpn_sidecar_esp_proposals }}"
+      VPN_HEALTH_HOST: "{{ vpn_sidecar_health_host }}"
+      VPN_HEALTH_PORT: "{{ vpn_sidecar_health_port | string }}"
+
+- name: Validate settings for the Compose environment file
+  ansible.builtin.assert:
+    that:
+      - "'\\n' not in (item | string)"
+      - "'\\r' not in (item | string)"
+      - item | string is not search('[\\x00]')
+  loop: "{{ vpn_sidecar_environment.values() | list }}"
+
+- name: Create the controller archive directory
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../.cache"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  become: false
+  check_mode: false
+
+- name: Archive only committed package source
+  ansible.builtin.command:
+    argv: [git, -C, "{{ vpn_sidecar_package_dir }}", archive, --format=tar, "--output={{ vpn_sidecar_archive }}", "{{ vpn_sidecar_commit.stdout }}"]
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+
+- name: Prepare a temporary controller directory for Compose rendering
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: vpn-sidecar-compose-
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: vpn_sidecar_render_dir
+
+- name: Render and validate the complete pinned runtime configuration
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  block:
+    - name: Read pinned Compose sources
+      ansible.builtin.command:
+        argv: [git, -C, "{{ vpn_sidecar_package_dir }}", show, "{{ vpn_sidecar_commit.stdout }}:{{ item }}"]
+      loop: "{{ ['containers/' ~ vpn_sidecar_backend ~ '/compose.yaml', 'watchdog/compose.yaml'] }}"
+      register: vpn_sidecar_compose_sources
+      changed_when: false
+
+    - name: Stage pinned Compose sources for validation
+      ansible.builtin.copy:
+        content: "{{ item.stdout }}\n"
+        dest: "{{ vpn_sidecar_render_dir.path }}/{{ item.item | replace('/', '-') }}"
+        mode: '0600'
+      loop: "{{ vpn_sidecar_compose_sources.results }}"
+      changed_when: false
+
+    - name: Validate and render the combined consumer Compose file
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --env-file
+          - /dev/null
+          - --project-directory
+          - "{{ vpn_sidecar_runtime_dir }}"
+          - -f
+          - "{{ vpn_sidecar_render_dir.path }}/containers-{{ vpn_sidecar_backend }}-compose.yaml"
+          - -f
+          - "{{ vpn_sidecar_render_dir.path }}/watchdog-compose.yaml"
+          - config
+      environment: "{{ vpn_sidecar_environment }}"
+      register: vpn_sidecar_rendered_compose
+      changed_when: false
+  always:
+    - name: Remove temporary Compose render inputs
+      ansible.builtin.file:
+        path: "{{ vpn_sidecar_render_dir.path }}"
+        state: absent
+      changed_when: false
+
+- name: Create protected runtime directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: '0700'
+  loop:
+    - "{{ vpn_sidecar_runtime_dir }}"
+    - "{{ vpn_sidecar_source }}"
+    - "{{ vpn_sidecar_credentials_dir }}"
+
+- name: Create XAuth launcher directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: '0700'
+  loop:
+    - "{{ vpn_sidecar_runtime_dir }}/run"
+    - "{{ vpn_sidecar_profiles_dir }}"
+    - "{{ vpn_sidecar_profiles_dir }}/{{ vpn_sidecar_instance }}"
+  when: vpn_sidecar_backend == 'ipsec-xauth'
+
+- name: Preview credential file changes without exposing values
+  ansible.builtin.copy:
+    content: "{{ item.value }}"
+    dest: "{{ vpn_sidecar_credentials_dir }}/{{ item.key }}"
+    owner: "{{ ansible_user }}"
+    mode: '0600'
+  loop: "{{ vpn_sidecar_credentials | dict2items }}"
+  when: vpn_sidecar_backend == 'l2tp-ipsec'
+  check_mode: true
+  register: vpn_sidecar_credentials_preview
+  no_log: true
+  diff: false
+
+- name: Preview XAuth credential changes without exposing values
+  ansible.builtin.template:
+    src: xauth-credentials.j2
+    dest: "{{ vpn_sidecar_credentials_dir }}/vpn.credentials"
+    owner: "{{ ansible_user }}"
+    mode: '0600'
+  check_mode: true
+  register: vpn_sidecar_xauth_credentials_preview
+  no_log: true
+  diff: false
+  when: vpn_sidecar_backend == 'ipsec-xauth'
+
+- name: Preview the XAuth launcher profile
+  ansible.builtin.template:
+    src: profile.env.j2
+    dest: "{{ vpn_sidecar_profiles_dir }}/{{ vpn_sidecar_instance }}/profile.env"
+    owner: "{{ ansible_user }}"
+    mode: '0600'
+  check_mode: true
+  register: vpn_sidecar_profile_preview
+  diff: false
+  when: vpn_sidecar_backend == 'ipsec-xauth'
+
+- name: Preview consumer Compose changes
+  ansible.builtin.copy:
+    content: "{{ vpn_sidecar_rendered_compose.stdout }}\n"
+    dest: "{{ vpn_sidecar_runtime_dir }}/compose.yaml"
+    owner: "{{ ansible_user }}"
+    mode: '0600'
+  check_mode: true
+  register: vpn_sidecar_compose_preview
+  diff: false
+
+- name: Preview consumer environment changes
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ vpn_sidecar_runtime_dir }}/.env"
+    owner: "{{ ansible_user }}"
+    mode: '0600'
+  check_mode: true
+  register: vpn_sidecar_env_preview
+  diff: false
+
+- name: Inspect selected XAuth project before changing runtime inputs
+  ansible.builtin.command:
+    argv: [docker, ps, --quiet, --filter, "label=com.docker.compose.project={{ vpn_sidecar_project_name }}"]
+  register: vpn_sidecar_xauth_running
+  changed_when: false
+  check_mode: false
+  when: vpn_sidecar_backend == 'ipsec-xauth'
+
+- name: Inspect the pinned source directory before archive checks
+  ansible.builtin.stat:
+    path: "{{ vpn_sidecar_source }}"
+  register: vpn_sidecar_source_directory
+
+- name: Preview pinned source changes before touching an active XAuth session
+  ansible.builtin.unarchive:
+    src: "{{ vpn_sidecar_archive }}"
+    dest: "{{ vpn_sidecar_source }}"
+    owner: "{{ ansible_user }}"
+  check_mode: true
+  register: vpn_sidecar_xauth_source_preview
+  when:
+    - vpn_sidecar_backend == 'ipsec-xauth'
+    - vpn_sidecar_source_directory.stat.isdir | default(false)
+
+- name: Require explicit XAuth disconnect before changing active runtime inputs
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (vpn_sidecar_xauth_credentials_preview.changed
+             or vpn_sidecar_compose_preview.changed or vpn_sidecar_env_preview.changed
+             or vpn_sidecar_profile_preview.changed
+             or not vpn_sidecar_source_directory.stat.isdir | default(false)
+             or vpn_sidecar_xauth_source_preview.changed | default(false))
+    fail_msg: >-
+      The selected XAuth project is running and deployment inputs changed.
+      Disconnect this profile explicitly with its current scripts/vpn launcher,
+      then rerun provisioning and reconnect interactively. Ansible will not initiate MFA.
+  when:
+    - vpn_sidecar_backend == 'ipsec-xauth'
+    - vpn_sidecar_xauth_running.stdout | default('') | trim | length > 0
+
+- name: Extract pinned package source on the VPN host
+  ansible.builtin.unarchive:
+    src: "{{ vpn_sidecar_archive }}"
+    dest: "{{ vpn_sidecar_source }}"
+    owner: "{{ ansible_user }}"
+  register: vpn_sidecar_source_copy
+  when: not ansible_check_mode or vpn_sidecar_source_directory.stat.isdir | default(false)
+
+- name: Check for the pinned VPN image
+  ansible.builtin.command:
+    argv: [docker, image, inspect, "{{ vpn_sidecar_image }}", --format, "{{ '{{.Id}}' }}"]
+  register: vpn_sidecar_image_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Build the package image when missing or source changed
+  ansible.builtin.command:
+    argv: [docker, build, --tag, "{{ vpn_sidecar_image }}", "{{ vpn_sidecar_source }}/containers/{{ vpn_sidecar_backend }}"]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - vpn_sidecar_registry_image | length == 0
+    - vpn_sidecar_image_check.rc != 0 or vpn_sidecar_source_copy.changed
+
+- name: Pull a configured registry image
+  ansible.builtin.command:
+    argv: [docker, pull, "{{ vpn_sidecar_image }}"]
+  register: vpn_sidecar_pull
+  changed_when: "'Downloaded newer image' in vpn_sidecar_pull.stdout"
+  when:
+    - not ansible_check_mode
+    - vpn_sidecar_registry_image | length > 0
+    - vpn_sidecar_pull_image | bool
+
+- name: Check for the pinned watchdog image
+  ansible.builtin.command:
+    argv: [docker, image, inspect, "{{ vpn_sidecar_watchdog_image }}", --format, "{{ '{{.Id}}' }}"]
+  register: vpn_sidecar_watchdog_image_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Build the watchdog image from pinned source when needed
+  ansible.builtin.command:
+    argv: [docker, build, --tag, "{{ vpn_sidecar_watchdog_image }}", "{{ vpn_sidecar_source }}/watchdog"]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - vpn_sidecar_watchdog_registry_image | length == 0
+    - vpn_sidecar_watchdog_image_check.rc != 0 or vpn_sidecar_source_copy.changed
+
+- name: Pull a configured watchdog registry image
+  ansible.builtin.command:
+    argv: [docker, pull, "{{ vpn_sidecar_watchdog_image }}"]
+  register: vpn_sidecar_watchdog_pull
+  changed_when: "'Downloaded newer image' in vpn_sidecar_watchdog_pull.stdout"
+  when:
+    - not ansible_check_mode
+    - vpn_sidecar_watchdog_registry_image | length > 0
+    - vpn_sidecar_watchdog_pull_image | bool
+
+- name: Detect whether containers need recreation
+  ansible.builtin.set_fact:
+    vpn_sidecar_recreate: >-
+      {{ vpn_sidecar_credentials_preview.changed | default(false)
+         or vpn_sidecar_xauth_credentials_preview.changed | default(false)
+         or vpn_sidecar_profile_preview.changed | default(false) or vpn_sidecar_compose_preview.changed
+         or vpn_sidecar_env_preview.changed or vpn_sidecar_source_copy.changed
+         or not vpn_sidecar_source_directory.stat.isdir | default(false)
+         or vpn_sidecar_image_check.rc != 0 or vpn_sidecar_pull.changed | default(false)
+         or vpn_sidecar_watchdog_image_check.rc != 0
+         or vpn_sidecar_watchdog_pull.changed | default(false) }}
+
+- name: Require explicit XAuth disconnect before replacing active images
+  ansible.builtin.assert:
+    that: not vpn_sidecar_recreate | bool
+    fail_msg: >-
+      XAuth images or runtime inputs changed while this project is running.
+      Explicitly disconnect this profile, rerun provisioning, then reconnect
+      interactively. Existing containers have been left running.
+  when:
+    - vpn_sidecar_backend == 'ipsec-xauth'
+    - vpn_sidecar_xauth_running.stdout | default('') | trim | length > 0
+
+- name: Inspect only explicitly selected legacy watchdog units
+  ansible.builtin.command:
+    argv: [systemctl, show, --property=LoadState, --value, "{{ item }}"]
+  loop:
+    - "{{ vpn_sidecar_retired_timer }}"
+    - "{{ vpn_sidecar_retired_timer | regex_replace('[.]timer$', '.service') }}"
+  when: vpn_sidecar_retired_timer | length > 0
+  register: vpn_sidecar_retired_units
+  check_mode: false
+  changed_when: false
+
+- name: Stop and disable the explicitly selected legacy timer
+  ansible.builtin.systemd_service:
+    name: "{{ vpn_sidecar_retired_timer }}"
+    state: stopped
+    enabled: false
+  when:
+    - vpn_sidecar_retired_timer | length > 0
+    - vpn_sidecar_retired_units.results[0].stdout | default('not-found') | trim != 'not-found'
+
+- name: Stop the corresponding legacy watchdog service before container deployment
+  ansible.builtin.systemd_service:
+    name: "{{ vpn_sidecar_retired_timer | regex_replace('[.]timer$', '.service') }}"
+    state: stopped
+  when:
+    - vpn_sidecar_retired_timer | length > 0
+    - vpn_sidecar_retired_units.results[1].stdout | default('not-found') | trim != 'not-found'
+
+- name: Deploy and validate the consumer
+  block:
+    - name: Inspect the current watchdog container before an update
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --all
+          - --quiet
+          - --filter
+          - "label=com.docker.compose.project={{ vpn_sidecar_project_name }}"
+          - --filter
+          - label=com.docker.compose.service=watchdog
+      register: vpn_sidecar_existing_watchdog
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Pause the existing watchdog during a container update
+      ansible.builtin.command:
+        argv: [docker, stop, "{{ vpn_sidecar_existing_watchdog.stdout | trim }}"]
+      changed_when: true
+      when:
+        - not ansible_check_mode
+        - vpn_sidecar_recreate | bool
+        - vpn_sidecar_existing_watchdog.stdout | default('') | trim | length > 0
+
+    - name: Deploy encrypted vault values as protected runtime files
+      ansible.builtin.copy:
+        content: "{{ item.value }}"
+        dest: "{{ vpn_sidecar_credentials_dir }}/{{ item.key }}"
+        owner: "{{ ansible_user }}"
+        mode: '0600'
+      loop: "{{ vpn_sidecar_credentials | dict2items }}"
+      when: vpn_sidecar_backend == 'l2tp-ipsec'
+      no_log: true
+      diff: false
+
+    - name: Deploy protected XAuth credentials
+      ansible.builtin.template:
+        src: xauth-credentials.j2
+        dest: "{{ vpn_sidecar_credentials_dir }}/vpn.credentials"
+        owner: "{{ ansible_user }}"
+        mode: '0600'
+      no_log: true
+      diff: false
+      when: vpn_sidecar_backend == 'ipsec-xauth'
+
+    - name: Deploy the XAuth launcher profile
+      ansible.builtin.template:
+        src: profile.env.j2
+        dest: "{{ vpn_sidecar_profiles_dir }}/{{ vpn_sidecar_instance }}/profile.env"
+        owner: "{{ ansible_user }}"
+        mode: '0600'
+      diff: false
+      when: vpn_sidecar_backend == 'ipsec-xauth'
+
+    - name: Deploy the consumer Compose configuration
+      ansible.builtin.copy:
+        content: "{{ vpn_sidecar_rendered_compose.stdout }}\n"
+        dest: "{{ vpn_sidecar_runtime_dir }}/compose.yaml"
+        owner: "{{ ansible_user }}"
+        mode: '0600'
+      diff: false
+
+    - name: Deploy the consumer environment
+      ansible.builtin.template:
+        src: env.j2
+        dest: "{{ vpn_sidecar_runtime_dir }}/.env"
+        owner: "{{ ansible_user }}"
+        mode: '0600'
+      diff: false
+
+    - name: Record the deployed package version
+      ansible.builtin.copy:
+        content: "{{ vpn_sidecar_package_version }}\n"
+        dest: "{{ vpn_sidecar_runtime_dir }}/package-version"
+        owner: "{{ ansible_user }}"
+        mode: '0644'
+
+    - name: Validate Compose before activating it
+      ansible.builtin.command:
+        argv: [docker, compose, -f, "{{ vpn_sidecar_runtime_dir }}/compose.yaml", config, --quiet]
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Start the package and wait for VPN health
+      ansible.builtin.command:
+        argv: >-
+          {{ ['docker', 'compose', '-f', vpn_sidecar_runtime_dir ~ '/compose.yaml',
+              'up', '-d', '--wait', '--wait-timeout', vpn_sidecar_wait_timeout | string]
+             + (['--force-recreate'] if vpn_sidecar_recreate | bool else ['--no-recreate'])
+             + ['vpn', 'application'] }}
+      register: vpn_sidecar_up
+      changed_when: >-
+        vpn_sidecar_recreate | bool or 'Started' in vpn_sidecar_up.stderr
+        or 'Created' in vpn_sidecar_up.stderr
+      when:
+        - not ansible_check_mode
+        - vpn_sidecar_backend == 'l2tp-ipsec'
+
+    - name: Verify authenticated destination access from the controller
+      ansible.builtin.command:
+        argv: [ssh, -T, -F, "{{ vpn_sidecar_verify_ssh_config }}", -o, BatchMode=yes, -o, ConnectTimeout=10,
+               -o, ServerAliveInterval=5, -o, ServerAliveCountMax=2, "{{ vpn_sidecar_verify_ssh_alias }}", hostname]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: vpn_sidecar_ssh
+      retries: 3
+      delay: 5
+      until: vpn_sidecar_ssh.rc == 0 and vpn_sidecar_ssh.stdout | trim == vpn_sidecar_expected_hostname
+      when:
+        - not ansible_check_mode
+        - vpn_sidecar_verify_connection | bool
+        - vpn_sidecar_backend == 'l2tp-ipsec'
+
+    - name: Start containerized recovery after VPN validation
+      ansible.builtin.command:
+        argv: >-
+          {{ ['docker', 'compose', '-f', vpn_sidecar_runtime_dir ~ '/compose.yaml',
+              'up', '-d', '--no-deps']
+             + (['--force-recreate'] if vpn_sidecar_recreate | bool else ['--no-recreate'])
+             + ['watchdog'] }}
+      register: vpn_sidecar_watchdog_up
+      changed_when: >-
+        vpn_sidecar_recreate | bool or 'Started' in vpn_sidecar_watchdog_up.stderr
+        or 'Created' in vpn_sidecar_watchdog_up.stderr
+      when:
+        - not ansible_check_mode
+        - vpn_sidecar_backend == 'l2tp-ipsec'
+
+- name: Explain the explicit interactive XAuth connection step
+  ansible.builtin.debug:
+    msg: >-
+      XAuth provisioning is complete; no login was initiated. On the VM as
+      {{ ansible_user }} with noninteractive sudo configured, run:
+      bash {{ vpn_sidecar_source }}/scripts/vpn --profiles-dir {{ vpn_sidecar_profiles_dir }}
+      --local {{ vpn_sidecar_instance }} connect
+      . Use status or disconnect in place of connect to inspect or stop this profile.
+  when: vpn_sidecar_backend == 'ipsec-xauth'

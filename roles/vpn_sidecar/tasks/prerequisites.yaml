@@ -1,0 +1,214 @@
+---
+- name: Validate VM kernel policy
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - vpn_sidecar_kernel_blocklist | type_debug == 'list'
+      - vpn_sidecar_kernel_allowlist | type_debug == 'list'
+      - vpn_sidecar_kernel_warning_releases | type_debug == 'list'
+      - vpn_sidecar_kernel_blocklist | select('string') | list | length == vpn_sidecar_kernel_blocklist | length
+      - vpn_sidecar_kernel_allowlist | select('string') | list | length == vpn_sidecar_kernel_allowlist | length
+      - vpn_sidecar_kernel_warning_releases | select('string') | list | length == vpn_sidecar_kernel_warning_releases | length
+      - ansible_facts['kernel'] is match('^[A-Za-z0-9.+_-]+$')
+      - ansible_facts['kernel'] not in vpn_sidecar_kernel_blocklist
+      - vpn_sidecar_kernel_allowlist | length == 0 or ansible_facts['kernel'] in vpn_sidecar_kernel_allowlist
+    fail_msg: >-
+      Running kernel {{ ansible_facts['kernel'] }} does not satisfy the consumer's
+      kernel policy (allowlist, blocklist and warning releases must be lists of strings). Select and boot an approved kernel before deployment;
+      this role never changes the boot kernel or reboots the VM.
+
+- name: Report a running kernel with a recorded stability incident
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: kernel {{ ansible_facts['kernel'] }} has a recorded kernel Oops report during
+      L2TP/IPsec use. The root cause is unproven; module availability does not
+      establish stability. Review your consumer kernel allowlist/blocklist and
+      select a tested kernel before a production connection.
+  when: ansible_facts['kernel'] in vpn_sidecar_kernel_warning_releases
+
+- name: Install baseline VM utilities
+  ansible.builtin.apt:
+    name: [bash, ca-certificates, tar, kmod, util-linux, iproute2, sudo]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Discover installed package families
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: Discover current Docker capabilities
+  ansible.builtin.command:
+    argv: "{{ item }}"
+  loop:
+    - [docker, --version]
+    - [docker, compose, version]
+    - [docker, buildx, version]
+  register: vpn_sidecar_docker_capabilities
+  check_mode: false
+  changed_when: false
+  failed_when: false
+
+- name: Identify the existing Docker package family
+  ansible.builtin.set_fact:
+    vpn_sidecar_docker_ce: >-
+      {{ 'docker-ce' in ansible_facts.packages or 'docker-ce-cli' in ansible_facts.packages
+         or 'containerd.io' in ansible_facts.packages }}
+    vpn_sidecar_docker_missing: >-
+      {{ vpn_sidecar_docker_capabilities.results | rejectattr('rc', 'equalto', 0) | list | length > 0 }}
+
+- name: Refuse to mix Docker CE and Ubuntu engine packages
+  ansible.builtin.assert:
+    that:
+      - not (vpn_sidecar_docker_ce | bool and ('docker.io' in ansible_facts.packages or 'docker.io-app' in ansible_facts.packages))
+      - >-
+        not (vpn_sidecar_install_docker | bool and vpn_sidecar_docker_missing | bool
+        and vpn_sidecar_docker_capabilities.results[0].rc == 0
+        and not vpn_sidecar_docker_ce | bool
+        and 'docker.io' not in ansible_facts.packages
+        and 'docker.io-app' not in ansible_facts.packages)
+    fail_msg: >-
+      Docker is mixed or managed outside the recognized Ubuntu/Docker CE packages.
+      Reconcile the host packages first, or provision Docker, Compose and Buildx
+      externally and set vpn_sidecar_install_docker=false. Existing engines are
+      never removed or migrated automatically.
+
+- name: Install the matching Docker engine and CLI plugins when incomplete
+  ansible.builtin.apt:
+    name: >-
+      {{ ['docker-ce', 'docker-ce-cli', 'containerd.io', 'docker-compose-plugin', 'docker-buildx-plugin']
+         if vpn_sidecar_docker_ce | bool else ['docker.io', 'docker-compose-v2', 'docker-buildx'] }}
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - vpn_sidecar_install_docker | bool
+    - vpn_sidecar_docker_missing | bool
+
+- name: Ensure Docker starts at boot
+  ansible.builtin.systemd_service:
+    name: docker.service
+    state: started
+    enabled: true
+  when: not ansible_check_mode
+
+- name: Verify Docker daemon, Compose and Buildx
+  ansible.builtin.command:
+    argv: "{{ item }}"
+  loop:
+    - [docker, info]
+    - [docker, compose, version]
+    - [docker, buildx, version]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Select the modules required by this VPN type
+  ansible.builtin.set_fact:
+    vpn_sidecar_required_modules: >-
+      {{ ['xfrm_user', 'esp4']
+         + (['ppp_generic', 'ppp_async', 'l2tp_ppp'] if vpn_sidecar_backend == 'l2tp-ipsec' else []) }}
+
+- name: Probe running-kernel module availability without loading modules
+  ansible.builtin.command:
+    argv: [modprobe, --dry-run, "{{ item }}"]
+  loop: "{{ vpn_sidecar_required_modules }}"
+  register: vpn_sidecar_module_probe
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Find packages for missing running-kernel modules
+  ansible.builtin.command:
+    argv: [apt-cache, show, "{{ item }}"]
+  loop:
+    - "linux-modules-{{ ansible_facts['kernel'] }}"
+    - "linux-modules-extra-{{ ansible_facts['kernel'] }}"
+  register: vpn_sidecar_kernel_packages
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - vpn_sidecar_install_kernel_modules | bool
+    - vpn_sidecar_module_probe.results | rejectattr('rc', 'equalto', 0) | list | length > 0
+
+- name: Install the available base modules for only the running kernel
+  ansible.builtin.apt:
+    name: "linux-modules-{{ ansible_facts['kernel'] }}"
+    state: present
+  when:
+    - vpn_sidecar_install_kernel_modules | bool
+    - vpn_sidecar_module_probe.results | rejectattr('rc', 'equalto', 0) | list | length > 0
+    - vpn_sidecar_kernel_packages.results[0].rc == 0
+
+- name: Recheck modules before considering the extra package
+  ansible.builtin.command:
+    argv: [modprobe, --dry-run, "{{ item }}"]
+  loop: "{{ vpn_sidecar_required_modules }}"
+  register: vpn_sidecar_module_reprobe
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Install available extra modules only when still required
+  ansible.builtin.apt:
+    name: "linux-modules-extra-{{ ansible_facts['kernel'] }}"
+    state: present
+  when:
+    - vpn_sidecar_install_kernel_modules | bool
+    - vpn_sidecar_module_probe.results | rejectattr('rc', 'equalto', 0) | list | length > 0
+    - vpn_sidecar_module_reprobe.results | rejectattr('rc', 'equalto', 0) | list | length > 0
+    - vpn_sidecar_kernel_packages.results[1].rc == 0
+
+- name: Load required IPsec and optional PPP modules
+  ansible.builtin.command:
+    argv: [modprobe, "{{ item }}"]
+  loop: "{{ vpn_sidecar_required_modules }}"
+  register: vpn_sidecar_module_load
+  changed_when: false
+  failed_when: false
+  when: not ansible_check_mode
+
+- name: Require all VPN kernel modules before creating containers
+  ansible.builtin.assert:
+    that:
+      - vpn_sidecar_module_load.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+    fail_msg: >-
+      Required modules are unavailable for running kernel {{ ansible_facts['kernel'] }}.
+      Install matching module packages or boot a tested kernel, then retry.
+      Missing/failed modules: {{ vpn_sidecar_module_load.results | rejectattr('rc', 'equalto', 0) | map(attribute='item') | list }}.
+      This role does not install a different kernel or reboot automatically.
+  when: not ansible_check_mode
+
+- name: Persist required kernel modules
+  ansible.builtin.copy:
+    dest: "/etc/modules-load.d/vpn-sidecar-{{ vpn_sidecar_instance }}.conf"
+    content: "{{ vpn_sidecar_required_modules | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Verify kernel XFRM policy interface without exposing IPsec keys
+  ansible.builtin.command:
+    argv: [ip, xfrm, policy, list]
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Inspect the PPP device for L2TP
+  ansible.builtin.stat:
+    path: /dev/ppp
+  register: vpn_sidecar_ppp_device
+  when:
+    - vpn_sidecar_backend == 'l2tp-ipsec'
+    - not ansible_check_mode
+
+- name: Require a PPP character device for L2TP
+  ansible.builtin.assert:
+    that:
+      - vpn_sidecar_ppp_device.stat.exists
+      - vpn_sidecar_ppp_device.stat.ischr | default(false)
+    fail_msg: >-
+      /dev/ppp is unavailable after loading PPP modules. Check VM kernel and
+      device management; this host cannot run the L2TP container yet.
+  when:
+    - vpn_sidecar_backend == 'l2tp-ipsec'
+    - not ansible_check_mode

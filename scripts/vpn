@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+# Keep credentials out of shell traces, even when invoked with bash -x.
+set +x
+set -euo pipefail
+umask 077
+
+# Shared CLI state is initialized in main. It stays global so the EXIT trap can
+# read it after Bash unwinds function scopes. Helpers keep temporary values local;
+# VPN_* exports form the contract with Compose and the backend launcher.
+die() {
+    failure_reported=1
+    printf '%s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    printf 'Usage: vpn --profiles-dir DIRECTORY [--local] {list | PROFILE {validate|build|connect|status|disconnect}}\n'
+}
+
+usage_error() {
+    failure_reported=1
+    usage >&2
+    exit 2
+}
+
+report_exit() {
+    local status=$1
+    if (( status != 0 && ! failure_reported )); then
+        # Report the phase, never command text or environment values.
+        printf 'vpn: %s failed (exit %s; profile=%s, action=%s).\n' \
+            "$step" "$status" "${profile:-unset}" "${action:-unset}" >&2
+    fi
+}
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --local)
+                local_mode=1
+                shift
+                ;;
+            --profiles-dir)
+                [[ $# -ge 2 && -n $2 ]] || die 'Expected a directory after --profiles-dir.'
+                profiles_dir=$2
+                shift 2
+                ;;
+            *) break ;;
+        esac
+    done
+    [[ -n $profiles_dir && -d $profiles_dir ]] || die 'Supply an existing consumer profile directory with --profiles-dir.'
+    profiles_dir=$(cd "$profiles_dir" && pwd)
+    state_root=$(dirname "$profiles_dir")/instances
+    if [[ ${1:-} == list && $# == 1 ]]; then
+        action=list
+        return
+    fi
+    [[ $# == 2 ]] || usage_error
+    profile=$1
+    action=$2
+    [[ $profile =~ ^[a-z0-9]+(-[a-z0-9]+)*$ && ${#profile} -le 48 ]] || die 'Profile names must be lowercase letters/digits separated by single hyphens (max 48 characters).'
+    case $action in
+        validate|build|connect|status|disconnect) ;;
+        *) usage_error ;;
+    esac
+    config=$profiles_dir/$profile/profile.env
+    [[ -f $config ]] || die "Missing profile: $profile ($config)."
+}
+
+list_profiles() {
+    local config name
+    for config in "$profiles_dir"/*/profile.env; do
+        [[ -f $config ]] || continue
+        name=${config%/profile.env}
+        printf '%s\n' "${name##*/}"
+    done
+}
+
+load_profile() {
+    local line key value seen line_number
+    # Parse literal data, never shell code; reject duplicates rather than overriding.
+    # Clear inherited settings so omitted fields use this launcher's defaults.
+    unset \
+        VPN_BACKEND VPN_SERVER VPN_HEALTH_HOST \
+        VPN_HEALTH_PORT VPN_IMAGE VPN_DNS \
+        VPN_FORCE_ENCAPS VPN_IKE_PROPOSALS VPN_ESP_PROPOSALS \
+        VPN_SSH_HOST VPN_REMOTE_ROOT VPN_REMOTE_PROFILES_DIR \
+        VPN_WATCHDOG_IMAGE VPN_WATCHDOG_INTERVAL VPN_WATCHDOG_COOLDOWN
+    seen='|'
+    line_number=0
+    # Accept Windows line endings and a final line without a newline.
+    while IFS= read -r line || [[ -n $line ]]; do
+        line_number=$((line_number + 1))
+        line=${line%$'\r'}
+        [[ -z $line || $line == \#* ]] && continue
+        [[ $line == *=* ]] || die "Invalid profile line in $config:$line_number."
+        key=${line%%=*}
+        value=${line#*=}
+        case $key in
+            VPN_BACKEND | VPN_SERVER | VPN_HEALTH_HOST | \
+            VPN_HEALTH_PORT | VPN_IMAGE | VPN_DNS | \
+            VPN_FORCE_ENCAPS | VPN_IKE_PROPOSALS | VPN_ESP_PROPOSALS | \
+            VPN_SSH_HOST | VPN_REMOTE_ROOT | VPN_REMOTE_PROFILES_DIR | \
+            VPN_WATCHDOG_IMAGE | VPN_WATCHDOG_INTERVAL | VPN_WATCHDOG_COOLDOWN) ;;
+            *) die "Unknown profile field $key in $config:$line_number." ;;
+        esac
+        [[ $seen != *"|$key|"* ]] || die "Duplicate profile field $key in $config:$line_number."
+        seen="$seen$key|"
+        export "$key=$value"
+    done < "$config"
+}
+
+validate_connection() {
+    [[ ${VPN_SERVER:-} =~ ^[A-Za-z0-9][A-Za-z0-9.:-]*$ ]] || die "Invalid/missing VPN_SERVER in $config."
+    [[ ${VPN_HEALTH_HOST:-} =~ ^[A-Za-z0-9][A-Za-z0-9.:-]*$ ]] || die "Invalid/missing VPN_HEALTH_HOST in $config."
+    VPN_HEALTH_PORT=${VPN_HEALTH_PORT:-22}
+    [[ $VPN_HEALTH_PORT =~ ^[0-9]{1,5}$ ]] && (( 10#$VPN_HEALTH_PORT >= 1 && 10#$VPN_HEALTH_PORT <= 65535 )) || die "Invalid VPN_HEALTH_PORT in $config."
+}
+
+configure_backend() {
+    local octet
+    local -a octets
+    case ${VPN_BACKEND:-} in
+        ipsec-xauth)
+            [[ $VPN_SERVER =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'IPsec/XAuth VPN_SERVER must be an IPv4 literal.'
+            IFS=. read -r -a octets <<< "$VPN_SERVER"
+            for octet in "${octets[@]}"; do
+                [[ ${#octet} -le 3 ]] && (( 10#$octet <= 255 )) || die 'IPsec/XAuth VPN_SERVER has an invalid IPv4 octet.'
+            done
+            # XAuth recovery needs a person to complete MFA.
+            export VPN_WATCHDOG_MODE=manual
+            backend=$root/containers/ipsec-xauth
+            export VPN_IMAGE=${VPN_IMAGE:-vpn-sidecar-ipsec-xauth:local}
+            export VPN_IKE_PROPOSALS=${VPN_IKE_PROPOSALS:-aes128-sha1-modp1536,aes256-sha256-modp1536}
+            export VPN_ESP_PROPOSALS=${VPN_ESP_PROPOSALS:-aes128-sha1-modp1536,aes256-sha1-modp1536}
+            ;;
+        l2tp-ipsec)
+            export VPN_WATCHDOG_MODE=auto
+            backend=$root/containers/l2tp-ipsec
+            [[ -n ${VPN_IMAGE:-} ]] || die "Missing VPN_IMAGE in $config."
+            ;;
+        *) die "Unsupported VPN_BACKEND in $config." ;;
+    esac
+}
+
+configure_watchdog() {
+    VPN_WATCHDOG_INTERVAL=${VPN_WATCHDOG_INTERVAL:-30}
+    VPN_WATCHDOG_COOLDOWN=${VPN_WATCHDOG_COOLDOWN:-300}
+    [[ $VPN_WATCHDOG_INTERVAL =~ ^[0-9]{1,5}$ ]] && (( 10#$VPN_WATCHDOG_INTERVAL > 0 )) || die 'Invalid VPN_WATCHDOG_INTERVAL.'
+    [[ $VPN_WATCHDOG_COOLDOWN =~ ^[0-9]{1,6}$ ]] || die 'Invalid VPN_WATCHDOG_COOLDOWN.'
+    # Force decimal arithmetic: leading zeroes must not turn values into octal.
+    export VPN_WATCHDOG_INTERVAL=$((10#$VPN_WATCHDOG_INTERVAL)) VPN_WATCHDOG_COOLDOWN=$((10#$VPN_WATCHDOG_COOLDOWN))
+    export VPN_WATCHDOG_IMAGE=${VPN_WATCHDOG_IMAGE:-vpn-sidecar-watchdog:local}
+}
+
+validate_remote_settings() {
+    [[ -n ${VPN_SSH_HOST:-} ]] || return 0
+    [[ $VPN_SSH_HOST =~ ^[A-Za-z0-9][A-Za-z0-9_.@:-]*$ ]] || die 'Invalid VPN_SSH_HOST.'
+    [[ ${VPN_REMOTE_ROOT:-} =~ ^/[A-Za-z0-9_./-]+$ ]] || die 'VPN_REMOTE_ROOT must be an absolute path without spaces.'
+    [[ ${VPN_REMOTE_PROFILES_DIR:-} =~ ^/[A-Za-z0-9_./-]+$ ]] || die 'VPN_REMOTE_PROFILES_DIR must be an absolute consumer profile path without spaces.'
+}
+
+dispatch_remote() {
+    local ssh_args=(-o BatchMode=yes -o ConnectTimeout=10)
+    # Interactive XAuth authentication needs a remote terminal for its MFA prompt.
+    if [[ $action == connect ]]; then
+        ssh_args+=(-t)
+    fi
+    # The remote launcher reads its own profile; --local prevents another SSH hop.
+    # exec forwards signals and returns SSH's exit status directly to the caller.
+    exec ssh "${ssh_args[@]}" -- "$VPN_SSH_HOST" \
+        bash "$VPN_REMOTE_ROOT/scripts/vpn" \
+        --profiles-dir "$VPN_REMOTE_PROFILES_DIR" --local "$profile" "$action"
+}
+
+configure_runtime() {
+    # Runtime state belongs to the consumer, while backend code stays in source.
+    export VPN_SOURCE_ROOT=$root VPN_WATCHDOG_DIR=$root/watchdog
+    export COMPOSE_PROJECT_NAME=vpn-$profile
+    export VPN_PROJECT_DIR=$state_root/$profile
+    export VPN_CREDENTIALS_DIR=$VPN_PROJECT_DIR/secrets
+    export VPN_BACKEND_DIR=$backend
+    export VPN_COMPOSE_FILE=$backend/compose.yaml
+    export VPN_TEST_HOST=$VPN_HEALTH_HOST VPN_TEST_PORT=$VPN_HEALTH_PORT
+}
+
+compose() {
+    # sudo clears the environment: pass only the explicit Compose contract.
+    # --env-file /dev/null prevents an incidental .env from supplying settings.
+    sudo -n env \
+        "COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:?}" \
+        "VPN_IMAGE=${VPN_IMAGE:?}" \
+        "VPN_SERVER=${VPN_SERVER:?}" \
+        "VPN_HEALTH_HOST=${VPN_HEALTH_HOST:-}" \
+        "VPN_HEALTH_PORT=${VPN_HEALTH_PORT:-22}" \
+        "VPN_DNS=${VPN_DNS:-}" \
+        "VPN_FORCE_ENCAPS=${VPN_FORCE_ENCAPS:-yes}" \
+        "VPN_IKE_PROPOSALS=${VPN_IKE_PROPOSALS:-}" \
+        "VPN_ESP_PROPOSALS=${VPN_ESP_PROPOSALS:-}" \
+        "VPN_CREDENTIALS_DIR=${VPN_CREDENTIALS_DIR:?}" \
+        "VPN_BACKEND_DIR=${VPN_BACKEND_DIR:?}" \
+        "VPN_PROJECT_DIR=${VPN_PROJECT_DIR:?}" \
+        "VPN_SOURCE_ROOT=$VPN_SOURCE_ROOT" \
+        "VPN_WATCHDOG_DIR=$VPN_WATCHDOG_DIR" \
+        "VPN_WATCHDOG_IMAGE=$VPN_WATCHDOG_IMAGE" \
+        "VPN_WATCHDOG_MODE=$VPN_WATCHDOG_MODE" \
+        "VPN_WATCHDOG_INTERVAL=$VPN_WATCHDOG_INTERVAL" \
+        "VPN_WATCHDOG_COOLDOWN=$VPN_WATCHDOG_COOLDOWN" \
+        docker compose --env-file /dev/null \
+        --project-directory "$VPN_PROJECT_DIR" \
+        -f "$VPN_COMPOSE_FILE" -f "$root/watchdog/compose.yaml" \
+        "$@"
+}
+
+
+acquire_operation_lock() {
+    mkdir -p "$VPN_PROJECT_DIR/run"
+    chmod 700 "$VPN_PROJECT_DIR" "$VPN_PROJECT_DIR/run"
+    # Hold the lock on an open descriptor through manifest updates and dispatch.
+    exec 9>"$VPN_PROJECT_DIR/run/cli.lock"
+    flock -n 9 || die 'Another VPN operation is active; retry when it finishes.'
+    export VPN_OPERATION_LOCKED=1
+}
+
+render_runtime_manifest() {
+    local manifest
+    mkdir -p "$VPN_PROJECT_DIR"
+    chmod 700 "$VPN_PROJECT_DIR"
+    # Render beside the destination so rename publishes a complete file atomically.
+    # A failed render leaves the previous manifest available for recovery.
+    manifest=$(mktemp "$VPN_PROJECT_DIR/.compose.XXXXXX")
+    if ! compose config > "$manifest"; then
+        rm -f -- "$manifest"
+        die 'Could not render the runtime Compose configuration.'
+    fi
+    mv -- "$manifest" "$VPN_PROJECT_DIR/compose.yaml"
+}
+
+dispatch_local() {
+    local vpn_id state
+    # XAuth owns its interactive connection lifecycle; builds use shared Compose.
+    if [[ $VPN_BACKEND == ipsec-xauth && $action != build ]]; then
+        export VPN_COMPOSE_FILE=$VPN_PROJECT_DIR/compose.yaml
+        exec bash "$backend/vpn" "$action"
+    fi
+    case $action in
+        build)
+            mkdir -p "$VPN_PROJECT_DIR"
+            # Runtime manifests are image-only; source builds need these overrides.
+            compose --project-directory "$backend" \
+                -f "$backend/compose.build.yaml" \
+                -f "$root/watchdog/compose.build.yaml" build vpn watchdog
+            ;;
+        connect)
+            [[ -d $VPN_CREDENTIALS_DIR ]] || die "Credentials directory missing: $VPN_CREDENTIALS_DIR"
+            compose up -d --wait --wait-timeout 120
+            ;;
+        status)
+            vpn_id=$(compose ps -q vpn)
+            [[ -n $vpn_id ]] || die 'VPN is stopped.'
+            state=$(sudo -n docker inspect --format '{{.State.Health.Status}}' "$vpn_id")
+            printf 'VPN: %s\n' "$state"
+            [[ $state == healthy ]]
+            ;;
+        disconnect)
+            compose down
+            ;;
+    esac
+}
+
+main() {
+    profiles_dir=
+    profile=
+    action=
+    local_mode=0
+    failure_reported=0
+    step='parse arguments'
+    root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+    trap 'report_exit "$?"' EXIT
+
+    parse_arguments "$@"
+    if [[ $action == list ]]; then
+        list_profiles
+        exit 0
+    fi
+
+    step='load profile'
+    load_profile
+    step='validate profile'
+    validate_connection
+    configure_backend
+    configure_watchdog
+    validate_remote_settings
+
+    # Validation must finish without SSH, credentials, or runtime directory writes.
+    if [[ $action == validate ]]; then
+        printf '%s: valid (%s)\n' "$profile" "$VPN_BACKEND"
+        exit 0
+    fi
+    if (( ! local_mode )) && [[ -n ${VPN_SSH_HOST:-} ]]; then
+        step='SSH handoff'
+        dispatch_remote
+    fi
+
+    configure_runtime
+    # Status stays available while a connection operation holds the instance lock.
+    # Mutations must lock before replacing the manifest or invoking the backend.
+    if [[ $action != status ]]; then
+        step='acquire operation lock'
+        acquire_operation_lock
+    fi
+    if [[ $action == connect ]]; then
+        step='render runtime manifest'
+        render_runtime_manifest
+    fi
+
+    step="run $action ($VPN_BACKEND)"
+    dispatch_local
+}
+
+main "$@"

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >>"$VPN_MOCK_DIR/calls.log"
+case $1 in
+inspect)
+    if [[ ${*: -1} == fake-app ]]; then echo true; exit; fi
+    if [[ -e $VPN_PROJECT_DIR/run/email-code ]]; then
+        [[ $(cat "$VPN_PROJECT_DIR/run/email-code") == 123456 ]] || exit 1
+        rm "$VPN_PROJECT_DIR/run/email-code"
+        echo healthy >"$VPN_MOCK_DIR/state"
+    fi
+    cat "$VPN_MOCK_DIR/state"
+    ;;
+compose)
+    shift
+    while [[ $# != 0 ]]; do
+        case $1 in
+            --project-directory|-f) shift 2 ;;
+            down) echo stopped >"$VPN_MOCK_DIR/state"; rm -f "$VPN_MOCK_DIR/app"; exit ;;
+            up)
+                if [[ ${*: -1} == vpn ]]; then
+                    if [[ $VPN_MOCK_MODE == failure ]]; then
+                        echo stopped >"$VPN_MOCK_DIR/state"
+                        echo 'Simulated gateway failure' >"$VPN_PROJECT_DIR/run/test.log"
+                    else
+                        echo starting >"$VPN_MOCK_DIR/state"
+                        echo 'EMAIL_CODE_REQUIRED: simulated' >"$VPN_PROJECT_DIR/run/test.log"
+                    fi
+                else touch "$VPN_MOCK_DIR/app"; fi
+                exit ;;
+            ps)
+                if [[ ${*: -1} == vpn ]]; then
+                    if [[ $(cat "$VPN_MOCK_DIR/state") != stopped ]]; then echo fake-vpn; fi
+                elif [[ -e $VPN_MOCK_DIR/app ]]; then echo fake-app; fi
+                exit ;;
+            *) exit 2 ;;
+        esac
+    done
+    ;;
+exec) [[ $(cat "$VPN_MOCK_DIR/state") == healthy ]] ;;
+*) exit 2 ;;
+esac

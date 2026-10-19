@@ -1,0 +1,4 @@
+services:
+  vpn:
+    build:
+      context: .

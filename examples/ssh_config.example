@@ -1,0 +1,19 @@
+# Keep this file in the consumer project and replace all example values.
+# Include it from ~/.ssh/config BEFORE broad Host * settings so the nested
+# ProxyCommand SSH also resolves vpn-host. Using -F only on the outer SSH
+# command does not pass that configuration to the nested SSH command.
+Host vpn-host
+    HostName 203.0.113.20
+    User operator
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+    ConnectTimeout 10
+
+Host example-vpn-jump
+    HostName 192.0.2.10
+    User example-user
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+    BatchMode yes
+    ConnectTimeout 10
+    ProxyCommand ssh -T -o BatchMode=yes -o ConnectTimeout=10 vpn-host sudo -n docker compose --env-file /dev/null -p vpn-example -f /srv/example-project/vpn/instances/example/compose.yaml exec -T application nc %h %p

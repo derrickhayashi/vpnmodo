@@ -1,0 +1,110 @@
+#!/bin/sh
+set -eu
+PROJECT_DIR=${VPN_PROJECT_DIR:?VPN_PROJECT_DIR is required}
+STATE_DIR=${VPN_WATCHDOG_STATE_DIR:-/state}
+MODE=${VPN_WATCHDOG_MODE:?VPN_WATCHDOG_MODE is required}
+COOLDOWN=${VPN_WATCHDOG_COOLDOWN:-300}
+case "$MODE" in auto|manual) ;; *) echo 'VPN_WATCHDOG_MODE must be auto or manual' >&2; exit 2;; esac
+case "$COOLDOWN" in ''|*[!0-9]*) echo 'VPN_WATCHDOG_COOLDOWN must be a nonnegative integer' >&2; exit 2;; esac
+mkdir -p "$STATE_DIR"
+exec 9>"$STATE_DIR/lock"
+flock -n 9 || exit 0
+# A consumer update holds this inode while publishing/activating its manifest.
+# Read-only bind access is sufficient for a Linux flock on the existing file.
+if [ -f "$PROJECT_DIR/run/cli.lock" ]; then
+    exec 8<"$PROJECT_DIR/run/cli.lock"
+    flock -n 8 || exit 0
+fi
+compose() { docker compose -f "$PROJECT_DIR/compose.yaml" "$@"; }
+service_id() {
+    ids=$(compose ps -a -q "$1")
+    case "$ids" in *'
+'*) return 1;; esac
+    printf '%s' "$ids"
+}
+report() {
+    previous=
+    [ ! -f "$STATE_DIR/status" ] || previous=$(cat "$STATE_DIR/status")
+    if [ "$previous" != "$1" ]; then
+        printf '%s\n' "$1" > "$STATE_DIR/status"
+        printf '%s\n' "$2"
+    fi
+}
+if ! vpn_id=$(service_id vpn); then
+    report replacing 'VPN replacement is in progress; waiting for a single container'
+    exit 0
+fi
+if [ -z "$vpn_id" ]; then report stopped 'VPN missing; waiting for an explicit connection'; exit 0; fi
+vpn_state=$(docker inspect -f '{{.State.Status}}' "$vpn_id")
+if [ "$vpn_state" != running ]; then
+    report stopped 'VPN stopped; reconnect manually when needed'
+    exit 0
+fi
+vpn_health=$(docker inspect -f '{{.State.Health.Status}}' "$vpn_id")
+if [ "$vpn_health" = starting ]; then report starting 'VPN is starting; allowing its healthcheck grace period'; exit 0; fi
+
+if [ "$MODE" = manual ]; then
+    host=${VPN_HEALTH_HOST:?Manual mode requires VPN_HEALTH_HOST}
+    port=${VPN_HEALTH_PORT:-22}
+    if [ "$vpn_health" != healthy ] || ! docker exec "$vpn_id" timeout 8 nc -z -w 5 "$host" "$port" >/dev/null 2>&1; then
+        report manual-required 'VPN unavailable; manual reconnect with a fresh MFA code is required'
+    else
+        report healthy 'VPN is healthy and the private endpoint is reachable'
+    fi
+    exit 0
+fi
+
+if [ "$vpn_health" = unhealthy ]; then
+    now=$(date +%s)
+    previous=0
+    [ ! -f "$STATE_DIR/last-recovery" ] || previous=$(cat "$STATE_DIR/last-recovery")
+    if [ "$((now - previous))" -lt "$COOLDOWN" ]; then
+        report cooldown 'VPN unhealthy; waiting for recovery cooldown'
+        exit 0
+    fi
+    printf '%s\n' "$now" > "$STATE_DIR/last-recovery"
+    touch "$STATE_DIR/forwarding-pending"
+    report recovering 'VPN unhealthy; recreating VPN, then forwarding'
+    compose stop application
+    compose up -d --no-deps --force-recreate vpn
+    attempts=0
+    while [ "$attempts" -lt 24 ]; do
+        vpn_health=starting
+        if vpn_id=$(service_id vpn) && [ -n "$vpn_id" ]; then
+            vpn_health=$(docker inspect -f '{{.State.Health.Status}}' "$vpn_id")
+        fi
+        [ "$vpn_health" != healthy ] || break
+        attempts=$((attempts + 1))
+        sleep 5
+    done
+    if [ "$vpn_health" != healthy ]; then
+        report recovery-failed 'VPN did not become healthy; forwarding stays stopped'
+        exit 1
+    fi
+    compose up -d --no-deps --force-recreate application
+    rm -f "$STATE_DIR/forwarding-pending"
+    report healthy 'VPN and forwarding recovered'
+    exit 0
+fi
+
+[ "$vpn_health" = healthy ] || exit 0
+application_id=$(service_id application) || exit 0
+[ -n "$application_id" ] || exit 0
+application_state=$(docker inspect -f '{{.State.Status}}' "$application_id")
+if [ "$application_state" != running ]; then
+    if [ -f "$STATE_DIR/forwarding-pending" ]; then
+        compose up -d --no-deps --force-recreate application
+        rm -f "$STATE_DIR/forwarding-pending"
+        report healthy 'Healthy VPN; forwarding resumed after recovery'
+    fi
+    exit 0
+fi
+
+# Query from inside each sibling container; the watchdog needs no host PID mount.
+vpn_net=$(docker exec "$vpn_id" readlink /proc/self/ns/net)
+application_net=$(docker exec "$application_id" readlink /proc/self/ns/net)
+if [ "$vpn_net" != "$application_net" ]; then
+    compose up -d --no-deps --force-recreate application
+    printf '%s\n' 'Reattached forwarding to the healthy VPN network'
+fi
+report healthy 'VPN and forwarding are healthy'

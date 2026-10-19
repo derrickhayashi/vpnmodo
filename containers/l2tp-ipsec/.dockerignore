@@ -1,0 +1,9 @@
+.env
+secrets/*
+!secrets/README.md
+
+.git
+instances/
+**/secrets/
+**/run/
+*.log

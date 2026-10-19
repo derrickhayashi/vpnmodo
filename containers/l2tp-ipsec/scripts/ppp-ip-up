@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+mkdir -p /run/vpn
+: > /run/vpn/ppp-dns
+[ -z "${DNS1:-}" ] || printf '%s\n' "$DNS1" >> /run/vpn/ppp-dns
+[ -z "${DNS2:-}" ] || printf '%s\n' "$DNS2" >> /run/vpn/ppp-dns

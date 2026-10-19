@@ -1,0 +1,4 @@
+services:
+  watchdog:
+    build:
+      context: ${VPN_WATCHDOG_DIR:?Set VPN_WATCHDOG_DIR for local builds}

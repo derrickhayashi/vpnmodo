@@ -1,0 +1,61 @@
+services:
+  watchdog:
+    image: ${VPN_WATCHDOG_IMAGE:-vpn-sidecar-watchdog:local}
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:?Set a unique project name}
+      VPN_PROJECT_DIR: ${VPN_PROJECT_DIR:?Set the absolute consumer runtime path}
+      VPN_WATCHDOG_STATE_DIR: /state
+      VPN_WATCHDOG_MODE: ${VPN_WATCHDOG_MODE:?Set auto or manual recovery}
+      VPN_WATCHDOG_COOLDOWN: ${VPN_WATCHDOG_COOLDOWN:-300}
+      VPN_WATCHDOG_INTERVAL: ${VPN_WATCHDOG_INTERVAL:-30}
+      VPN_HEALTH_HOST: ${VPN_HEALTH_HOST:-}
+      VPN_HEALTH_PORT: ${VPN_HEALTH_PORT:-22}
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+      # Compose bind/secret paths refer to host paths. Keep identical paths
+      # visible to the Docker client in this container during recreation.
+      - type: bind
+        source: ${VPN_PROJECT_DIR}
+        target: ${VPN_PROJECT_DIR}
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${VPN_SOURCE_ROOT:?Set the absolute source checkout path}
+        target: ${VPN_SOURCE_ROOT}
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${VPN_CREDENTIALS_DIR:?Set the absolute instance credentials path}
+        target: ${VPN_CREDENTIALS_DIR}
+        read_only: true
+        bind:
+          create_host_path: false
+      - watchdog-state:/state
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      # Runtime and credential directories can be mode 700 under the host user.
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      vpn:
+        condition: service_started
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+volumes:
+  watchdog-state:

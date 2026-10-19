@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+interval=${VPN_WATCHDOG_INTERVAL:-30}
+case "$interval" in ''|*[!0-9]*|0) echo 'VPN_WATCHDOG_INTERVAL must be a positive integer' >&2; exit 2;; esac
+trap 'exit 0' INT TERM
+while :; do
+    if ! /usr/local/bin/vpn-watchdog; then
+        printf '%s\n' 'Watchdog check failed; retrying on the next interval' >&2
+    fi
+    sleep "$interval" &
+    wait "$!" || exit 0
+done

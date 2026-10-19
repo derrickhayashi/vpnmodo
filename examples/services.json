@@ -1,0 +1,9 @@
+{
+  "name": "example",
+  "ssh_config": "ssh_config.example",
+  "ssh_target": "example-vpn-jump",
+  "forwards": [
+    {"local_port": 18081, "remote_host": "127.0.0.1", "remote_port": 8081},
+    {"local_port": 13000, "remote_host": "127.0.0.1", "remote_port": 3000}
+  ]
+}
