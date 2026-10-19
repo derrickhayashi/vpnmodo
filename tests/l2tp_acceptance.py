@@ -94,7 +94,7 @@ def begin(cli, directory, state_root):
         assert b"inet 198.51.100." in ppp_address and b"peer 198.51.100.1" in ppp_address
         command(["docker", "exec", ids["application"]["Id"], "nc", "-z", "-w", "3", "198.51.100.1", "28080"])
         lab.namespaces()
-        command(["docker", "exec", ids["application"]["Id"], "nslookup", "private.example", "127.0.0.1"])
+        command(["docker", "exec", ids["application"]["Id"], "nslookup", "-type=A", "private.example", "127.0.0.1"])
         ipv6 = command(["docker", "exec", ids["application"]["Id"], "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"]).stdout
         assert ipv6.strip() == b"1"
         last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
