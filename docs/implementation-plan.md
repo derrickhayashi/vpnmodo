@@ -4,6 +4,19 @@ Status: agreed staged delivery approach, 2026-10-19. Issue links are recorded be
 See [requirements](implementation-requirements.md) for product requirements and
 [development boundaries](development.md) for publishing rules.
 
+## GitHub backlog
+
+Umbrella tracker: [#1](https://github.com/derrickhayashi/vpn-sidecars-next/issues/1).
+
+- Stage 1: [#2 — vpnmodo v1: Define the v1 contracts and backend profile model](https://github.com/derrickhayashi/vpn-sidecars-next/issues/2)
+- Stage 2: [#3 — vpnmodo v1: Ship the container controller and SSH transport skeleton](https://github.com/derrickhayashi/vpn-sidecars-next/issues/3)
+- Stage 3: [#4 — vpnmodo v1: Implement secure managed profile creation](https://github.com/derrickhayashi/vpn-sidecars-next/issues/4)
+- Stage 4: [#5 — vpnmodo v1: Implement persistent operations and lifecycle coordination](https://github.com/derrickhayashi/vpn-sidecars-next/issues/5)
+- Stage 5: [#6 — vpnmodo v1: Integrate L2TP and controller-owned recovery](https://github.com/derrickhayashi/vpn-sidecars-next/issues/6)
+- Stage 6: [#7 — vpnmodo v1: Integrate XAuth MFA with mandatory fail-closed enforcement](https://github.com/derrickhayashi/vpn-sidecars-next/issues/7)
+- Stage 7: [#8 — vpnmodo v1: Add workstation service access and diagnostics](https://github.com/derrickhayashi/vpn-sidecars-next/issues/8)
+- Stage 8: [#9 — vpnmodo v1: Validate adoption, packaging and teammate onboarding](https://github.com/derrickhayashi/vpn-sidecars-next/issues/9)
+
 ## Tracking and delivery
 
 Use one umbrella GitHub issue for the release and one issue per reviewable stage.
