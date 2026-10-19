@@ -1,6 +1,8 @@
 ---
 vpn_sidecar_backend: l2tp-ipsec
 vpn_sidecar_install_kernel_modules: true
+# xl2tpd supports userspace L2TP; enable only to require kernel acceleration.
+vpn_sidecar_l2tp_acceleration: false
 vpn_sidecar_kernel_blocklist: []
 vpn_sidecar_kernel_allowlist: []
 vpn_sidecar_kernel_warning_releases: ['6.8.0-146-generic']

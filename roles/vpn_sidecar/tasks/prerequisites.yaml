@@ -3,6 +3,7 @@
   ansible.builtin.assert:
     that:
       - ansible_facts['distribution'] == 'Ubuntu'
+      - vpn_sidecar_l2tp_acceleration | type_debug == 'bool'
       - vpn_sidecar_kernel_blocklist | type_debug == 'list'
       - vpn_sidecar_kernel_allowlist | type_debug == 'list'
       - vpn_sidecar_kernel_warning_releases | type_debug == 'list'
@@ -60,7 +61,8 @@
 - name: Refuse to mix Docker CE and Ubuntu engine packages
   ansible.builtin.assert:
     that:
-      - not (vpn_sidecar_docker_ce | bool and ('docker.io' in ansible_facts.packages or 'docker.io-app' in ansible_facts.packages))
+      - "'podman-docker' not in ansible_facts.packages"
+      - not (vpn_sidecar_docker_ce | bool and ('docker.io' in ansible_facts.packages or 'docker.io-app' in ansible_facts.packages or 'containerd' in ansible_facts.packages or 'runc' in ansible_facts.packages))
       - >-
         not (vpn_sidecar_install_docker | bool and vpn_sidecar_docker_missing | bool
         and vpn_sidecar_docker_capabilities.results[0].rc == 0
@@ -85,28 +87,50 @@
     - vpn_sidecar_install_docker | bool
     - vpn_sidecar_docker_missing | bool
 
+- name: Discover Docker service availability for check mode
+  ansible.builtin.service_facts:
+
 - name: Ensure Docker starts at boot
   ansible.builtin.systemd_service:
     name: docker.service
     state: started
     enabled: true
-  when: not ansible_check_mode
+  when: not ansible_check_mode or 'docker.service' in ansible_facts.services
+
+- name: Report Docker service startup planned after installation
+  ansible.builtin.debug:
+    msg: Docker will be enabled and started after package installation; final checks run on apply.
+  changed_when: true
+  when: ansible_check_mode and 'docker.service' not in ansible_facts.services
 
 - name: Verify Docker daemon, Compose and Buildx
   ansible.builtin.command:
     argv: "{{ item }}"
   loop:
-    - [docker, info]
-    - [docker, compose, version]
-    - [docker, buildx, version]
+    - [docker, --host, 'unix:///var/run/docker.sock', info, --format, "{{ '{{json .}}' }}"]
+    - [docker, --host, 'unix:///var/run/docker.sock', compose, version, --short]
+    - [docker, --host, 'unix:///var/run/docker.sock', buildx, version]
+  register: vpn_sidecar_docker_verified
   changed_when: false
+  when: not ansible_check_mode
+
+- name: Require Linux rootful Docker Engine and Compose v2
+  ansible.builtin.assert:
+    that:
+      - (vpn_sidecar_docker_verified.results[0].stdout | from_json).OSType == 'linux'
+      - "'name=rootless' not in (vpn_sidecar_docker_verified.results[0].stdout | from_json).SecurityOptions"
+      - vpn_sidecar_docker_verified.results[1].stdout is match('^v?2[.]')
+    fail_msg: >-
+      vpnmodo requires rootful Linux Docker at /var/run/docker.sock and Compose v2.
+      Reconcile the installation explicitly; this role does not migrate engines.
   when: not ansible_check_mode
 
 - name: Select the modules required by this VPN type
   ansible.builtin.set_fact:
     vpn_sidecar_required_modules: >-
       {{ ['xfrm_user', 'esp4']
-         + (['ppp_generic', 'ppp_async', 'l2tp_ppp'] if vpn_sidecar_backend == 'l2tp-ipsec' else []) }}
+         + (['ppp_generic', 'ppp_async'] if vpn_sidecar_backend == 'l2tp-ipsec' else [])
+         + (['l2tp_ppp'] if vpn_sidecar_backend == 'l2tp-ipsec' and vpn_sidecar_l2tp_acceleration | bool else []) }}
 
 - name: Probe running-kernel module availability without loading modules
   ansible.builtin.command:
@@ -158,6 +182,21 @@
     - vpn_sidecar_module_probe.results | rejectattr('rc', 'equalto', 0) | list | length > 0
     - vpn_sidecar_module_reprobe.results | rejectattr('rc', 'equalto', 0) | list | length > 0
     - vpn_sidecar_kernel_packages.results[1].rc == 0
+
+- name: Explain deferred kernel verification in check mode
+  ansible.builtin.assert:
+    that:
+      - >-
+        vpn_sidecar_module_reprobe.results | rejectattr('rc', 'equalto', 0) | list | length == 0
+        or (vpn_sidecar_install_kernel_modules | bool
+            and (vpn_sidecar_kernel_packages.results | default([])
+                 | selectattr('rc', 'equalto', 0) | list | length > 0))
+    fail_msg: >-
+      Required modules are unavailable for the running kernel and no matching
+      module package is available. Install matching packages or select an approved
+      kernel explicitly. This role never changes kernels or reboots.
+    success_msg: Module load, XFRM and PPP device checks run on apply after any planned package installation.
+  when: ansible_check_mode
 
 - name: Load required IPsec and optional PPP modules
   ansible.builtin.command:
