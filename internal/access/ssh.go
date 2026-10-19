@@ -59,6 +59,11 @@ func inspectOne(ctx context.Context, s state) Result {
 	if checkDir(s.Directory) != nil || control(ctx, s, "check") != nil {
 		return r
 	}
+	descriptor, err := ReadDescriptor(filepath.Join(s.Directory, "proxy.json"))
+	if err != nil {
+		return r
+	}
+	r.ApplicationID = descriptor.Request.ApplicationID
 	r.DestinationSSHReady = true
 	c, err := net.DialTimeout("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(s.Service.LocalPort)), time.Second)
 	if err != nil {

@@ -11,9 +11,10 @@ def main():
         header.extend(b)
     else: raise ValueError()
     p = json.loads(header)
-    if set(p) != {'profile','host','port'}: raise ValueError()
+    if set(p) != {'profile','host','port','application_id'}: raise ValueError()
     if not isinstance(p['profile'],str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}',p['profile']): raise ValueError()
     if not isinstance(p['host'],str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]{0,252}',p['host']): raise ValueError()
+    if not isinstance(p['application_id'],str) or not re.fullmatch(r'[0-9a-f]{64}',p['application_id']): raise ValueError()
     if type(p['port']) is not int or not 1 <= p['port'] <= 65535: raise ValueError()
     docker = ['docker','--host','unix:///var/run/docker.sock']
     bridge = docker + ['exec','-i','vpnmodo-controller','/usr/local/bin/vpnmodo-controller','bridge']
@@ -36,7 +37,7 @@ def main():
                 time.sleep(.1)
                 continue
             cid=result.get('result',{}).get('container_id')
-            if not isinstance(cid,str) or not re.fullmatch(r'[0-9a-f]{64}',cid):raise ValueError()
+            if not isinstance(cid,str) or cid!=p['application_id'] or not re.fullmatch(r'[0-9a-f]{64}',cid):raise ValueError()
         finally:
             if child.poll() is None:child.kill()
             child.wait()

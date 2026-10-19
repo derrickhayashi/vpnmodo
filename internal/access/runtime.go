@@ -35,6 +35,7 @@ type state struct {
 	Directory string  `json:"directory"`
 }
 type Result struct {
+	ApplicationID       string `json:"-"`
 	Endpoint            string `json:"endpoint,omitempty"`
 	Name                string `json:"name"`
 	Code                string `json:"code"`
@@ -45,6 +46,7 @@ type Result struct {
 }
 
 var tokenPattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
+var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func statePath(registry, alias string) string {
 	return filepath.Join(registry+".access", alias+".state.json")
@@ -67,7 +69,7 @@ func readStates(registry, alias string) ([]state, error) {
 	if !profile.ValidName(alias) {
 		return nil, ErrConfig
 	}
-	b, err := privatefile.Read(statePath(registry, alias), 64*1024)
+	b, err := privatefile.Read(statePath(registry, alias), 128*1024)
 	if errors.Is(err, os.ErrNotExist) {
 		return []state{}, nil
 	}
@@ -75,7 +77,7 @@ func readStates(registry, alias string) ([]state, error) {
 		return nil, ErrConfig
 	}
 	var states []state
-	if jsonstrict.Decode(b, &states, 64*1024) != nil || states == nil || len(states) > 32 {
+	if jsonstrict.Decode(b, &states, 128*1024) != nil || states == nil || len(states) > 32 {
 		return nil, ErrConfig
 	}
 	seen := map[string]bool{}
@@ -95,6 +97,9 @@ func saveStates(registry, alias string, states []state) error {
 		states = []state{}
 	}
 	b, _ := json.Marshal(states)
+	if len(b) > 128*1024 {
+		return ErrConfig
+	}
 	_, err := privatefile.Write(statePath(registry, alias), b)
 	return err
 }
@@ -221,8 +226,8 @@ func stopOne(ctx context.Context, s state) error {
 }
 
 // Start leaves successful services running if another selected service fails.
-func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Reference, selected string) ([]Result, error) {
-	if h.Validate() != nil || ref.Validate() != nil || ref.Name != alias || ref.Host != h.Name {
+func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Reference, selected, applicationID string) ([]Result, error) {
+	if h.Validate() != nil || ref.Validate() != nil || ref.Name != alias || ref.Host != h.Name || !containerIDPattern.MatchString(applicationID) {
 		return nil, ErrConfig
 	}
 	if privatefile.Dir(registry+".access") != nil {
@@ -265,6 +270,11 @@ func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Re
 				continue
 			}
 			if control(ctx, *current, "check") == nil {
+				if descriptor.Request.ApplicationID != applicationID {
+					r.Code = "service_binding_changed_stop_first"
+					results = append(results, r)
+					continue
+				}
 				results = append(results, inspectOne(ctx, *current))
 				continue
 			}
@@ -295,6 +305,7 @@ func Start(ctx context.Context, registry, alias string, h host.Host, ref host.Re
 			continue
 		}
 		request.Profile = ref.Profile
+		request.ApplicationID = applicationID
 		token, err := privatefile.Token()
 		if err != nil {
 			return results, err
@@ -436,7 +447,7 @@ func ReadDescriptor(path string) (Descriptor, error) {
 		return d, ErrConfig
 	}
 	b, e := privatefile.Read(path, 8192)
-	if e != nil || jsonstrict.Decode(b, &d, 8192) != nil || d.Host.Validate() != nil || !profile.ValidName(d.Alias) || d.Service.Validate() != nil || !profile.ValidName(d.Request.Profile) || !Endpoint(d.Request.Host) || d.Request.Port < 1 || d.Request.Port > 65535 {
+	if e != nil || jsonstrict.Decode(b, &d, 8192) != nil || d.Host.Validate() != nil || !profile.ValidName(d.Alias) || d.Service.Validate() != nil || !profile.ValidName(d.Request.Profile) || !containerIDPattern.MatchString(d.Request.ApplicationID) || !Endpoint(d.Request.Host) || d.Request.Port < 1 || d.Request.Port > 65535 {
 		return Descriptor{}, ErrConfig
 	}
 	return d, nil

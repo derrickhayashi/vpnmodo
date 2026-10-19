@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
@@ -139,7 +140,7 @@ func TestStopRejectsDescriptorBoundToAnotherProfileAlias(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 	svc := definition().Services[0]
-	descriptor := Descriptor{Alias: "other", Service: svc, Host: host.Host{Name: "vm", SSH: "192.0.2.1"}, Request: host.ProxyRequest{Profile: "other", Host: "192.0.2.10", Port: 22}}
+	descriptor := Descriptor{Alias: "other", Service: svc, Host: host.Host{Name: "vm", SSH: "192.0.2.1"}, Request: host.ProxyRequest{Profile: "other", Host: "192.0.2.10", Port: 22, ApplicationID: strings.Repeat("a", 64)}}
 	data, _ := json.Marshal(descriptor)
 	privatefile.Write(filepath.Join(dir, "proxy.json"), data)
 	saveStates(registry, "example", []state{{Alias: "example", Service: svc, Directory: dir}})

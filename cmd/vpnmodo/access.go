@@ -173,6 +173,21 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		}
 		r.Services = results
 	}
+	if *selected != "" && (command == "up" || command == "start") {
+		definition, e := access.Read(registry, alias)
+		found := false
+		if e == nil {
+			for _, s := range definition.Services {
+				if s.Name == *selected {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return fail("named_service_not_configured")
+		}
+	}
 	probe, cancelProbe := context.WithTimeout(ctx, 15*time.Second)
 	err = host.Probe(probe, h)
 	cancelProbe()
@@ -269,11 +284,17 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		return fail("vpn_access_unavailable")
 	}
 	if command == "up" || command == "start" {
-		results, err := access.Start(ctx, registry, alias, h, ref, *selected)
+		results, err := access.Start(ctx, registry, alias, h, ref, *selected, view.Runtime.ApplicationID)
 		r.Services = results
 		if err != nil {
 			r.Outcome = "partial"
 			return fail("local_service_start_incomplete")
+		}
+	}
+	for i := range r.Services {
+		if r.Services[i].Code == "ready" && r.Services[i].ApplicationID != view.Runtime.ApplicationID {
+			r.Services[i].Code = "service_binding_changed_stop_first"
+			r.Services[i].Endpoint = ""
 		}
 	}
 	r.Ready = len(r.Services) > 0 && view.Runtime.PrerequisitesReady && r.CredentialsPresent

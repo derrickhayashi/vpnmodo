@@ -13,9 +13,10 @@ import (
 var proxyProgram string
 
 type ProxyRequest struct {
-	Profile string `json:"profile"`
-	Host    string `json:"host"`
-	Port    int    `json:"port"`
+	ApplicationID string `json:"application_id"`
+	Profile       string `json:"profile"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
 }
 
 func Probe(ctx context.Context, h Host) error {

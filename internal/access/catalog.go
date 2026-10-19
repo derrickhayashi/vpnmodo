@@ -99,6 +99,9 @@ func Configure(ctx context.Context, registry, alias string, d Definition) error 
 		return errors.New("stop owned services before replacing their configuration")
 	}
 	b, _ := json.Marshal(d)
+	if len(b) > 64*1024 {
+		return ErrConfig
+	}
 	_, err = privatefile.Write(catalogPath(registry, alias), b)
 	return err
 }
