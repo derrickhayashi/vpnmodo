@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import re
 import signal
+import select
+import subprocess
 import socket
 import time
 import uuid
@@ -117,7 +119,7 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
         assert unknown.returncode and last(unknown)['error']=='named_service_not_configured'
         after=last(self.cli('connection','status',self.alias,'--json'))
         assert before.get('last_operation')==after.get('last_operation')
-        ready=last(self.cli('up',self.alias,'--json'))
+        ready=self.fresh_xauth_up() if self.alias=='lab-xauth' else last(self.cli('up',self.alias,'--json'))
         assert ready['ready'] and ready['vpn_ready'] and len(ready['services'])==2
         for port in self.ports: self.fetch(port)
         # Diagnose each hop independently while existing data streams stay live.
@@ -218,6 +220,39 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
         for port in self.ports:self.fetch(port)
         print('PASS: managed two-hop SSH forwards, loopback ownership, partial conflicts, endpoint outage, strict destination keys/auth and master crash recovery',flush=True)
         return self
+
+    def fresh_xauth_up(self):
+        self.vpn.disconnect()
+        process=subprocess.Popen([*self.vpn.cli_args,'up',self.alias,'--json'],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        pending=bytearray();transcript=bytearray();events=[];submitted=False
+        try:
+            deadline=time.monotonic()+100
+            while process.poll() is None:
+                if time.monotonic()>deadline:raise RuntimeError('composed XAuth up did not finish')
+                readable,_,_=select.select([process.stdout,process.stderr],[],[],.2)
+                for stream in readable:
+                    block=os.read(stream.fileno(),65536);transcript.extend(block)
+                    if stream is not process.stdout:continue
+                    pending.extend(block)
+                    while b'\n' in pending:
+                        line,_,rest=pending.partition(b'\n');pending=bytearray(rest)
+                        if not line:continue
+                        event=json.loads(line);events.append(event)
+                        if event.get('type')=='operation' and event['operation']['state']=='awaiting_mfa' and not submitted:
+                            op=event['operation'];submitted=True
+                            self.cli('operation','submit-mfa',op['id'],'--host','example','--challenge',op['challenge']['id'],'--code-stdin','--json',data=b'9876543210')
+            for stream in (process.stdout,process.stderr):
+                remaining=stream.read();transcript.extend(remaining)
+                if stream is process.stdout:
+                    pending.extend(remaining)
+            for line in pending.splitlines():
+                if line:events.append(json.loads(line))
+            assert process.returncode==0 and submitted and events[-1]['type']=='access' and events[-1]['ready']
+            assert b'9876543210' not in transcript
+            print('PASS: composed XAuth up emits structured MFA events and accepts single-use code submission without a terminal',flush=True)
+            return events[-1]
+        finally:
+            if process.poll() is None:process.kill();process.wait()
 
     def after_restart(self):
         # Existing forwarding is outside the controller container's lifecycle.
