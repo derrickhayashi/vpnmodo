@@ -150,7 +150,8 @@ but reports `remote_service_unverified` and the overall result is partial. A
 successful TCP probe verifies reachability, not HTTP health, application login or
 certificate validity. These checks describe a point in time.
 
-Normal terminal output names each failed layer/service and each local endpoint.
+Routine terminal output shows the outcome, local endpoints and failures.
+`status`/`doctor` also show controller version, saved intent and individual checks.
 JSON status/errors use fixed codes and never include raw SSH/backend stderr.
 A final report has `type: "access"`, `outcome`, `vpn_ready`, `ready`, `checks`,
 `services`, current desired/observed connection intent and optional `error`. `ready` requires at least one selected service

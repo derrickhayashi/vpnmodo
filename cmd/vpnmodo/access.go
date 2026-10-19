@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/access"
@@ -68,24 +69,28 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 			return json.NewEncoder(out).Encode(r)
 		}
 		fmt.Fprintf(out, "%s: %s\n", r.Alias, r.Outcome)
-		if r.ControllerVersion != "" {
+		detailed := command == "doctor" || command == "status"
+		if detailed && r.ControllerVersion != "" {
 			fmt.Fprintf(out, "  controller version: %s\n", r.ControllerVersion)
 		}
-		if r.Connection != nil {
+		if detailed && r.Connection != nil {
 			fmt.Fprintf(out, "  desired: %s; observed: %s\n", r.Connection.Desired, r.Connection.Observed)
 		}
 		for _, c := range r.Checks {
+			if c.OK && !detailed {
+				continue
+			}
 			verdict := "ok"
 			if !c.OK {
 				verdict = "failed"
 			}
-			fmt.Fprintf(out, "  %s: %s (%s)\n", c.Layer, verdict, c.Code)
+			fmt.Fprintf(out, "  %s: %s (%s)\n", strings.ReplaceAll(c.Layer, "_", " "), verdict, strings.ReplaceAll(c.Code, "_", " "))
 		}
 		for _, s := range r.Services {
-			fmt.Fprintf(out, "  %s (127.0.0.1:%d): %s\n", s.Name, s.LocalPort, s.Code)
+			fmt.Fprintf(out, "  %s (127.0.0.1:%d): %s\n", s.Name, s.LocalPort, strings.ReplaceAll(s.Code, "_", " "))
 		}
 		if r.Error != "" {
-			fmt.Fprintln(out, "  "+r.Error)
+			fmt.Fprintln(out, "  "+strings.ReplaceAll(r.Error, "_", " "))
 		}
 		return nil
 	}
