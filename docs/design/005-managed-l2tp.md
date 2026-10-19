@@ -58,6 +58,10 @@ restart that replaced the VPN sandbox.
 
 Controller-managed VPN containers have Docker restart disabled. Their strongSwan
 DPD/close actions and xl2tpd redial do not create competing reconnect loops.
+The idle health loop waits for a background sleep, allowing TERM to run cleanup
+immediately within Docker's two-second stop limit. A foreground sleep could
+defer that handler until Docker force-killed the VPN, leaving an authenticated
+peer session behind and interfering with a later reconnect.
 Managed PPP requests its address from the gateway (`noipdefault`) instead of
 proposing the container's ordinary interface address, avoiding overlapping outer
 and PPP routes with permissive peers. See the
@@ -103,10 +107,14 @@ for the separately required XAuth fail-closed acceptance matrix.
 Go tests exercise full managed creation/reuse/disposal, manifest isolation,
 Compose interpolation, cancellation, health classification and ownership
 conflicts across every adapter action. Existing standalone regression tests remain
-required. The Linux workflow runs a synthetic strongSwan L2TP gateway, actual
+required. The [local Linux lab](../../tests/local-lab/README.md) runs a synthetic
+strongSwan L2TP gateway, actual
 IPsec/PPP and private TCP checks through verified SSH, then tests endpoint outage,
 namespace replacement, recovery, failure quiescence, intentional stop, controller
-recreation and cleanup. Short policy timings exist only in the Go test binary;
+recreation and cleanup. A regression synchronizes shutdown with a newly started
+idle sleep, checks clean termination and peer session removal within the existing
+stop limit, and establishes three new sessions. Short policy timings exist only
+in the Go test binary;
 production profiles/flags cannot enable synthetic adapters or shorten policy.
 The gateway uses fixed synthetic credentials and documentation addresses only.
 This demonstrates laboratory interoperability, not customer gateway certification

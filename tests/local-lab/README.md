@@ -78,10 +78,19 @@ the whole suite passed.
 
 ## Current validation
 
-The first Ubuntu 24.04 ARM64 nested-daemon run passed SSH/controller/profile
-acceptance, persistent operation and synthetic MFA/recovery acceptance, and real
-IKEv1/IPsec/L2TP/PPP/TCP/DNS checks. Endpoint outage, application namespace repair
-and tunnel-loss recovery also passed. The final reconnect after failed recovery
-and explicit disconnect failed: the tunnel check passed, but the private TCP
-probe timed out. The cause is unresolved; full local acceptance is incomplete.
-Do not infer that this is specifically an ARM64 or nested-Docker defect.
+Ubuntu 24.04 ARM64 local acceptance passes verified SSH/controller/profile
+handling and the full real IKEv1/IPsec/L2TP/PPP/TCP/DNS suite, including endpoint
+outage, namespace repair, tunnel-loss recovery, failed recovery, explicit
+stop/reconnect, controller recreation and credential disposal.
+
+A foreground idle sleep deferred the VPN shell's TERM handler beyond Docker's
+two-second stop limit. The container could be force-killed before telling the
+peer to close its session. The idle wait is now interruptible. The regression
+stops a real VPN just after a new sleep starts, requires a clean exit and peer
+session cleanup within the existing limit, then reconnects three times.
+Neither the service-probe timeout nor the recovery policy was relaxed.
+
+Run packet-capture processes inside the disposable VPN/gateway containers so
+Docker terminates them with their owners. An external nsenter capture can retain
+a retired network namespace and change the behavior being measured. Keep all
+captures and runtime diagnostics outside the checkout.

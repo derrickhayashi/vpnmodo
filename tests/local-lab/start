@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 mkdir -p /run/sshd
+# A forced container restart retains files but starts a new PID namespace.
+rm -f /run/docker.pid /run/test-lab-ready
+rm -rf /run/docker/containerd
 dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs --ip6tables=false > /tmp/dockerd.log 2>&1 &
 daemon_pid=$!
 trap 'exit 0' INT TERM
