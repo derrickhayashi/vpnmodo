@@ -104,13 +104,14 @@ and a synthetic RADIUS verifier for password plus XAUTH_PASSCODE. No email servi
 or customer gateway is contacted. This proves the protocol exchange, not email
 delivery or customer gateway certification.
 
-A separate reachable escape sink shares the physical bridge. Its packet capture
-filters the client's physical Ethernet source address, distinguishing direct
-plaintext from authenticated packets forwarded by the gateway. A deliberate
-positive control must first demonstrate that this sender, sink and capture detect
-a bypass. Captures run inside their owning test containers so they cannot retain
-a retired VPN namespace. The suite exercises pending MFA, private TCP/DNS, quiet
-sessions, CHILD rekey, active flows with SAs/policies removed while controller and
-client are suspended, recreation, expiry, wrong/repeated codes and controller
-restart. Zero observed plaintext is required for protected phases. See the
+A separate reachable escape sink shares the physical bridge. The observer runs
+in the outer lab's stable namespace on the host side of the VPN veth, before
+bridge routing. It sees physical egress after encryption, so an IPsec route via
+the gateway cannot hide plaintext from it. Deliberate positive controls both
+before login and after policy removal must demonstrate detection. The observer
+holds no VPN namespace descriptor and is stopped/reaped after each phase. The
+suite exercises pending MFA, private TCP/DNS, quiet sessions, CHILD rekey, active
+flows with SAs/policies removed while controller and client are suspended,
+recreation, expiry, wrong/repeated codes and controller restart. Zero observed
+plaintext is required for protected phases. See the
 [local lab](../../tests/local-lab/README.md) for execution and recorded validation.

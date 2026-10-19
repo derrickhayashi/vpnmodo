@@ -100,7 +100,10 @@ stops a real VPN just after a new sleep starts, requires a clean exit and peer
 session cleanup within the existing limit, then reconnects three times.
 Neither the service-probe timeout nor the recovery policy was relaxed.
 
-Run packet-capture processes inside the disposable VPN/gateway containers so
-Docker terminates them with their owners. An external nsenter capture can retain
-a retired network namespace and change the behavior being measured. Keep all
-captures and runtime diagnostics outside the checkout.
+The XAuth observer captures the host side of the VPN veth in the outer lab's
+stable namespace, before bridge routing. Positive controls verify it sees both
+the pre-login direct path and the post-login route through the gateway. Each
+observer is stopped and reaped after its phase; it holds no VPN namespace
+reference. Avoid external nsenter captures in a dynamic VPN namespace: they can
+retain a retired namespace and change reconnect behavior. Keep all captures and
+runtime diagnostics outside the checkout.

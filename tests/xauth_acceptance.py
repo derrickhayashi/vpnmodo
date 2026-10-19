@@ -1,11 +1,11 @@
 """Real aggressive IKEv1 + XAUTH_PASSCODE and Ethernet-observed fail-closed tests.
 
 The escape sink shares the outer bridge and can route authenticated replies via
-our gateway. Capture filters the VPN's physical MAC: encrypted packets forwarded
-by the gateway have a different MAC, while a plaintext fallback is observable.
+our gateway. Capture observes the host side of the VPN veth before bridge routing,
+so a changed route cannot hide plaintext fallback.
 """
 import json
-import re
+import socket
 import os
 import subprocess
 from pathlib import Path
@@ -21,8 +21,9 @@ NETWORK = PROJECT + "_default"
 
 
 class Lab:
-    def __init__(self, cli, bridge, cli_args):
+    def __init__(self, cli, bridge, cli_args, directory):
         self.cli, self.bridge, self.cli_args = cli, bridge, cli_args
+        self.directory = directory
         self.gateway = "vpnmodo-xauth-gateway-" + uuid.uuid4().hex[:8]
         self.sink = "vpnmodo-xauth-sink-" + uuid.uuid4().hex[:8]
         self.network = False
@@ -105,43 +106,42 @@ class Lab:
         last_json(self.cli("connection", "disconnect", NAME, "--wait", "--json"))
 
     def capture(self, tag, action, expected=0):
-        vpn = self.ids()["vpn"]
-        mac = vpn["NetworkSettings"]["Networks"][NETWORK]["MacAddress"]
-        assert re.fullmatch(r"[0-9a-f:]{17}", mac)
-        path = "/run/lab/" + tag
-        rule = "ether src " + mac + " and (tcp port 28080 or udp port 28081 or port 53)"
-        script = 'lab-capture -Z root -n -i eth0 -U -w ' + path + '.pcap "' + rule + '" >' + path + '.log 2>&1 & p=$!; echo $p > ' + path + '.pid; wait $p; touch ' + path + '.done'
-        command(["docker", "exec", "-d", self.sink, "sh", "-c", script])
-        for _ in range(30):
-            ready = command(["docker", "exec", self.sink, "test", "-s", path + ".pcap"], required=False).returncode == 0
-            done = command(["docker", "exec", self.sink, "test", "-f", path + ".done"], required=False).returncode == 0
-            if done:
-                raise RuntimeError("synthetic packet capture could not start")
-            if ready: break
-            time.sleep(0.1)
-        else: raise RuntimeError("synthetic packet capture did not become ready")
+        vpn = self.ids()["vpn"]["Id"]
+        peer_index = int(command(["docker", "exec", vpn, "cat", "/sys/class/net/eth0/iflink"]).stdout)
+        names = [name for index, name in socket.if_nameindex() if index == peer_index]
+        assert len(names) == 1, "VPN veth peer is outside this isolated Docker host"
+        observer = "/usr/local/bin/lab-capture"
+        path = self.directory / ("wire-" + uuid.uuid4().hex)
+        pcap, logfile = path.with_suffix(".pcap"), path.with_suffix(".log")
+        output = logfile.open("wb")
+        logfile.chmod(0o600)
+        # Capture from the outer lab's stable network namespace. This retains no
+        # VPN namespace descriptor, and sees the physical egress after encryption
+        # before a plaintext route could forward through another bridge peer.
+        process = subprocess.Popen(["sudo", "-n", observer, "-Z", "root", "-Q", "in", "-n", "-i", names[0], "-U", "-w", str(pcap), "tcp port 28080 or udp port 28081 or port 53"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=output, start_new_session=True)
         try:
+            deadline = time.monotonic() + 5
+            while not pcap.exists() or pcap.stat().st_size < 24:
+                if process.poll() is not None or time.monotonic() > deadline:
+                    raise RuntimeError("synthetic wire observer could not start")
+                time.sleep(0.05)
             action()
-            time.sleep(0.5)
+            time.sleep(0.3)
+            assert process.poll() is None, "wire observer exited during the protected phase"
         finally:
-            stopped = command(["docker", "exec", self.sink, "sh", "-c", 'kill -INT "$(cat ' + path + '.pid)"'], required=False)
-            if stopped.returncode:
-                print("Synthetic capture stop:", stopped.stderr.decode(errors="replace"), flush=True)
-                print("Synthetic capture diagnostic:", command(["docker", "exec", self.sink, "cat", path + ".log"], required=False).stdout.decode(errors="replace"), flush=True)
-                raise RuntimeError("synthetic capture exited before stop")
-        for _ in range(30):
-            if command(["docker", "exec", self.sink, "test", "-f", path + ".done"], required=False).returncode == 0:
-                break
-            time.sleep(0.1)
-        else:
-            raise RuntimeError("synthetic capture did not finish")
-        raw = command(["docker", "exec", self.sink, "lab-capture", "-nn", "-r", path + ".pcap"]).stdout
+            if process.poll() is None:
+                command(["sudo", "-n", "kill", "-INT", str(process.pid)])
+            process.wait(timeout=5)
+            output.close()
+        assert process.returncode == 0, "wire observer did not finish cleanly"
+        raw = command(["sudo", "-n", observer, "-nn", "-r", str(pcap)]).stdout
         count = len(raw.splitlines())
+        pcap.unlink(); logfile.unlink()
         if expected:
-            assert count >= expected, "escape sink/capture positive control failed"
+            assert count >= expected, "wire observer/escape path positive control failed"
         else:
             assert count == 0, "plaintext escaped during " + tag
-        print("PASS: packet capture", tag, "plaintext=" + str(count), flush=True)
+        print("PASS: wire capture", tag, "plaintext=" + str(count), flush=True)
 
     def probes(self, application=False):
         cid = self.ids()["application" if application else "vpn"]["Id"]
@@ -165,7 +165,7 @@ class Lab:
 
 
 def begin(cli, directory, state_root, bridge, cli_args):
-    lab = Lab(cli, bridge, cli_args)
+    lab = Lab(cli, bridge, cli_args, directory)
     try:
         assert command(["docker", "network", "inspect", NETWORK], required=False).returncode != 0
         args = ["docker", "network", "create", "--subnet", "192.0.2.0/24", "--gateway", "192.0.2.254"]
@@ -262,6 +262,13 @@ def begin(cli, directory, state_root, bridge, cli_args):
                 lab.probes(application=True)
                 assert command(["docker", "exec", cid, "vpn-tunnelcheck"], required=False).returncode != 0
             lab.capture("active-flows-no-policies-controller-adapter-paused", remove_policies)
+            # Validate the observer again after table 220 has changed routing:
+            # an ordinary-interface fallback through the gateway must be visible.
+            def lost_policy_positive():
+                command(["docker", "exec", cid, "iptables", "-P", "OUTPUT", "ACCEPT"])
+                try: lab.probes(application=True)
+                finally: command(["docker", "exec", cid, "vpn-enforce"])
+            lab.capture("lost-policy-positive-control", lost_policy_positive, expected=1)
             command(["docker", "exec", cid, "sh", "-c", "kill -KILL $(pidof charon-cmd)"])
             time.sleep(0.5)
         finally:
