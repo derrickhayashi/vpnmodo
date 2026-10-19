@@ -73,6 +73,9 @@ incident is not a blanket finding for all 6.8 kernels or XAuth.
 
 ## Validation and scope
 
+See the [preparation validation record](../docs/vm-preparation-validation.md)
+for the exact local checks, isolated Linux results and remaining limits.
+
 Run syntax checking, `--check --diff`, apply and an unchanged rerun as shown in
 the VM guide. Check mode uses read-only probes and reports planned changes when
 the host is incomplete. It never installs packages, changes accounts, starts

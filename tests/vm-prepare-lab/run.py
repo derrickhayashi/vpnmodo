@@ -45,15 +45,29 @@ def main():
 
     def snapshot(ids=None):
         if ids is None:
-            ids = call(["ps", "-aq", "--no-trunc"]).stdout.split()
+            listed = call(["ps", "-aq", "--no-trunc"], check=False)
+            if listed.returncode:
+                raise RuntimeError("Docker container listing failed")
+            ids = listed.stdout.split()
         if not ids:
             return {}
-        result = call(["inspect", "--format", "{{.Id}} {{.State.Status}} {{.State.StartedAt}}", *ids])
-        return {line.split()[0]: line.split()[1:] for line in result.stdout.splitlines()}
+        result = call(["inspect", "--format", "{{.Id}} {{.State.Status}} {{.State.StartedAt}}", *ids], check=False)
+        if result.returncode:
+            # Docker still returns surviving requested IDs when others vanished.
+            # Missing baseline resources are a preservation failure below, not a
+            # reason to discard survivors or skip the remaining diagnostics.
+            messages = [line.lower() for line in result.stderr.splitlines() if line.strip()]
+            if not messages or not all("no such object" in line or "no such container" in line for line in messages):
+                raise RuntimeError("Docker state snapshot failed for a reason other than missing containers")
+        rows = [line.split() for line in result.stdout.splitlines() if line.strip()]
+        if any(len(row) != 3 or row[0] not in ids for row in rows):
+            raise RuntimeError("Docker state snapshot returned an unexpected identity/state format")
+        return {row[0]: row[1:] for row in rows}
 
     before = snapshot()
     before_modules = sorted(line.split()[0] for line in Path("/proc/modules").read_text().splitlines())
     (evidence / "before.json").write_text(json.dumps(before, indent=2) + "\n")
+    (evidence / "before_modules.json").write_text(json.dumps(before_modules, indent=2) + "\n")
     print("Private lab evidence:", evidence, flush=True)
     try:
         fixture = source / "tests/vm-prepare-lab"
@@ -100,8 +114,15 @@ def main():
     finally:
         cleanup_errors = []
         for number, cid in enumerate(owned):
-            current = call(["inspect", "--format", '{{index .Config.Labels "io.vpnmodo.vm-prepare-lab"}}', cid], check=False)
-            if current.returncode == 0 and current.stdout.strip() == identity:
+            try:
+                current = call(["inspect", "--format", '{{index .Config.Labels "io.vpnmodo.vm-prepare-lab"}}', cid], check=False)
+            except (OSError, subprocess.TimeoutExpired):
+                cleanup_errors.append({"id": cid, "reason": "ownership inspection failed"})
+                continue
+            if current.returncode != 0 or current.stdout.strip() != identity:
+                cleanup_errors.append({"id": cid, "reason": "ownership could not be verified"})
+                continue
+            try:
                 copied = evidence / ("ansible-" + str(number))
                 call(["cp", cid + ":/tmp/vpnmodo-vm-prepare-evidence", str(copied)], check=False)
                 if options.sudo and copied.exists() and copied.stat().st_uid != os.getuid():
@@ -113,20 +134,64 @@ def main():
                                                capture_output=True, text=True, timeout=60)
                     if ownership.returncode:
                         print("Copied synthetic evidence requires sudo access:", copied, flush=True)
+            except (OSError, subprocess.TimeoutExpired):
+                print("Synthetic evidence copy incomplete for owned lab container", flush=True)
+            # Failed evidence collection must never bypass exact owned cleanup.
+            try:
                 removed = call(["rm", "-f", cid], check=False)
                 if removed.returncode:
-                    cleanup_errors.append(cid)
-            else:
-                cleanup_errors.append(cid)
+                    cleanup_errors.append({"id": cid, "reason": "container removal failed"})
+            except (OSError, subprocess.TimeoutExpired):
+                cleanup_errors.append({"id": cid, "reason": "container removal command failed"})
+
+        preservation_errors = []
+        details = {"cleanup_errors": cleanup_errors}
+        if cleanup_errors:
+            preservation_errors.append("exact owned-container cleanup could not be verified")
         # This tag is unique to this run; never remove unrelated image tags.
-        call(["image", "rm", identity], check=False)
-        after = snapshot(list(before))
-        (evidence / "after.json").write_text(json.dumps(after, indent=2) + "\n")
-        assert after == before, "existing VM container identities/start states changed; inspect private before/after evidence"
-        assert not cleanup_errors, "exact lab cleanup failed; owned IDs saved privately"
-        assert set(snapshot()) == set(before), "unexpected VM container additions or removals during lab run"
-        after_modules = sorted(line.split()[0] for line in Path("/proc/modules").read_text().splitlines())
-        assert after_modules == before_modules, "shared VM kernel module set changed during run; do not claim isolated kernel-state preservation"
+        try:
+            removed_image = call(["image", "rm", identity], check=False)
+            if removed_image.returncode and call(["image", "inspect", "--format", "{{.Id}}", identity], check=False).returncode == 0:
+                preservation_errors.append("unique lab image tag remains")
+        except (OSError, subprocess.TimeoutExpired):
+            preservation_errors.append("unique lab image cleanup could not be verified")
+        try:
+            after = snapshot(list(before))
+            (evidence / "after.json").write_text(json.dumps(after, indent=2) + "\n")
+            details["missing_baseline_ids"] = sorted(set(before) - set(after))
+            details["changed_baseline_ids"] = sorted(cid for cid in set(before) & set(after) if before[cid] != after[cid])
+            if after != before:
+                preservation_errors.append("existing VM containers changed (missing=" + str(len(details["missing_baseline_ids"]))
+                                           + ", state/start=" + str(len(details["changed_baseline_ids"])) + ")")
+        except (OSError, subprocess.TimeoutExpired, RuntimeError):
+            preservation_errors.append("baseline container preservation snapshot unavailable")
+        try:
+            remaining = snapshot()
+            (evidence / "remaining.json").write_text(json.dumps(remaining, indent=2) + "\n")
+            details["remaining_owned_ids"] = sorted(set(remaining) & set(owned))
+            details["added_ids"] = sorted(set(remaining) - set(before))
+            details["removed_ids"] = sorted(set(before) - set(remaining))
+            if details["remaining_owned_ids"]:
+                preservation_errors.append("owned lab containers remain after cleanup")
+            if set(remaining) != set(before):
+                preservation_errors.append("VM container membership changed (added=" + str(len(details["added_ids"]))
+                                           + ", removed=" + str(len(details["removed_ids"])) + ")")
+        except (OSError, subprocess.TimeoutExpired, RuntimeError):
+            preservation_errors.append("post-cleanup container membership unavailable")
+        try:
+            after_modules = sorted(line.split()[0] for line in Path("/proc/modules").read_text().splitlines())
+            (evidence / "after_modules.json").write_text(json.dumps(after_modules, indent=2) + "\n")
+            details["added_modules"] = sorted(set(after_modules) - set(before_modules))
+            details["removed_modules"] = sorted(set(before_modules) - set(after_modules))
+            if after_modules != before_modules:
+                preservation_errors.append("shared VM kernel module set changed")
+        except OSError:
+            preservation_errors.append("post-run kernel module snapshot unavailable")
+        details["errors"] = preservation_errors
+        (evidence / "preservation.json").write_text(json.dumps(details, indent=2) + "\n")
+        if preservation_errors:
+            raise RuntimeError("Lab preservation failed: " + "; ".join(preservation_errors)
+                               + ". Private diagnostics: " + str(evidence))
     print("PASS: exact lab cleanup and existing VM container identities/start states preserved", flush=True)
 
 

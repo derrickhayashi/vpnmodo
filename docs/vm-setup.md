@@ -113,11 +113,10 @@ Save `requirements.yaml` here:
 collections:
   - name: git+ssh://git@github.com/derrickhayashi/vpn-sidecars-next.git
     type: git
-    version: REPLACE_WITH_REVIEWED_PREPARATION_COMMIT
+    version: 78bfd940d1b06403bce1ac5bcf86f85babd1e004
 ```
 
-Replace the version with the reviewed full 40-character preparation commit
-provided with this implementation before installation. The existing runtime
+This pins the reviewed preparation implementation in collection `0.4.0`. The runtime
 candidate `990dc2fe7caec4e1b68cf2b54788b996937e66c5` **does not contain this role**;
 use that candidate's matching artifacts for later image/CLI installation only.
 
