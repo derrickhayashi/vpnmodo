@@ -22,7 +22,7 @@ amd64 CLI artifacts have checksums but no native runtime qualification.
 | Full isolated Linux suite | Controller/profile/operation, L2TP, XAuth and PMTU suites complete with exit 0 |
 | XAuth authenticated CHILD rekey | Replacement CHILD_SA confirmed; 256 KiB each way passes before/after rekey with no route MTU/MSS override and zero observed plaintext |
 | XAuth controller replacement | Same VPN retained; 256 KiB each way and private service access pass before explicit disconnect |
-| Fresh VM bundle | Full production L2TP, XAuth and controller Dockerfile builds, pinned backend/application IDs, source inventory and SHA-256 verification pass |
+| Fresh container image bundle | Full production L2TP, XAuth and controller Dockerfile builds, pinned backend/application IDs, source inventory and SHA-256 verification pass |
 | Classic Docker image store | Docker 29.1.3, vfs, ARM64: schema-2 bundle import and immutable-ID receipt pass; existing development image tags remain unchanged |
 | Containerd image store | Docker 29.1.3, ARM64: checksum-verified import and repeat import pass; receipts verify all four images/version and report activation false |
 | Packaged onboarding/upgrade | Production-policy L2TP and XAuth authentication, private TCP/DNS, two-hop service access, credential disposal and controller upgrade pass; final exit 0 |
@@ -73,7 +73,7 @@ teardown corrected the test; the complete committed-source rerun exits 0.
 
 ## Import isolation and cleanup
 
-Both VM image-store imports verify immutable IDs and leave activation false.
+Both Docker image-store imports verify immutable IDs and leave activation false.
 Every pre-existing named image tag is preserved. Immediate before/after snapshots
 around repeated containerd import show unchanged container IDs, running/stopped
 states and start times. The existing managed XAuth VPN/controller retain their

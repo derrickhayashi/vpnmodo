@@ -8,19 +8,24 @@ workstation and authorized local VM.
 
 ## Artifacts and trust
 
+The bundle contains Docker images that run inside an existing Ubuntu VM: the
+controller, L2TP backend, XAuth backend and application helper. Each teammate
+provides their own local or remote VM. These artifacts do not contain an Ubuntu
+or UTM VM disk image and do not create a VM.
+
 A release has macOS arm64/amd64 CLI archives, a committed source archive, and a
-separate Linux arm64 or amd64 image bundle. Each artifact group has SHA-256 sums.
+separate Linux arm64 or amd64 container image bundle. Each artifact group has SHA-256 sums.
 Obtain both artifacts and their expected checksums through the team's trusted,
 authenticated distribution channel. A checksum detects a changed download; a
 checksum delivered with an untrusted replacement does not authenticate it.
 
 CLI archives contain `vpnmodo`, `install.sh`, `release.json` and a short README.
-VM bundles contain `images.tar`, `install-vm.py`, `release.json` and a README.
+Container image bundles contain `images.tar`, `install-vm.py`, `release.json` and a README.
 The source version, full Git revision, target architecture and binary version are
 recorded in each manifest. `vpnmodo version` reports, for example,
 `v0.1.0-rc.1+git.<12-character-revision>`.
 
-VM images are built separately on each native Linux architecture. The bundle
+Docker container images are built separately on each native Linux architecture. The bundle
 contains all four images with reserved, content-addressed `vpnmodo-offline/`
 references. The loader verifies archive and configuration hashes, the complete
 OCI manifest set, architecture and controller version. It refuses a conflicting
@@ -65,7 +70,7 @@ registry/package download access. It builds the full production controller
 Dockerfile, including the pinned Go builder stage; no host Go installation is
 needed. Its Docker socket is explicitly `/var/run/docker.sock`. Use the nested
 [local lab](../tests/local-lab/README.md) on a shared VM. Build images only in its
-isolated daemon. The builder can also produce a native amd64 VM bundle, but
+isolated daemon. The builder can also produce a native amd64 container image bundle, but
 Intel builds/testing are outside the first-release qualification scope. The
 script does not install emulation or provision another VM.
 
@@ -83,7 +88,7 @@ executable unless `--replace` is provided. Keep the old verified CLI archive to
 restore a previous version using the same explicit replacement path. The
 installer changes only `<prefix>/bin/vpnmodo` and creates no shell startup edits.
 
-Load the new VM image bundle first, record the old controller image ID, then run:
+Load the new container image bundle first, record the old controller image ID, then run:
 
 ```sh
 vpnmodo host setup personal-vm --release /absolute/private/installed-release.json --replace

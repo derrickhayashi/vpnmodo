@@ -11,7 +11,7 @@ requirement for this release.
 ## 1. Install the workstation command
 
 Ask the maintainer for the macOS archive matching the Mac (`uname -m`: arm64 or
-x86_64/amd64), its trusted checksum, and the matching source/docs and VM image
+x86_64/amd64), its trusted checksum, and the matching source/docs and container image
 bundle. Check the checksum before extracting. For example:
 
 ```sh
@@ -53,7 +53,7 @@ verification. Verify its host key through a trusted VM console or administrator.
 Keep your private key on the Mac. `vpnmodo` requires strict host-key checking;
 agent forwarding and a controller HTTP listener are unnecessary.
 
-Transfer the verified image bundle matching the **VM** architecture. The Mac and
+Transfer the verified container image bundle matching the **VM** architecture. The Mac and
 VM architectures can differ. On the VM, verify its matching checksum before
 extracting, then run the loader from the extracted directory:
 
@@ -86,7 +86,7 @@ with `host add personal-vm --ssh personal-vm --sudo`. Fixed VM management comman
 then use noninteractive sudo, including controller bootstrap, the bridge and
 forwarding. This does not change group membership or sudo policy. Bootstrap in
 this mode owns state under root's home; use that same mode for later access and
-upgrades. Load the verified image bundle with
+upgrades. Load the verified container image bundle with
 `sudo -n python3 install-vm.py > installed-release.json`.
 Do not enable sudo mode for a pre-existing user-owned controller without an
 explicit state migration; bootstrap refuses its mismatched storage mount.
