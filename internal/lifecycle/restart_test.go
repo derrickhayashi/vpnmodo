@@ -251,3 +251,44 @@ func TestHistoryBoundAndBackendErrorsAreSecretFree(t *testing.T) {
 		t.Fatal("adapter error in journal pages")
 	}
 }
+
+func TestInterruptedXAuthDisposesLateEstablishedNamespace(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "state")
+	a := newAdapter()
+	a.mfa = true
+	open := func() *Manager {
+		journal, err := operationstore.Open(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := Open(context.Background(), journal, Options{Adapter: a, WithProfile: func(_ context.Context, name string, fn func(profile.Snapshot) error) error {
+			p := fixture(name)
+			p.Profile.Backend = profile.Backend{Type: profile.XAuth, XAuth: &profile.XAuthConfig{Server: "192.0.2.1"}}
+			return fn(p)
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { m.Close() })
+		return m
+	}
+	m := open()
+	r, err := m.Ensure(context.Background(), "interrupted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, r.ID, operation.AwaitingMFA)
+	m.Close()
+	// A late peer response after a crash must not make an interrupted login
+	// appear reusable or preserve the namespace that held its challenge.
+	a.mu.Lock()
+	a.sessions["interrupted"] = true
+	a.mu.Unlock()
+	restarted := open()
+	restarted.StartReconcile()
+	waitConnection(t, restarted, "interrupted", func(c operation.Connection) bool { return c.Observed == operation.ObservedDisconnected })
+	_, _, connected := a.counts("interrupted")
+	if connected {
+		t.Fatal("late XAuth namespace retained")
+	}
+}

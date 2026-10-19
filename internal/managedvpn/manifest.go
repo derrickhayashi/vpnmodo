@@ -62,7 +62,9 @@ func manifest(d deployment, root string) ([]byte, error) {
 		vpn["init"] = true
 		vpn["entrypoint"] = []string{"/usr/local/bin/vpn-managed-xauth"}
 		vpn["read_only"] = true
-		vpn["volumes"] = services["application"].(map[string]any)["volumes"]
+		mounts := []any{map[string]any{"type": "bind", "source": filepath.Join(root, "xauth-resolv.conf"), "target": "/etc/resolv.conf", "read_only": true, "bind": map[string]bool{"create_host_path": false}}}
+		services["application"].(map[string]any)["volumes"] = mounts
+		vpn["volumes"] = mounts
 		vpn["security_opt"] = []string{"no-new-privileges:true"}
 		vpn["tmpfs"] = []string{"/run:rw,nosuid,nodev,mode=0755", "/tmp:rw,nosuid,nodev,noexec,mode=1777"}
 		// IKE bypass is root-only; workloads always use an unprivileged UID.

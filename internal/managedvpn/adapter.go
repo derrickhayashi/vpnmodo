@@ -363,6 +363,11 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 		if p.Backend.Type == profile.XAuth {
 			image = a.xauth
 		}
+		if p.Backend.Type == profile.XAuth {
+			if err := writeXAuthResolver(a.dir(p)); err != nil {
+				return err
+			}
+		}
 		out = deployment{1, p, snapshot.Revision, token, image, a.application}
 		data, err := manifest(out, a.dir(p))
 		if err != nil {
@@ -585,6 +590,15 @@ func (a *Adapter) Forget(ctx context.Context, name string) error {
 	}
 	if err = a.removeCredentials(d.Profile); err != nil {
 		return err
+	}
+	if d.Profile.Backend.Type == profile.XAuth {
+		path := filepath.Join(root, "xauth-resolv.conf")
+		if err := checkXAuthResolver(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return ErrRuntime
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return ErrRuntime
+		}
 	}
 	for _, filename := range []string{"compose.json", "deployment.json", "resolv.conf"} {
 		path := filepath.Join(root, filename)
