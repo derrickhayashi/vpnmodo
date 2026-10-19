@@ -44,6 +44,22 @@ def main():
         assert bounding and not (int(bounding.group(1), 16) & (1 << 16)), "CAP_SYS_MODULE must be unavailable"
     assert os.uname().machine in ("aarch64", "arm64"), "ARM64 acceptance only"
     assert not Path("/var/run/docker.sock").exists(), "fresh target must have no Docker daemon"
+    if options.scenario == "ipsec-only":
+        # --privileged exposes host device numbers even without --device. Docker
+        # creates these nodes in the container's own /dev tmpfs. Never unlink a
+        # bind-mounted node or anything on a host-provided device filesystem.
+        mounts = {}
+        for line in Path("/proc/self/mountinfo").read_text().splitlines():
+            before, after = line.split(" - ", 1)
+            mounts[before.split()[4]] = after.split()[0]
+        assert mounts.get("/dev") == "tmpfs", "private container /dev tmpfs required"
+        assert "/dev/ppp" not in mounts, "refuse to hide a mount-bound PPP device"
+        device = Path("/dev/ppp")
+        assert not device.is_symlink(), "refuse a symlink PPP device"
+        if device.exists():
+            assert device.is_char_device(), "expected private PPP character device node"
+            device.unlink()
+        assert not device.exists(), "IPsec-only fixture must begin without PPP device"
     work = Path("/tmp/vpnmodo-vm-prepare-evidence")
     work.mkdir(mode=0o700)
     env = dict(os.environ, ANSIBLE_COLLECTIONS_PATH="/opt/collections",
@@ -81,7 +97,7 @@ def main():
 
     # Input/kernel-policy refusals occur before package or account mutation.
     for label, overrides, marker in (
-        ("missing-account", {"vpnmodo_vm_management_user": "lababsent"}, "lababsent"),
+        ("missing-account", {"vpnmodo_vm_management_user": "lababsent"}, "Require the selected management account to exist"),
         ("invalid-access", {"vpnmodo_vm_docker_access": "implicit"}, "VM preparation requires"),
         ("invalid-l2tp", {"vpnmodo_vm_l2tp": "true"}, "VM preparation requires"),
         ("blocked-kernel", {"vpn_sidecar_kernel_blocklist": [os.uname().release]}, "does not satisfy"),

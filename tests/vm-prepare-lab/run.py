@@ -102,7 +102,17 @@ def main():
         for number, cid in enumerate(owned):
             current = call(["inspect", "--format", '{{index .Config.Labels "io.vpnmodo.vm-prepare-lab"}}', cid], check=False)
             if current.returncode == 0 and current.stdout.strip() == identity:
-                call(["cp", cid + ":/tmp/vpnmodo-vm-prepare-evidence", str(evidence / ("ansible-" + str(number)))], check=False)
+                copied = evidence / ("ansible-" + str(number))
+                call(["cp", cid + ":/tmp/vpnmodo-vm-prepare-evidence", str(copied)], check=False)
+                if options.sudo and copied.exists() and copied.stat().st_uid != os.getuid():
+                    # sudo docker cp creates root-owned files. Change ownership
+                    # only in this exact copied synthetic directory, never follow
+                    # symlinks, and leave all unrelated runtime evidence alone.
+                    ownership = subprocess.run(["sudo", "-n", "--", "chown", "--no-dereference", "--recursive",
+                                                str(os.getuid()) + ":" + str(os.getgid()), "--", str(copied)],
+                                               capture_output=True, text=True, timeout=60)
+                    if ownership.returncode:
+                        print("Copied synthetic evidence requires sudo access:", copied, flush=True)
                 removed = call(["rm", "-f", cid], check=False)
                 if removed.returncode:
                     cleanup_errors.append(cid)

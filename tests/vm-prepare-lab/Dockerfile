@@ -8,7 +8,7 @@ RUN apt-get update \
        systemd systemd-sysv dbus python3 python3-venv python3-apt sudo \
        ca-certificates kmod iproute2 util-linux \
     && python3 -m venv /opt/ansible \
-    && /opt/ansible/bin/pip install --no-cache-dir ansible-core==2.19.3 \
+    && /opt/ansible/bin/pip install --no-cache-dir ansible-core==2.21.5 \
     && useradd --create-home --shell /bin/bash labdirect \
     && useradd --create-home --shell /bin/bash labsudo \
     && useradd --create-home --shell /bin/bash labdenied \

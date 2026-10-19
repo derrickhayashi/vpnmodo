@@ -94,7 +94,7 @@ Install `uv` through your approved Mac software process if it is unavailable.
 Run these commands on the **Mac**; Docker Desktop and Go are not required:
 
 ```sh
-uv tool install --python 3.12 ansible-core==2.19.3
+uv tool install --python 3.12 ansible-core==2.21.5
 export PATH="$HOME/.local/bin:$PATH"
 ansible --version
 umask 077

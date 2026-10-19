@@ -50,7 +50,11 @@ VPNMODO_AUTHORIZED_VM_PREPARE_LAB=1 python3 \
 Omit `--sudo` when the VM account already has direct Docker access. `--scenario
 full` selects only the L2TP fixture; `--scenario ipsec-only` selects a separate
 fresh fixture without `/dev/ppp`. By default both run. Ansible is installed in
-the disposable fixture's venv, pinned to `ansible-core==2.19.3` (Python 3.12).
+the disposable fixture's venv, pinned to `ansible-core==2.21.5` (Python 3.12).
+Privileged Docker exposes device nodes even without `--device`; before the
+IPsec-only role run, the fixture removes only its own `/dev/ppp` node after
+requiring a private `/dev` tmpfs and refusing a mount-bound or symlink node.
+The VM's device node is never removed or changed.
 
 Each run owns a UUID-named image and outer container IDs with the matching
 `io.vpnmodo.vm-prepare-lab` label. The runner records existing VM container IDs,
