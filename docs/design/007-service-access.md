@@ -121,6 +121,10 @@ recoverable. Stop uses that exact control socket, never a saved process ID.
 A failed teardown retains ownership for explicit retry. Unknown files, foreign
 paths, symlinks and live unresponsive sockets are not recursively removed.
 
+Each descriptor also pins the verified application ID. The VM helper rechecks
+that ID before attaching the stream; a healthy master for a different application
+cannot be reported ready for the current profile.
+
 An alias, VM or service binding change cannot silently reuse an old master.
 Stop it explicitly first. Port conflicts do not choose a new port or terminate
 another listener; correct the configured port or stop the process that owns it.

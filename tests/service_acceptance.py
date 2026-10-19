@@ -112,6 +112,11 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
         definition={'schema_version':1,'services':[dict(name=name,ssh_target='private-jump',ssh_config=str(self.config),local_port=port,remote_host='127.0.0.1',remote_port=28082) for name,port in zip(('dashboard','metrics'),self.ports)]}
         self.source.write_text(json.dumps(definition)); self.source.chmod(0o600)
         self.cli('service','configure',self.alias,'--file',str(self.source),'--json')
+        before=last(self.cli('connection','status',self.alias,'--json'))
+        unknown=self.cli('up',self.alias,'--service','not-configured','--json',required=False)
+        assert unknown.returncode and last(unknown)['error']=='named_service_not_configured'
+        after=last(self.cli('connection','status',self.alias,'--json'))
+        assert before.get('last_operation')==after.get('last_operation')
         ready=last(self.cli('up',self.alias,'--json'))
         assert ready['ready'] and ready['vpn_ready'] and len(ready['services'])==2
         for port in self.ports: self.fetch(port)
@@ -136,6 +141,27 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
             if self.cli('doctor',self.alias,'--json',required=False).returncode==0:break
             time.sleep(.2)
         else:raise RuntimeError('controller inspection did not recover after restart')
+        # Missing remote Python cannot falsely certify an otherwise live forward.
+        command(['docker','exec',self.name,'mv','/usr/bin/python3','/usr/bin/python3.probe-disabled'])
+        try:
+            unverified=self.cli('doctor',self.alias,'--json',required=False)
+            report=last(unverified)
+            assert unverified.returncode and report['vpn_ready'] and not report['ready']
+            assert all(s['code']=='remote_service_unverified' and s['listener_ready'] for s in report['services'])
+            self.fetch(self.ports[0])
+        finally:command(['docker','exec',self.name,'mv','/usr/bin/python3.probe-disabled','/usr/bin/python3'])
+        # A persisted session cannot masquerade as a new application runtime.
+        registry=self.directory/'registry'/'hosts.json'
+        states=json.loads(Path(str(registry)+'.access/'+self.alias+'.state.json').read_text())
+        descriptor=Path(states[0]['directory'])/'proxy.json'
+        original_descriptor=descriptor.read_bytes()
+        try:
+            data=json.loads(original_descriptor);data['request']['application_id']='0'*64
+            descriptor.write_text(json.dumps(data))
+            stale=self.cli('service','start',self.alias,'--service',states[0]['service']['name'],'--json',required=False)
+            assert stale.returncode and last(stale)['services'][0]['code']=='service_binding_changed_stop_first'
+            self.fetch(self.ports[1])
+        finally:descriptor.write_bytes(original_descriptor)
         # No accidental listener on the destination's inherited LocalForward.
         assert b'127.0.0.1:1 ' not in command(['ss','-lnt']).stdout
         owned=command(['ss','-lnt']).stdout
