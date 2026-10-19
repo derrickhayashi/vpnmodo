@@ -58,6 +58,10 @@ restart that replaced the VPN sandbox.
 
 Controller-managed VPN containers have Docker restart disabled. Their strongSwan
 DPD/close actions and xl2tpd redial do not create competing reconnect loops.
+Managed PPP requests its address from the gateway (`noipdefault`) instead of
+proposing the container's ordinary interface address, avoiding overlapping outer
+and PPP routes with permissive peers. See the
+[pppd options reference](https://ppp.samba.org/pppd.html).
 Standalone defaults remain available. A clean externally stopped VPN/application
 is treated as intentionally stopped and requires explicit ensure. A missing
 previously managed VPN is tunnel loss; persisted desired-disconnected intent

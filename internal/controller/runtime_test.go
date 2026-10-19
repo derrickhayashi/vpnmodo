@@ -308,6 +308,7 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 	row := map[string]any{"phase": phase, "ok": err == nil}
 	if phase == "service" && err != nil {
 		addr, _ := d.base.Run(ctx, "exec", args[1], "ip", "-4", "address", "show", "dev", "ppp0")
+		row["expected_local"] = strings.Contains(string(addr), "inet 198.51.100.")
 		row["expected_peer"] = strings.Contains(string(addr), "peer 198.51.100.1")
 		route, _ := d.base.Run(ctx, "exec", args[1], "ip", "-4", "route", "get", "198.51.100.1")
 		row["route_ppp"] = strings.Contains(string(route), "dev ppp0")

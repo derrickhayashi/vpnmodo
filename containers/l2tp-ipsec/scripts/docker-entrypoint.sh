@@ -60,12 +60,14 @@ KEYINGTRIES=%forever
 DPDACTION=restart
 CLOSEACTION=restart
 REDIAL=yes
+PPP_IP_DEFAULT=
 if [ "${VPN_RECOVERY_OWNER:-standalone}" = controller ]; then
     # Controller-owned profiles have no competing Docker/IKE/L2TP restart loop.
     KEYINGTRIES=1
     DPDACTION=clear
     CLOSEACTION=none
     REDIAL=no
+    PPP_IP_DEFAULT=noipdefault
     trap cleanup EXIT
     trap 'exit 0' INT TERM
 fi
@@ -155,6 +157,7 @@ EOF
 
 cat > /etc/ppp/options.l2tpd.client <<EOF
 name "$VPN_USERNAME_ESCAPED"
+$PPP_IP_DEFAULT
 noauth
 refuse-eap
 logfd 2
