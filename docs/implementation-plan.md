@@ -104,6 +104,12 @@ sessions are reused; cooldown and intentional stops are respected; failed
 recovery leaves forwarding stopped; the legacy watchdog cannot compete with the
 controller for the same profile; existing standalone regression tests still pass.
 
+Deliver this stage in two reviewable PRs: first the persistent recovery policy and
+standalone watchdog ownership guard; then the managed L2TP Docker/Compose adapter,
+credential mounting and isolated Linux VPN acceptance. The first PR does not
+activate production backend control or complete this issue. See the
+[recovery policy](design/004-recovery-policy.md) for its interface and boundaries.
+
 ### 6. Integrate XAuth MFA with mandatory fail-closed enforcement
 
 Dependencies: 3, 4; use lifecycle lessons from 5.

@@ -128,6 +128,13 @@ and interrupted MFA do not cause automatic login. Saved disconnected intent is
 enforced with an idempotent disconnect operation. No saved success record alone
 proves a tunnel is healthy.
 
+## Recovery extension
+
+The [recovery policy](004-recovery-policy.md) adds bounded background monitoring,
+closed health classifications and persisted retry/cooldown metadata. It runs only
+for adapters implementing the recovery interface. Real backend activation and
+Docker ownership enforcement remain the next L2TP integration PR.
+
 ## Validation
 
 Race tests cover concurrent joins, independent profiles, verified-session reuse,

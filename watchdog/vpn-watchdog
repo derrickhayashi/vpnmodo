@@ -35,6 +35,13 @@ if ! vpn_id=$(service_id vpn); then
     exit 0
 fi
 if [ -z "$vpn_id" ]; then report stopped 'VPN missing; waiting for an explicit connection'; exit 0; fi
+# A managed profile has one recovery authority. Refuse even a manually launched
+# legacy watchdog before health checks, namespace repair or Compose mutations.
+manager=$(docker inspect -f '{{index .Config.Labels "io.vpnmodo.managed-by"}}' "$vpn_id")
+if [ "$manager" = vpnmodo ]; then
+    report controller-owned 'Controller-managed VPN; standalone watchdog is disabled for this profile'
+    exit 0
+fi
 vpn_state=$(docker inspect -f '{{.State.Status}}' "$vpn_id")
 if [ "$vpn_state" != running ]; then
     report stopped 'VPN stopped; reconnect manually when needed'

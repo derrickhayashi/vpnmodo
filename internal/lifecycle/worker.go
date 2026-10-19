@@ -41,6 +41,10 @@ func (m *Manager) run(w *worker, entry *slot) {
 		m.fail(w, err, operation.Unknown)
 		return
 	}
+	if w.kind == operation.RecoverConnection {
+		m.runRecovery(w)
+		return
+	}
 	if w.kind == operation.DisconnectConnection {
 		err := m.options.Adapter.Disconnect(w.ctx, w.p)
 		if err != nil || w.ctx.Err() != nil {
@@ -88,7 +92,12 @@ func (m *Manager) run(w *worker, entry *slot) {
 		err = m.options.Adapter.Verify(w.ctx, w.p)
 	}
 	if err == nil {
-		err = m.transition(w, operation.Succeeded, "", operation.ObservedConnected)
+		if adapter, ok := m.options.Adapter.(RecoveryAdapter); ok {
+			err = adapter.RepairForwarding(w.ctx, w.p)
+		}
+		if err == nil {
+			err = m.transition(w, operation.Succeeded, "", operation.ObservedConnected)
+		}
 	}
 	if err != nil {
 		observed := operation.Unknown
@@ -105,6 +114,9 @@ func (m *Manager) cleanup(w *worker) bool {
 	return m.options.Adapter.Disconnect(ctx, w.p) == nil
 }
 func (m *Manager) fail(w *worker, err error, observed operation.Observed) {
+	if errors.Is(err, ErrAuthentication) || errors.Is(err, ErrCredentials) || errors.Is(err, ErrExpired) {
+		w.recoveryRetry = false
+	}
 	failure := operation.BackendFailed
 	switch {
 	case errors.Is(err, ErrExpired):
@@ -157,6 +169,10 @@ func (m *Manager) StartReconcile() {
 			}
 			m.reconcileConnected(c)
 		}()
+	}
+	if _, ok := m.options.Adapter.(RecoveryAdapter); ok {
+		m.wait.Add(1)
+		go m.monitorLoop()
 	}
 	m.mu.Unlock()
 }

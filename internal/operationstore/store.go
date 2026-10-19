@@ -35,6 +35,10 @@ func Empty() State {
 func (s State) Clone() State {
 	r := Empty()
 	for k, c := range s.Connections {
+		if c.Recovery != nil {
+			v := *c.Recovery
+			c.Recovery = &v
+		}
 		r.Connections[k] = c
 	}
 	for k, o := range s.Operations {
