@@ -1,0 +1,13 @@
+{
+  "arch": "arm64",
+  "binary_version": "v0.1.0-rc.7+git.4696f8c7ec50",
+  "images": {
+    "application": "ghcr.io/derrickhayashi/vpn-sidecars-next/application@sha256:2e1a7aa4cbc4e9e5222bb4c24a839aa1a6170ea5492d644777ce7b178824e44f",
+    "controller": "ghcr.io/derrickhayashi/vpn-sidecars-next/controller@sha256:265c1c539d6debedb94fe71351cf2cad24cfb6f73f4934e3c8f2eab97493e602",
+    "l2tp": "ghcr.io/derrickhayashi/vpn-sidecars-next/l2tp@sha256:aaee102bb9add40194acce56105cc90b07ebb41c355b6c4d44731c0ca3f26f00",
+    "xauth": "ghcr.io/derrickhayashi/vpn-sidecars-next/xauth@sha256:35abb10f61d04040a6ba6a357d98e11bdcc530fdb40dae985b03e11fa34203f6"
+  },
+  "os": "linux",
+  "schema_version": 1,
+  "version": "v0.1.0-rc.7"
+}

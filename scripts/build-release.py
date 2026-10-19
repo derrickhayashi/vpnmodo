@@ -190,6 +190,7 @@ def publish(manifest, output):
         repository = prefix + role
         tag = repository + ':' + data['version'] + '-' + data['arch']
         docker('tag', data['images'][role]['id'], tag)
+        # A partial multiplatform index can produce a different registry digest.
         pushed = docker('push', tag)
         digests = re.findall(r'\bdigest: (sha256:[0-9a-f]{64})\b', pushed)
         if len(digests) != 1:

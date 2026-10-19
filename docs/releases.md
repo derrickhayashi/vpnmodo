@@ -97,7 +97,9 @@ python3 scripts/build-release.py vm --version v0.1.0-rc.7 --publish \
 This builds the same four images and offline bundle, then pushes
 `ghcr.io/derrickhayashi/vpn-sidecars-next/ROLE:VERSION-arm64` for `controller`,
 `l2tp`, `xauth` and `application`. `registry-release.json` records the returned
-registry digests, not the builder's local image IDs. Keep the packages private
+registry digests. Docker can push a single-platform manifest whose digest
+differs from a local index; use the push result, not local `RepoDigests` or
+image IDs. Keep the packages private
 and grant intended users package read access.
 
 Distribute `lima.yaml`, `install-vm.py` and `registry-release.json` together.
