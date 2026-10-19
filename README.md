@@ -105,6 +105,21 @@ context file. A customer-specific skill can be a thin adapter that loads the
 consumer context and this shared skill by its checkout path. Customer settings
 and credentials do not belong in the bundled skill.
 
+## Go control-layer development
+
+The first implementation stage provides shared v1 contracts, validation and
+protocol framing; it does not yet provide runnable `vpnmodo` commands. See
+[v1 contracts and ownership](docs/design/001-v1-contracts.md) for schemas, API
+rules, lifecycle policy and release targets. Synthetic JSON profile examples live
+in `examples/profiles/v1/`. Existing scripts and deployments remain unchanged.
+
+With Go 1.27 installed:
+
+```sh
+go test -race ./...
+go vet ./...
+```
+
 ## Validation
 
 Run from this repository root:

@@ -1,7 +1,9 @@
 # vpnmodo implementation requirements
 
 Status: discussion captured for implementation review, 2026-10-19.
-No new control-plane functionality has been implemented yet.
+The v1 contract implementation is tracked in issue #2; controller runtime
+functionality is not implemented yet. See [v1 contracts and ownership](design/001-v1-contracts.md)
+for the initial scope, ownership and lifecycle defaults selected for implementation.
 
 ## Goal and deployment model
 
