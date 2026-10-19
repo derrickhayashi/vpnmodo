@@ -3,6 +3,7 @@
 import argparse
 import gzip
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -167,8 +168,13 @@ def vm(source, output, metadata, temporary):
         raise RuntimeError('built controller version does not match release')
     stage = temporary / 'vm'
     stage.mkdir()
-    docker('save', '-o', str(stage / 'images.tar'), *[image['id'] for image in images.values()])
-    manifest = dict(metadata, os='linux', arch=arch, binary_version=identity, images=images, archive_sha256=digest(stage / 'images.tar'))
+    docker('save', '--platform', 'linux/' + arch, '-o', str(stage / 'export.tar'), *[image['tag'] for image in images.values()])
+    spec = importlib.util.spec_from_file_location('release_loader', source / 'scripts/release/install-vm.py')
+    loader = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loader)
+    loader.normalize_archive(stage / 'export.tar', stage / 'images.tar', images)
+    (stage / 'export.tar').unlink()
+    manifest = dict(metadata, schema_version=2, os='linux', arch=arch, binary_version=identity, images=images, archive_sha256=digest(stage / 'images.tar'))
     write_json(stage / 'release.json', manifest)
     shutil.copyfile(source / 'scripts/release/install-vm.py', stage / 'install-vm.py')
     (stage / 'README.txt').write_text('See docs/releases.md and docs/onboarding.md in the source bundle.\nVerify the archive using the independently obtained SHA256SUMS-linux-' + arch + ' file before extracting.\nRun: python3 install-vm.py\nThis loads images only; host setup explicitly activates the controller.\n')

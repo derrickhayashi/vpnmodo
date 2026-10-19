@@ -19,19 +19,20 @@ The source version, full Git revision, target architecture and binary version ar
 recorded in each manifest. `vpnmodo version` reports, for example,
 `v0.1.0-rc.1+git.<12-character-revision>`.
 
-VM images are built separately on each native Linux architecture. The controller
-embeds exact local image IDs for L2TP, XAuth and the application. Docker archives
-contain image IDs without repository tags. The loader checks the checksum, full
-image set, configuration hashes, architecture, controller version and embedded
-backend IDs. It refuses tagged archives before loading, so an existing legacy
-image tag remains unchanged. Loading images does not activate a controller,
-connect a profile, stop a watchdog or modify a legacy deployment.
+VM images are built separately on each native Linux architecture. The bundle
+contains all four images with reserved, content-addressed `vpnmodo-offline/`
+references. The loader verifies archive and configuration hashes, the complete
+OCI manifest set, architecture and controller version. It refuses a conflicting
+reserved reference before loading and does not overwrite legacy image tags.
+Loading does not activate a controller or change an existing VPN deployment.
 
-Image IDs are Docker content hashes used with `docker load`; they are not registry
-manifest digests. Do not substitute mutable `:latest`/`:dev` references for the
-recorded IDs. Keep the previous bundle/images for explicit rollback. Building
-again can resolve newer upstream packages: source identity and artifact hashes
-are pinned, but byte-identical image rebuilds are not promised.
+Docker's classic and containerd image stores can assign different local IDs to
+the same exported image. Save the loader's JSON output as `installed-release.json`:
+it records the verified destination-local immutable IDs for all four images.
+`host setup --release` applies those exact IDs, including backend defaults.
+Do not substitute mutable `:latest`/`:dev` references. Keep the old receipt and
+images for explicit rollback. Source identity and artifact hashes are pinned;
+byte-identical image rebuilds are not promised.
 
 ## Maintainer build
 
@@ -83,7 +84,7 @@ installer changes only `<prefix>/bin/vpnmodo` and creates no shell startup edits
 Load the new VM image bundle first, record the old controller image ID, then run:
 
 ```sh
-vpnmodo host setup personal-vm --image sha256:<new-controller-id> --replace
+vpnmodo host setup personal-vm --release /absolute/private/installed-release.json --replace
 vpnmodo host check personal-vm --json
 vpnmodo status example
 ```
@@ -95,7 +96,7 @@ the image identities in their deployment records. Do not prune old images while
 such sessions or rollback plans still need them. An interrupted login requires
 an explicit new attempt and fresh XAuth MFA.
 
-For controller rollback, repeat `host setup --image <old-id> --replace`, then
+For controller rollback, repeat `host setup --release <old-receipt.json> --replace`, then
 verify status and private service access. This applies to compatible schema/API
 versions. Do not run an older binary against a newer incompatible state schema;
 a future schema-changing release needs its own migration/backup instructions.

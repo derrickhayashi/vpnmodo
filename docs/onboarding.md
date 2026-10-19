@@ -60,10 +60,10 @@ mkdir -m 700 /absolute/private/vpnmodo-release
 tar -xzf vpnmodo-v0.1.0-rc.1-linux-arm64-images.tar.gz \
   -C /absolute/private/vpnmodo-release
 cd /absolute/private/vpnmodo-release
-python3 install-vm.py
+python3 install-vm.py > installed-release.json
 ```
 
-Use the JSON `controller_image` value in the next command. The loader reports
+Copy the resulting JSON receipt to a private path on the Mac. The loader reports
 `activated: false`: it only loads verified images. Keep all release files outside
 source and customer credential directories. You do not need registry credentials
 or a Go toolchain to install the bundle.
@@ -74,7 +74,7 @@ On the Mac:
 
 ```sh
 vpnmodo host add personal-vm --ssh personal-vm
-vpnmodo host setup personal-vm --image sha256:<controller-id-from-loader> --json
+vpnmodo host setup personal-vm --release /absolute/private/installed-release.json --json
 vpnmodo host check personal-vm --json
 ```
 
@@ -83,7 +83,8 @@ with `host add personal-vm --ssh personal-vm --sudo`. Fixed VM management comman
 then use noninteractive sudo, including controller bootstrap, the bridge and
 forwarding. This does not change group membership or sudo policy. Bootstrap in
 this mode owns state under root's home; use that same mode for later access and
-upgrades. Load the verified image bundle with `sudo -n python3 install-vm.py`.
+upgrades. Load the verified image bundle with
+`sudo -n python3 install-vm.py > installed-release.json`.
 Do not enable sudo mode for a pre-existing user-owned controller without an
 explicit state migration; bootstrap refuses its mismatched storage mount.
 
@@ -149,6 +150,12 @@ vpnmodo up example
 vpnmodo status example
 vpnmodo doctor example --json
 ```
+
+For an existing workstation SSH alias, its `ProxyCommand` may use
+`/absolute/path/to/vpnmodo proxy example %h %p`. Each invocation resolves the
+current healthy application container and rechecks its identity before opening
+the stream. It never starts login or requests MFA. Keep destination authentication
+and trusted host keys in the usual workstation SSH configuration.
 
 The [service guide](design/007-service-access.md) explains the two verified SSH
 hops, loopback listeners and destination checks. A healthy VPN alone is not proof

@@ -77,20 +77,32 @@ class ReleaseTests(unittest.TestCase):
     def bundle(self, root, tagged=False):
         roles = ('controller', 'l2tp', 'xauth', 'application')
         configs = {role: json.dumps({'architecture': 'arm64', 'os': 'linux', 'role': role}).encode() for role in roles}
-        images = {role: {'id': 'sha256:' + hashlib.sha256(config).hexdigest()} for role, config in configs.items()}
-        with tarfile.open(root / 'images.tar', 'w') as tar:
+        images = {role: {'id': 'sha256:' + hashlib.sha256(config).hexdigest(), 'tag': 'vpnmodo-' + role + ':fixture'} for role, config in configs.items()}
+        with tarfile.open(root / 'export.tar', 'w') as tar:
             entries = []
             for role, raw in configs.items():
                 name = images[role]['id'][7:] + '.json'
                 info = tarfile.TarInfo(name)
                 info.size = len(raw)
                 tar.addfile(info, io.BytesIO(raw))
-                entries.append({'Config': name, 'RepoTags': ['legacy:existing'] if tagged else None, 'Layers': []})
+                entries.append({'Config': name, 'RepoTags': None, 'Layers': []})
             raw = json.dumps(entries).encode()
             info = tarfile.TarInfo('manifest.json')
             info.size = len(raw)
             tar.addfile(info, io.BytesIO(raw))
-        data = {'schema_version': 1, 'os': 'linux', 'arch': 'arm64', 'version': 'v0.1.0-rc.1', 'revision': 'a' * 40,
+        loader.normalize_archive(root / 'export.tar', root / 'images.tar', images)
+        if tagged:
+            with tarfile.open(root / 'images.tar') as src, tarfile.open(root / 'foreign.tar', 'w') as dst:
+                for member in src.getmembers():
+                    raw = src.extractfile(member).read()
+                    if member.name == 'manifest.json':
+                        entries = json.loads(raw)
+                        entries[0]['RepoTags'] = ['legacy:existing']
+                        raw = json.dumps(entries).encode()
+                        member.size = len(raw)
+                    dst.addfile(member, io.BytesIO(raw))
+            (root / 'foreign.tar').replace(root / 'images.tar')
+        data = {'schema_version': 2, 'os': 'linux', 'arch': 'arm64', 'version': 'v0.1.0-rc.1', 'revision': 'a' * 40,
                 'binary_version': 'v0.1.0-rc.1+git.' + 'a' * 12, 'images': images, 'archive_sha256': builder.digest(root / 'images.tar')}
         (root / 'release.json').write_text(json.dumps(data))
         return data
@@ -111,7 +123,7 @@ class ReleaseTests(unittest.TestCase):
             root = Path(directory)
             self.bundle(root, tagged=True)
             with patch.object(loader, 'docker') as docker:
-                with self.assertRaisesRegex(loader.InstallError, 'tagged'):
+                with self.assertRaisesRegex(loader.InstallError, 'tag'):
                     loader.install(root)
                 docker.assert_not_called()
 
@@ -128,10 +140,42 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             data = self.bundle(root)
-            data['images']['l2tp']['id'] = 'sha256:' + 'f' * 64
+            data['images']['l2tp']['config_digest'] = 'sha256:' + 'f' * 64
             (root / 'release.json').write_text(json.dumps(data))
-            with self.assertRaisesRegex(loader.InstallError, 'identity'):
+            with self.assertRaises(loader.InstallError):
                 loader.verify(root)
+
+
+    def test_content_reference_collision_is_refused_before_load(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bundle(root)
+            with patch.object(loader, 'docker', return_value=json.dumps({'OSType': 'linux', 'Architecture': 'aarch64'})) as docker, patch.object(loader, 'inspect_optional', return_value={'Id': 'sha256:' + 'f' * 64}):
+                with self.assertRaisesRegex(loader.InstallError, 'different content'):
+                    loader.install(root)
+                self.assertNotIn('load', [call.args[0] for call in docker.call_args_list])
+
+    def test_loaded_ids_are_resolved_for_both_image_stores(self):
+        from contextlib import redirect_stdout
+        for kind in ('config_digest', 'manifest_digest'):
+            with self.subTest(store=kind), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                data = self.bundle(root)
+                def docker(*args):
+                    if args[0] == 'info':
+                        return json.dumps({'OSType': 'linux', 'Architecture': 'aarch64'})
+                    if args[0] == 'image':
+                        image = next(i for i in data['images'].values() if i['ref'] == args[2])
+                        return json.dumps([{'Id': image[kind], 'Architecture': 'arm64', 'Os': 'linux'}])
+                    if args[0] == 'run':
+                        return data['binary_version']
+                    return ''
+                result = io.StringIO()
+                with patch.object(loader, 'docker', side_effect=docker), patch.object(loader, 'inspect_optional', return_value=None), redirect_stdout(result):
+                    loader.install(root)
+                installed = json.loads(result.getvalue())
+                self.assertEqual(installed['controller_image'], data['images']['controller'][kind])
+                self.assertEqual(installed['backend_images']['xauth'], data['images']['xauth'][kind])
 
 
 if __name__ == '__main__':
