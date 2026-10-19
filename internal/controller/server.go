@@ -15,6 +15,7 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/l2tp"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
@@ -35,10 +36,13 @@ type Status struct {
 	RuntimeEnabled bool                `json:"runtime_enabled"`
 }
 type Config struct {
-	Socket, StateDir, DockerSocket, Version string
-	Adapter                                 lifecycle.Adapter
-	OperationTimeout, MFATimeout            time.Duration
-	Recovery                                lifecycle.RecoveryPolicy
+	EnableL2TP                                bool
+	L2TPRunner                                l2tp.Runner
+	L2TPImage, ApplicationImage, DockerBinary string
+	Socket, StateDir, DockerSocket, Version   string
+	Adapter                                   lifecycle.Adapter
+	OperationTimeout, MFATimeout              time.Duration
+	Recovery                                  lifecycle.RecoveryPolicy
 }
 type Server struct {
 	profiles    *profilestore.Store
@@ -91,12 +95,26 @@ func Listen(config Config) (*Server, error) {
 	if err != nil {
 		return nil, ErrService
 	}
+	if config.EnableL2TP && config.Adapter == nil {
+		binary := config.DockerBinary
+		if binary == "" {
+			binary = "/usr/local/bin/docker"
+		}
+		runner := config.L2TPRunner
+		if runner == nil {
+			runner = l2tp.CLI{Binary: binary, Socket: config.DockerSocket}
+		}
+		config.Adapter, err = l2tp.New(filepath.Join(config.StateDir, "deployments"), config.L2TPImage, config.ApplicationImage, profiles, runner)
+		if err != nil {
+			return nil, ErrService
+		}
+	}
 	journal, err := operationstore.Open(config.StateDir)
 	if err != nil {
 		return nil, ErrService
 	}
 	serviceCtx, cancel := context.WithCancel(context.Background())
-	operations, err = lifecycle.Open(serviceCtx, journal, lifecycle.Options{Adapter: config.Adapter, WithProfile: profiles.WithProfile, OperationTimeout: config.OperationTimeout, MFATimeout: config.MFATimeout, Recovery: config.Recovery})
+	operations, err = lifecycle.Open(serviceCtx, journal, lifecycle.Options{Adapter: config.Adapter, WithProfile: profiles.WithProfile, OperationTimeout: config.OperationTimeout, MFATimeout: config.MFATimeout, CleanupTimeout: 20 * time.Second, Recovery: config.Recovery})
 	if err != nil {
 		cancel()
 		_ = journal.Close()
@@ -290,7 +308,17 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 		if err != nil {
 			return nil, fault(protocol.CodeInvalidParams)
 		}
-		result, err := d.profiles.DeleteWith(ctx, params.Profile, params.ExpectedRevision, func() error { return d.operations.Forget(params.Profile) })
+		result, err := d.profiles.DeleteWith(ctx, params.Profile, params.ExpectedRevision, func() error {
+			if err := d.operations.Forget(params.Profile); err != nil {
+				return err
+			}
+			if cleaner, ok := d.config.Adapter.(interface {
+				Forget(context.Context, string) error
+			}); ok {
+				return cleaner.Forget(ctx, params.Profile)
+			}
+			return nil
+		})
 		if errors.Is(err, lifecycle.ErrPersistence) {
 			return nil, lifecycleFault(err)
 		}

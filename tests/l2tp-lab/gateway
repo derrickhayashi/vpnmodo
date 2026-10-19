@@ -1,0 +1,52 @@
+#!/bin/sh
+# Synthetic isolated CI gateway; never a customer deployment template.
+set -eu
+umask 077
+mkdir -p /run/xl2tpd /run/lab
+cat > /etc/ipsec.conf <<'CONFIG'
+config setup
+    uniqueids=no
+conn lab
+    keyexchange=ikev1
+    authby=secret
+    type=transport
+    left=%defaultroute
+    leftprotoport=17/1701
+    right=%any
+    rightprotoport=17/%any
+    ike=aes256-sha256-modp2048!
+    esp=aes256-sha256!
+    forceencaps=yes
+    auto=add
+CONFIG
+printf ': PSK "synthetic-shared"\n' > /etc/ipsec.secrets
+cat > /etc/xl2tpd/xl2tpd.conf <<'CONFIG'
+[global]
+port = 1701
+[lns default]
+ip range = 198.51.100.10-198.51.100.20
+local ip = 198.51.100.1
+require authentication = yes
+pppoptfile = /etc/ppp/options.lab
+length bit = yes
+CONFIG
+cat > /etc/ppp/options.lab <<'CONFIG'
+require-mschap-v2
+auth
+name lab
+mtu 1400
+mru 1400
+ms-dns 198.51.100.1
+noccp
+nobsdcomp
+nodeflate
+ipcp-accept-local
+ipcp-accept-remote
+CONFIG
+printf '"synthetic-user" * "synthetic-password" *\n' > /etc/ppp/chap-secrets
+ipsec start
+xl2tpd -D >/run/lab/xl2tpd-output 2>&1 &
+dnsmasq --keep-in-foreground --no-resolv --address=/private.example/198.51.100.1 >/dev/null 2>&1 &
+lab-control service-start
+touch /run/lab/ready
+exec sleep infinity

@@ -46,6 +46,7 @@ quote_value() {
 
 cleanup() {
     trap - EXIT INT TERM
+    rm -f /run/vpn/ready
     if [ -p /var/run/xl2tpd/l2tp-control ]; then
         printf '%s\n' 'd vpn' > /var/run/xl2tpd/l2tp-control 2>/dev/null || true
     fi
@@ -55,6 +56,21 @@ cleanup() {
     [ -z "${XL2TPD_PID:-}" ] || kill "$XL2TPD_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
+KEYINGTRIES=%forever
+DPDACTION=restart
+CLOSEACTION=restart
+REDIAL=yes
+PPP_IP_DEFAULT=
+if [ "${VPN_RECOVERY_OWNER:-standalone}" = controller ]; then
+    # Controller-owned profiles have no competing Docker/IKE/L2TP restart loop.
+    KEYINGTRIES=1
+    DPDACTION=clear
+    CLOSEACTION=none
+    REDIAL=no
+    PPP_IP_DEFAULT=noipdefault
+    trap cleanup EXIT
+    trap 'exit 0' INT TERM
+fi
 
 : "${VPN_SERVER:?VPN_SERVER is required}"
 VPN_USERNAME=$(read_secret VPN_USERNAME)
@@ -89,7 +105,7 @@ VPN_PSK_ESCAPED=$(quote_value "$VPN_PSK")
 
 umask 077
 mkdir -p /etc/strongswan.d /etc/xl2tpd /var/run/xl2tpd /run/vpn
-rm -f /var/run/xl2tpd/l2tp-control
+rm -f /var/run/xl2tpd/l2tp-control /run/vpn/ready
 
 # Allocate a fresh local NAT-T source port whenever the container starts. This
 # avoids stale UDP 4500 mappings after an IKEv1/L2TP session expires. The peer
@@ -115,10 +131,10 @@ conn l2tp-psk
     ike=$VPN_IKE_PROPOSALS
     esp=$VPN_ESP_PROPOSALS
     forceencaps=$VPN_FORCE_ENCAPS
-    keyingtries=%forever
-    dpdaction=restart
+    keyingtries=$KEYINGTRIES
+    dpdaction=$DPDACTION
     dpddelay=30s
-    closeaction=restart
+    closeaction=$CLOSEACTION
     auto=add
 EOF
 
@@ -134,13 +150,14 @@ port = 1701
 lns = $VPN_SERVER_IP
 pppoptfile = /etc/ppp/options.l2tpd.client
 length bit = yes
-redial = yes
+redial = $REDIAL
 redial timeout = 5
 max redials = 6
 EOF
 
 cat > /etc/ppp/options.l2tpd.client <<EOF
 name "$VPN_USERNAME_ESCAPED"
+$PPP_IP_DEFAULT
 noauth
 refuse-eap
 logfd 2
@@ -189,7 +206,9 @@ ip route replace "$VPN_SERVER_IP/32" via "$ORIGINAL_GATEWAY" dev "$ORIGINAL_DEVI
 iptables -F OUTPUT
 iptables -P OUTPUT DROP
 iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+if [ "${VPN_RECOVERY_OWNER:-standalone}" != controller ]; then
+    iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+fi
 iptables -A OUTPUT -o ppp0 -j ACCEPT
 iptables -A OUTPUT -o "$ORIGINAL_DEVICE" -d "$VPN_SERVER_IP" -p udp --dport 500 -j ACCEPT
 iptables -A OUTPUT -o "$ORIGINAL_DEVICE" -d "$VPN_SERVER_IP" -p udp --dport 4500 -j ACCEPT
@@ -227,7 +246,7 @@ ip route replace default dev ppp0
 
 : > /run/vpn/dns-servers.conf
 if [ -n "${VPN_DNS:-}" ]; then
-    printf '%s' "$VPN_DNS" | tr ',' '\n' | while IFS= read -r dns_server; do
+    printf '%s\n' "$VPN_DNS" | tr ',' '\n' | while IFS= read -r dns_server; do
         [ -z "$dns_server" ] || printf 'server=%s\n' "$dns_server"
     done > /run/vpn/dns-servers.conf
 else
@@ -252,7 +271,11 @@ touch /run/vpn/ready
 log "VPN is ready; shared network traffic now uses ppp0"
 
 while :; do
-    sleep 5
+    # Waiting for a background sleep lets the shell handle TERM immediately.
+    # A foreground sleep defers the trap beyond the controller's stop budget,
+    # so Docker can kill the container before L2TP/IPsec cleanup runs.
+    sleep 5 &
+    wait "$!"
     if ! ip link show ppp0 2>/dev/null | grep -q 'UP'; then
         log "ppp0 is no longer up; exiting for container restart"
         exit 1

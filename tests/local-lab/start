@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+mkdir -p /run/sshd
+# A forced container restart retains files but starts a new PID namespace.
+rm -f /run/docker.pid /run/test-lab-ready
+rm -rf /run/docker/containerd
+dockerd --host=unix:///var/run/docker.sock --storage-driver=vfs --ip6tables=false > /tmp/dockerd.log 2>&1 &
+daemon_pid=$!
+trap 'exit 0' INT TERM
+trap 'kill "$daemon_pid" 2>/dev/null || true; wait "$daemon_pid" 2>/dev/null || true' EXIT
+attempt=0
+until docker info >/dev/null 2>&1; do
+  attempt=$((attempt+1))
+  if [ "$attempt" -ge 120 ] || ! kill -0 "$daemon_pid" 2>/dev/null; then
+    echo "isolated Docker daemon failed to start" >&2
+    exit 1
+  fi
+  sleep 1
+done
+touch /run/test-lab-ready
+wait "$daemon_pid"

@@ -6,7 +6,11 @@
 !internal/controller/*.go
 !internal/jsonstrict/
 !internal/jsonstrict/*.go
+!internal/l2tp/
+!internal/l2tp/*.go
 !internal/lifecycle/
+!internal/l2tp/
+!internal/l2tp/*.go
 !internal/lifecycle/*.go
 !internal/operationstore/
 !internal/operationstore/*.go

@@ -4,12 +4,11 @@ This stage supplies runnable `vpnmodo` and `vpnmodo-controller` binaries, verifi
 SSH transport, schema discovery and controller/Docker readiness. VPN profile
 management is now available through the [profile guide](../../docs/design/002-profile-storage.md).
 Persistent operation coordination is described in the
-[operation guide](../../docs/design/003-persistent-operations.md). Real backend
-connection handlers and XAuth enforcement remain later stages. The
-[recovery policy](../../docs/design/004-recovery-policy.md) is implemented against
-the test adapter; production Docker/Compose control is the next integration PR.
-The status field `runtime_enabled` is false; backend descriptors describe schema
-requirements, not usable VPN sessions.
+[operation guide](../../docs/design/003-persistent-operations.md). The
+[managed L2TP adapter](../../docs/design/005-managed-l2tp.md) now supplies real
+Docker/Compose lifecycle and controller-owned recovery. `runtime_enabled` reports
+that adapter wiring; image/kernel prerequisites and a verified VPN are separate
+checks. XAuth runtime remains unavailable pending its mandatory enforcement stage.
 
 ## Prerequisites and build
 
@@ -35,8 +34,18 @@ docker build -t vpnmodo-controller:dev -f containers/controller/Dockerfile .
 ```
 
 The build context allowlists only the controller's Go source packages and module
-files. The runtime image is scratch plus a static Go binary; it contains no shell,
-Docker CLI, SSH server, customer configuration or credentials.
+files. The runtime image bundles the static Go binary and Docker CLI/Compose.
+It contains no customer configuration or credentials. Install the development
+backend/application images explicitly on the VM before connection:
+
+```sh
+docker build -t vpnmodo-l2tp:dev containers/l2tp-ipsec
+docker pull alpine:3.22
+```
+
+The VM needs PPP (`ppp_generic`, `ppp_async`, `/dev/ppp`) and kernel IPsec support.
+xl2tpd can use userspace L2TP when optional kernel L2TP acceleration is absent.
+The adapter never installs modules, creates host devices, builds or pulls images.
 
 ## Register, set up and check
 
@@ -90,7 +99,7 @@ forwards bounded frames to the persistent service's private Unix socket. Closing
 stdin drains replies; closing a bridge leaves the service running. The service
 requires `system.hello` negotiation per connection and exposes `system.status`,
 `backend.list` and `backend.describe`. Profile management methods validate and provision protected VM storage;
-connection/operation methods use a persistent manager, with real adapters disabled. Request/response logging is disabled.
+connection/operation methods use a persistent manager with the L2TP adapter. Request/response logging is disabled.
 
 The service bounds connections, outstanding calls, frame size/depth, idle reads
 and writes. Docker readiness uses the local `GET /_ping` endpoint. Profile mutations also

@@ -32,6 +32,11 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 // as command arguments. Ordinary JSON encoding of Value remains blocked.
 func (v Value) EncodeForTransport() ([]byte, error) { return json.Marshal(v.value) }
 
+// BytesForProtectedFile is the explicit boundary for a backend credential file.
+// Only write these bytes to permission-protected runtime files. Never use them in
+// arguments, environment, logs, RPC output or operation metadata.
+func (v Value) BytesForProtectedFile() []byte { return []byte(v.value) }
+
 // Check allows validation without exposing the value as a reusable public field.
 // The predicate must neither retain nor log the plaintext.
 func (v Value) Check(predicate func(string) bool) bool { return predicate(v.value) }
