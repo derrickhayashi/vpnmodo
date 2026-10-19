@@ -43,7 +43,9 @@ def main():
         raise RuntimeError("refusing existing vpnmodo data directory")
     if command(["docker", "container", "inspect", "vpnmodo-controller"], required=False).returncode == 0:
         raise RuntimeError("refusing an existing controller container")
-    directory = Path(tempfile.mkdtemp(prefix="vpnmodo-ssh-"))
+    # StrictModes checks authorized_keys ancestors too: keep test keys under
+    # the account's home, never under the world-writable /tmp ancestor.
+    directory = Path(tempfile.mkdtemp(prefix=".vpnmodo-ssh-", dir=Path.home()))
     token = uuid.uuid4().hex
     sshd = None
     legacy = "vpnmodo-legacy-test-" + uuid.uuid4().hex[:12]
@@ -76,7 +78,7 @@ UsePAM yes
 StrictModes yes
 AllowAgentForwarding no
 AllowTcpForwarding no
-LogLevel ERROR
+LogLevel VERBOSE
 """)
         command(["sudo", "-n", "mkdir", "-p", "/run/sshd"])
         logfile = (directory / "sshd.log").open("wb")
@@ -105,6 +107,7 @@ LogLevel ERROR
         if preflight.returncode:
             # This server has only test identities; the log contains no VPN input.
             logfile.flush()
+            print(preflight.stderr.decode("utf-8", errors="replace"), file=sys.stderr)
             print((directory / "sshd.log").read_text(), file=sys.stderr)
             raise RuntimeError("isolated SSH key-authentication preflight failed")
         registry = directory / "registry" / "hosts.json"
