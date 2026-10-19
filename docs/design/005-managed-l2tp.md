@@ -74,7 +74,8 @@ read-back RPC is added. The callback runs under the profile transaction, without
 external commands or retained plaintext fields. Compose mounts those three files
 read-only at `/run/secrets/vpn_*`; it never mounts the full vault or places values
 in argv, environment, manifests, results or operation records. Application
-containers receive none of these mounts. Docker logging is disabled for managed
+containers receive none of these mounts. They run as the VM user with a separate
+read-only local-resolver configuration bind and no capabilities. Docker logging is disabled for managed
 VPN/application containers to avoid persistent backend authentication transcripts.
 
 `controller-state/deployments/<name>/` contains a protected nonsecret deployment

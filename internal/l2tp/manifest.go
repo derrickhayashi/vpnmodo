@@ -2,6 +2,7 @@ package l2tp
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func manifest(d deployment, root string) ([]byte, error) {
 	}
 	model := map[string]any{"name": id.Project, "services": map[string]any{
 		"vpn":         map[string]any{"image": d.VPNImage, "labels": d.labels(), "cap_add": []string{"NET_ADMIN", "NET_RAW"}, "devices": []string{"/dev/ppp:/dev/ppp"}, "sysctls": map[string]string{"net.ipv6.conf.all.disable_ipv6": "1", "net.ipv6.conf.default.disable_ipv6": "1"}, "environment": env, "secrets": []string{"vpn_username", "vpn_password", "vpn_psk"}, "restart": "no", "tmpfs": []string{"/run:rw,nosuid,nodev,mode=0755"}, "logging": map[string]any{"driver": "none"}, "healthcheck": map[string]any{"test": []string{"CMD", "/usr/local/bin/vpn-tunnelcheck"}, "interval": "10s", "timeout": "5s", "retries": 2, "start_period": "150s"}},
-		"application": map[string]any{"image": d.ApplicationImage, "labels": d.labels(), "network_mode": "service:vpn", "restart": "no", "read_only": true, "cap_drop": []string{"ALL"}, "security_opt": []string{"no-new-privileges:true"}, "logging": map[string]any{"driver": "none"}, "command": []string{"sh", "-c", "printf 'nameserver 127.0.0.1\\noptions ndots:0\\n' > /etc/resolv.conf; exec sleep infinity"}},
+		"application": map[string]any{"image": d.ApplicationImage, "labels": d.labels(), "network_mode": "service:vpn", "user": strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), "volumes": []any{map[string]any{"type": "bind", "source": filepath.Join(root, "resolv.conf"), "target": "/etc/resolv.conf", "read_only": true, "bind": map[string]bool{"create_host_path": false}}}, "restart": "no", "read_only": true, "cap_drop": []string{"ALL"}, "security_opt": []string{"no-new-privileges:true"}, "logging": map[string]any{"driver": "none"}, "command": []string{"sleep", "infinity"}},
 	}, "secrets": secrets, "networks": map[string]any{"default": map[string]any{"labels": d.labels()}}}
 	// Compose interpolates dollar signs even in JSON. All manifest strings are data.
 	return json.Marshal(escape(model))
@@ -63,6 +64,12 @@ func escape(v any) any {
 		r := map[string]any{}
 		for k, s := range x {
 			r[k] = escape(s)
+		}
+		return r
+	case []any:
+		r := make([]any, len(x))
+		for i, s := range x {
+			r[i] = escape(s)
 		}
 		return r
 	case []string:

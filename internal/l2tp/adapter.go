@@ -356,6 +356,9 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 				return ErrRuntime
 			}
 		}
+		if _, err := privatefile.Write(filepath.Join(a.dir(p), "resolv.conf"), []byte("nameserver 127.0.0.1\noptions ndots:0\n")); err != nil {
+			return ErrRuntime
+		}
 		out = deployment{1, p, snapshot.Revision, token, a.image, a.application}
 		data, err := manifest(out, a.dir(p))
 		if err != nil {
@@ -517,7 +520,7 @@ func (a *Adapter) Forget(ctx context.Context, name string) error {
 	if err = a.removeCredentials(d.Profile); err != nil {
 		return err
 	}
-	for _, filename := range []string{"compose.json", "deployment.json"} {
+	for _, filename := range []string{"compose.json", "deployment.json", "resolv.conf"} {
 		path := filepath.Join(root, filename)
 		if _, err := privatefile.Read(path, 2*profile.MaxProfileBytes); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ErrRuntime
