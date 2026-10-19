@@ -298,7 +298,7 @@ LogLevel VERBOSE
             cooldown = recovery_acceptance.begin(cli, directory, state)
         if options.xauth:
             import xauth_acceptance
-            lab = xauth_acceptance.begin(cli, directory, state, bridge)
+            lab = xauth_acceptance.begin(cli, directory, state, bridge, [str(options.binary.resolve()), "--config", str(registry)])
         if options.l2tp:
             import l2tp_acceptance
             lab = l2tp_acceptance.begin(cli, directory, state)

@@ -6,6 +6,8 @@ by the gateway have a different MAC, while a plaintext fallback is observable.
 """
 import json
 import re
+import os
+import subprocess
 from pathlib import Path
 import time
 import uuid
@@ -19,8 +21,8 @@ NETWORK = PROJECT + "_default"
 
 
 class Lab:
-    def __init__(self, cli, bridge):
-        self.cli, self.bridge = cli, bridge
+    def __init__(self, cli, bridge, cli_args):
+        self.cli, self.bridge, self.cli_args = cli, bridge, cli_args
         self.gateway = "vpnmodo-xauth-gateway-" + uuid.uuid4().hex[:8]
         self.sink = "vpnmodo-xauth-sink-" + uuid.uuid4().hex[:8]
         self.network = False
@@ -57,11 +59,47 @@ class Lab:
         op = last_json(self.cli("connection", "ensure", NAME, "--json"))
         return self.wait_operation(op["id"], "awaiting_mfa")
 
-    def authenticate(self):
+    def authenticate(self, interactive=False):
         snap = self.ensure_challenge()
-        self.cli("operation", "submit-mfa", snap["id"], "--host", "example", "--challenge", snap["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
+        if interactive:
+            self.prompt_code(snap)
+        else:
+            self.cli("operation", "submit-mfa", snap["id"], "--host", "example", "--challenge", snap["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
         self.wait_operation(snap["id"], "succeeded")
         return snap
+
+    def prompt_code(self, snapshot):
+        import fcntl
+        import pty
+        import select
+        import termios
+        master, slave = pty.openpty()
+        previous = termios.tcgetattr(slave)
+        def controlling_tty():
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        process = subprocess.Popen([*self.cli_args, "operation", "watch", snapshot["id"], "--host", "example"], stdin=slave, stdout=slave, stderr=slave, preexec_fn=controlling_tty)
+        transcript = bytearray()
+        submitted = False
+        try:
+            deadline = time.monotonic() + 40
+            while process.poll() is None:
+                if time.monotonic() > deadline: raise RuntimeError("hidden MFA prompt did not complete")
+                if select.select([master], [], [], 0.1)[0]:
+                    transcript.extend(os.read(master, 8192))
+                if not submitted and b"MFA code: " in transcript:
+                    assert not termios.tcgetattr(slave)[3] & termios.ECHO
+                    os.write(master, b"9876543210\n")
+                    submitted = True
+            while select.select([master], [], [], 0)[0]:
+                transcript.extend(os.read(master, 8192))
+            assert submitted and process.returncode == 0
+            assert b"9876543210" not in transcript
+            assert termios.tcgetattr(slave) == previous
+        finally:
+            if process.poll() is None: process.kill(); process.wait()
+            os.close(master); os.close(slave)
+        print("PASS: real XAuth hidden workstation prompt restores terminal and excludes code from output", flush=True)
 
     def disconnect(self):
         last_json(self.cli("connection", "disconnect", NAME, "--wait", "--json"))
@@ -72,7 +110,7 @@ class Lab:
         assert re.fullmatch(r"[0-9a-f:]{17}", mac)
         path = "/run/lab/" + tag
         rule = "ether src " + mac + " and (tcp port 28080 or udp port 28081 or port 53)"
-        script = 'tcpdump -Z root -n -i eth0 -U -w ' + path + '.pcap "' + rule + '" >' + path + '.log 2>&1 & p=$!; echo $p > ' + path + '.pid; wait $p; touch ' + path + '.done'
+        script = 'lab-capture -Z root -n -i eth0 -U -w ' + path + '.pcap "' + rule + '" >' + path + '.log 2>&1 & p=$!; echo $p > ' + path + '.pid; wait $p; touch ' + path + '.done'
         command(["docker", "exec", "-d", self.sink, "sh", "-c", script])
         for _ in range(30):
             ready = command(["docker", "exec", self.sink, "test", "-s", path + ".pcap"], required=False).returncode == 0
@@ -86,14 +124,18 @@ class Lab:
             action()
             time.sleep(0.5)
         finally:
-            command(["docker", "exec", self.sink, "sh", "-c", 'kill -INT "$(cat ' + path + '.pid)"'])
+            stopped = command(["docker", "exec", self.sink, "sh", "-c", 'kill -INT "$(cat ' + path + '.pid)"'], required=False)
+            if stopped.returncode:
+                print("Synthetic capture stop:", stopped.stderr.decode(errors="replace"), flush=True)
+                print("Synthetic capture diagnostic:", command(["docker", "exec", self.sink, "cat", path + ".log"], required=False).stdout.decode(errors="replace"), flush=True)
+                raise RuntimeError("synthetic capture exited before stop")
         for _ in range(30):
             if command(["docker", "exec", self.sink, "test", "-f", path + ".done"], required=False).returncode == 0:
                 break
             time.sleep(0.1)
         else:
             raise RuntimeError("synthetic capture did not finish")
-        raw = command(["docker", "exec", self.sink, "tcpdump", "-nn", "-r", path + ".pcap"]).stdout
+        raw = command(["docker", "exec", self.sink, "lab-capture", "-nn", "-r", path + ".pcap"]).stdout
         count = len(raw.splitlines())
         if expected:
             assert count >= expected, "escape sink/capture positive control failed"
@@ -122,8 +164,8 @@ class Lab:
             command(["docker", "network", "rm", NETWORK], required=False)
 
 
-def begin(cli, directory, state_root, bridge):
-    lab = Lab(cli, bridge)
+def begin(cli, directory, state_root, bridge, cli_args):
+    lab = Lab(cli, bridge, cli_args)
     try:
         assert command(["docker", "network", "inspect", NETWORK], required=False).returncode != 0
         args = ["docker", "network", "create", "--subnet", "192.0.2.0/24", "--gateway", "192.0.2.254"]
@@ -268,7 +310,7 @@ def begin(cli, directory, state_root, bridge):
         lab.disconnect()
         print("PASS: controller crash discards interrupted MFA namespace without fresh login", flush=True)
         # Establish another real session for controller replacement acceptance.
-        lab.authenticate()
+        lab.authenticate(interactive=True)
         lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
         return lab
     except Exception:
