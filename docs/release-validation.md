@@ -1,4 +1,32 @@
-# Private ARM64 candidate validation — 2026-10-19
+# ARM64 release validation
+
+## Single-file setup — 2026-10-20
+
+CLI source: `43e5e02d22fdb428e85aa4da28cc32658df71ec3`.
+CLI identity: `v0.1.0-rc.8+git.43e5e02d22fd`.
+Embedded runtime: `v0.1.0-rc.7+git.4696f8c7ec50`, using the previously published
+private GHCR image digests. This workstation-only release does not rebuild the
+controller images. Subsequent documentation commits record these results.
+
+| Check | Result |
+| --- | --- |
+| Fresh local setup | One CLI executable creates an isolated Lima Ubuntu ARM64 VM, provisions Docker/kernel support, pulls private images, registers SSH and starts the controller |
+| Readiness | Setup returns only after controller storage, Docker and runtime report ready; version matches the installed release |
+| Restart/retry | Cold VM restart and repeated setup preserve the controller container ID and a single host registration |
+| Missing image/auth refresh | Removed the application image and guest registry auth; repeated setup refreshes auth from the protected local file and pulls the private image |
+| Credential handling | Root Docker auth remains mode 0600; supplied token and its base64 encoding are absent from Lima VM logs |
+| Exact release artifacts | Native ARM64 standalone binary matches archive metadata/hash, reports the recorded version, exposes setup help and completes setup against the test VM; archive installation/replacement/corruption checks pass |
+| Local checks | Full Go race tests, vet, 83 Python tests, focused setup recovery tests, documentation links/shell syntax and secret scans pass |
+
+The private image credentials were supplied through a protected test file;
+hidden prompting uses the existing terminal-input implementation. Lima was
+already available in the isolated test; automatic Homebrew installation was not
+exercised. Actual VPN authentication and private destination access were not
+repeated for this CLI change. Intel native qualification remains outside scope.
+All VMs used local resources; GitHub Actions remains disabled.
+
+## Earlier rc.6 protocol qualification — 2026-10-19
+
 
 Validated source: `990dc2fe7caec4e1b68cf2b54788b996937e66c5`.
 Candidate identity: `v0.1.0-rc.6+git.990dc2fe7cae`.
@@ -6,8 +34,8 @@ Subsequent documentation commits record these results without changing runtime c
 
 Both agreed validation gates pass: the complete isolated protocol/recovery/packet
 suite, and a fresh ARM64 release bundle built from the production Dockerfiles.
-The candidate remains private. No registry, GitHub release or public artifact was
-published. GitHub Actions remains disabled; all work used the existing Mac and VM.
+That rc.6 qualification run kept the candidate private and did not publish a
+registry image, GitHub release or public artifact. GitHub Actions remains disabled; all work used the existing Mac and VM.
 
 ## Qualified scope and results
 
