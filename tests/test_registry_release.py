@@ -106,9 +106,10 @@ class RegistryTests(unittest.TestCase):
 
         def docker(*args):
             calls.append(args)
-            if args[:2] == ('image', 'inspect'):
+            if args[0] == 'push':
                 role = args[-1].split('/')[-1].split(':')[0]
-                return json.dumps([self.refs[role]])
+                digest = self.refs[role].split('@')[1]
+                return f'old sha256:{"f" * 64} -> {digest}\n{args[-1]}: digest: {digest} size: 1025'
             return ''
 
         with patch.object(builder, 'docker', side_effect=docker):

@@ -133,7 +133,7 @@ def cli(source, output, metadata, temporary):
 def docker(*args):
     # Explicitly target the local rootful VM engine, never a workstation context.
     command = ['docker', '--host', 'unix:///var/run/docker.sock', *args]
-    if args[0] in ('build', 'pull', 'save', 'push'):
+    if args[0] in ('build', 'pull', 'save'):
         subprocess.run(command, check=True)
         return ''
     return run(command)
@@ -190,12 +190,11 @@ def publish(manifest, output):
         repository = prefix + role
         tag = repository + ':' + data['version'] + '-' + data['arch']
         docker('tag', data['images'][role]['id'], tag)
-        docker('push', tag)
-        digests = json.loads(docker('image', 'inspect', '--format', '{{json .RepoDigests}}', tag))
-        candidates = [ref for ref in digests if ref.startswith(repository + '@sha256:')]
-        if len(candidates) != 1:
+        pushed = docker('push', tag)
+        digests = re.findall(r'\bdigest: (sha256:[0-9a-f]{64})\b', pushed)
+        if len(digests) != 1:
             raise RuntimeError('published image did not return one registry digest')
-        refs[role] = candidates[0]
+        refs[role] = repository + '@' + digests[0]
     release = {key: data[key] for key in ('version', 'binary_version', 'os', 'arch')}
     write_json(output / 'registry-release.json', dict(release, schema_version=1, images=refs))
 

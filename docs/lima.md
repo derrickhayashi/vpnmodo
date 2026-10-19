@@ -16,6 +16,14 @@ mkdir -p "$setup_dir"
 chmod 700 "$setup_dir"
 ```
 
+From the current source checkout, the pinned release inputs are also available
+without building anything:
+
+```sh
+cp examples/lima/vpnmodo.yaml "$setup_dir/lima.yaml"
+cp examples/lima/registry-release.json scripts/release/install-vm.py "$setup_dir/"
+```
+
 The images are private GHCR packages under `derrickhayashi/vpn-sidecars-next`.
 Your GitHub account needs package read access. Create the adjacent
 `ghcr-config.json`, replacing `GITHUB_USERNAME` with your GitHub username. Enter

@@ -81,7 +81,8 @@ The output directory must not exist. Failed builds can leave partial artifacts;
 discard the failed output directory and start with a new one. Successful builds
 write `SHA256SUMS-cli` or `SHA256SUMS-linux-<arch>` last. Review diffs and run
 `scripts/check-secrets` before pushing source. Review distribution contents before
-sharing. Neither command uploads artifacts or enables CI.
+sharing. Without `--publish`, these commands do not upload artifacts. CI remains
+disabled.
 
 ## Publish private GHCR images
 
@@ -100,6 +101,8 @@ registry digests, not the builder's local image IDs. Keep the packages private
 and grant intended users package read access.
 
 Distribute `lima.yaml`, `install-vm.py` and `registry-release.json` together.
+When selecting a new default Lima release, update the source example
+`examples/lima/registry-release.json` from the generated manifest.
 Users supply their own private GHCR read credentials as described in
 [Lima setup](lima.md). Provisioning emits the same receipt consumed by
 `vpnmodo host setup --release`. No hosted CI is used for publication.
