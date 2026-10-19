@@ -22,7 +22,12 @@ import uuid
 def command(args, *, data=None, required=True):
     result = subprocess.run(args, input=data, capture_output=True, timeout=240)
     if required and result.returncode:
-        raise RuntimeError("acceptance command failed: " + Path(str(args[0])).name)
+        detail = ""
+        if Path(str(args[0])).name == "vpnmodo":
+            # This binary emits only fixed safe errors. Never dump wire data,
+            # Docker inspection payloads, private keys or arbitrary remote output.
+            detail = ": " + result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError("acceptance command failed: " + Path(str(args[0])).name + detail)
     return result
 
 
@@ -96,6 +101,12 @@ LogLevel ERROR
   UserKnownHostsFile {known}
   StrictHostKeyChecking yes
 """)
+        preflight = command(["ssh", "-F", str(ssh_config), "-T", "-o", "BatchMode=yes", "--", "test-vm", "true"], required=False)
+        if preflight.returncode:
+            # This server has only test identities; the log contains no VPN input.
+            logfile.flush()
+            print((directory / "sshd.log").read_text(), file=sys.stderr)
+            raise RuntimeError("isolated SSH key-authentication preflight failed")
         registry = directory / "registry" / "hosts.json"
 
         def cli(*args, required=True):
