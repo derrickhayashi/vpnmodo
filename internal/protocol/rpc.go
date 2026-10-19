@@ -34,6 +34,7 @@ type Method string
 
 const (
 	Hello                Method = "system.hello"
+	SystemStatus         Method = "system.status"
 	BackendList          Method = "backend.list"
 	BackendDescribe      Method = "backend.describe"
 	ProfileCreate        Method = "profile.create"
@@ -54,7 +55,7 @@ const (
 
 func (m Method) Known() bool {
 	switch m {
-	case Hello, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
+	case Hello, SystemStatus, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
 		return true
 	default:
 		return false
@@ -125,6 +126,8 @@ func DecodeHello(data []byte) (HelloParams, error) {
 // response to a notification, including one rejected here, and must not execute
 // it. This stage defines contracts, not a JSON-RPC dispatcher.
 type Session struct{ negotiated atomic.Bool }
+
+func (s *Session) Reset() { s.negotiated.Store(false) }
 
 func (s *Session) Negotiate(p HelloParams) error {
 	s.negotiated.Store(false)

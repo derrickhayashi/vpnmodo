@@ -5,8 +5,10 @@ Private development workspace: see [development boundaries and checks](docs/deve
 The planned `vpnmodo` CLI manages VPN profiles through a containerized
 `vpnmodo-controller` on each user's Linux VM. See the
 [implementation requirements](docs/implementation-requirements.md) and
-[staged delivery plan](docs/implementation-plan.md). The new control layer is
-not implemented yet; the existing backends and commands below remain available.
+[staged delivery plan](docs/implementation-plan.md). The host/controller transport
+skeleton is available for development; managed profile creation and VPN control
+are subsequent stages. Existing backend commands
+below remain available.
 
 Reusable Docker VPN backends for SSH, Ansible and private service access.
 Customer projects own their profiles, deployment settings and runtime state;
@@ -107,9 +109,10 @@ and credentials do not belong in the bundled skill.
 
 ## Go control-layer development
 
-The first implementation stage provides profile validation, operation states and
-RPC protocol messages/framing; it does not yet provide runnable `vpnmodo` commands.
-See
+The control layer provides profile validation, operation states, RPC framing,
+and runnable host registration/setup/check commands. See the
+[controller guide](containers/controller/README.md) for building and testing the
+SSH/container skeleton. Managed VPN runtime remains disabled. See
 [v1 profiles, protocol and operations](docs/design/001-v1-model.md) for schemas, API
 rules, lifecycle policy and release targets. Synthetic JSON profile examples live
 in `examples/profiles/v1/`. Existing scripts and deployments remain unchanged.

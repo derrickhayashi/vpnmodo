@@ -1,0 +1,31 @@
+name: Controller SSH acceptance
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  controller-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Install isolated SSH server
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq openssh-server
+      - name: Build workstation test binary and controller image
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/vpnmodo" ./cmd/vpnmodo
+          docker build --tag vpnmodo-controller:acceptance --file containers/controller/Dockerfile .
+      - name: Exercise verified SSH bootstrap and container lifecycle
+        env:
+          VPNMODO_ISOLATED_TEST_HOST: '1'
+        run: python3 tests/smoke_controller.py --binary "$RUNNER_TEMP/vpnmodo" --image vpnmodo-controller:acceptance

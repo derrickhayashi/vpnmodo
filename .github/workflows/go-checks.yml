@@ -21,7 +21,7 @@ jobs:
           cache: false
       - name: Check formatting
         shell: bash
-        run: test -z "$(gofmt -l internal)"
+        run: test -z "$(gofmt -l internal cmd)"
       - name: Vet
         run: go vet ./...
       - name: Race and unit tests

@@ -1,8 +1,9 @@
 # V1 profiles, protocol and operation model
 
-Status: implementation baseline for issue #2. Runtime work remains in subsequent
-issues. This document records defaults selected from the requirements so those
-issues have a concrete interface to implement.
+Status: model baseline from issue #2, with the controller/SSH skeleton from
+issue #3. Managed profile and VPN runtime work remains in subsequent issues.
+This document records defaults selected from the requirements so those issues
+have a concrete interface to implement.
 
 ## Package ownership
 
@@ -13,6 +14,9 @@ issues have a concrete interface to implement.
 | `internal/operation` | Lifecycle states, transitions and operation/challenge identity rules |
 | `internal/secret` | Shared redacted values with explicit transport encoding |
 | `internal/jsonstrict` | Bounded, exact-shape JSON parsing |
+| `internal/rpcio` | Bounded jrpc2 channels and negotiated client |
+| `internal/controller` | Private socket service, discovery/status and bridge |
+| `internal/host` | Workstation host registry, verified SSH and explicit bootstrap |
 
 `protocol` depends on the domain packages. `profile` and `operation` do not depend
 on RPC types; in particular, RPC errors belong to wire snapshots in `protocol`.
@@ -31,8 +35,8 @@ unchanged by this package split.
   VM creation, Windows and Linux workstation support are outside initial scope.
   These are release targets, not a claim that runtime acceptance has passed.
 - Build with Go 1.27; CI pins Go 1.27.1. There is no Go runtime requirement for
-  teammates installing eventual compiled binaries. This stage has packages only,
-  not runnable CLI/controller executables.
+  teammates installing eventual compiled binaries. The controller/SSH stage
+  adds runnable executables; see the [controller guide](../../containers/controller/README.md).
 
 ## Profile ownership and schema
 
@@ -136,6 +140,7 @@ Reserved method surface:
 | Methods | Contract |
 | --- | --- |
 | `system.hello` | API version negotiation; controller version and backend list |
+| `system.status` | Controller/storage/Docker readiness and runtime availability |
 | `backend.list`, `backend.describe` | Supported backend descriptors/capabilities |
 | `profile.create` | Typed profile plus separate credential input |
 | `profile.list`, `profile.inspect` | Non-secret configuration, revision and credential presence |
@@ -148,8 +153,9 @@ Reserved method surface:
 
 The method constants reserve a vocabulary, not implemented handlers. Exact
 mutation/list/doctor payloads are completed with their owning implementation
-issues. This stage implements profile-create, hello, reference and MFA input
-types plus response/notification encoders; there is no RPC server or dispatcher.
+issues. The controller skeleton implements hello, system status and backend
+discovery over verified SSH and a private Unix socket. Profile/operation
+mutations remain reserved; `runtime_enabled` is false.
 
 `operation.changed` is a server notification without an ID. Client notifications
 must never mutate state and receive no response, including when rejected. Request
@@ -208,15 +214,19 @@ No capability flag, state record, polling loop or stopped application is proof o
 network enforcement. Issue #7 must supply packet-observed Linux acceptance before
 XAuth is released through the new controller. Legacy instances are unchanged.
 
-This stage uses only the Go standard library. `encoding/json` defaults accept
-case-insensitive struct keys and duplicate members, so trust-boundary decoding
+The profile/protocol model uses the Go standard library. `encoding/json` defaults
+accept case-insensitive struct keys and duplicate members, so trust-boundary decoding
 adds bounded duplicate/exact-shape checks and sanitizes errors. `fmt.Formatter`
 and `json.Marshaler` provide the explicit secret-value policy. Go tests include malformed
 input, round-trip fuzz seeds, framing/resource bounds and the state machine.
 
-For issue #3, evaluate jrpc2 for dispatch/notifications behind these bounds and
-the SSH/Unix-socket transport. Pin/review it only when used. For issue #5, bbolt is
-the proposed embedded transactional operation store, suited to one service per VM;
+The controller uses pinned `github.com/creachadair/jrpc2 v1.3.5` for dispatch
+and client correlation behind the existing strict framing/request gate. Built-in
+methods and request logging are disabled. OpenSSH supplies verified non-PTY
+transport; Python stdlib and Docker Compose handle explicit host bootstrap.
+The image runs a static Go binary without Docker/SSH tools or network access.
+
+For issue #5, bbolt is the proposed embedded transactional operation store, suited to one service per VM;
 do not put credentials or wire params into it. No HTTP/workflow/database server is
 required. Docker/Compose and Expect/native strongSwan remain backend adapters;
 the choice of authentication implementation must preserve interoperability.
