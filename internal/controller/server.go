@@ -15,6 +15,8 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
@@ -32,9 +34,17 @@ type Status struct {
 	DockerReady    bool                `json:"docker_ready"`
 	RuntimeEnabled bool                `json:"runtime_enabled"`
 }
-type Config struct{ Socket, StateDir, DockerSocket, Version string }
+type Config struct {
+	Socket, StateDir, DockerSocket, Version string
+	Adapter                                 lifecycle.Adapter
+	OperationTimeout, MFATimeout            time.Duration
+}
 type Server struct {
 	profiles    *profilestore.Store
+	operations  *lifecycle.Manager
+	cancel      context.CancelFunc
+	closeOnce   sync.Once
+	closeErr    error
 	config      Config
 	listener    net.Listener
 	mu          sync.Mutex
@@ -62,19 +72,48 @@ func Listen(config Config) (*Server, error) {
 	name := probe.Name()
 	_ = probe.Close()
 	_ = os.Remove(name)
-	profiles, err := profilestore.Open(config.StateDir, func(ctx context.Context, name string) error { return profileInactive(ctx, config.DockerSocket, name) })
+	var operations *lifecycle.Manager
+	profiles, err := profilestore.Open(config.StateDir, func(ctx context.Context, name string) error {
+		if operations != nil {
+			if err := operations.CheckInactive(ctx, name); err != nil {
+				if errors.Is(err, lifecycle.ErrBusy) {
+					return profilestore.ErrBusy
+				}
+				if errors.Is(err, lifecycle.ErrPersistence) {
+					return err
+				}
+				return profilestore.ErrUnavailable
+			}
+		}
+		return profileInactive(ctx, config.DockerSocket, name)
+	})
 	if err != nil {
+		return nil, ErrService
+	}
+	journal, err := operationstore.Open(config.StateDir)
+	if err != nil {
+		return nil, ErrService
+	}
+	serviceCtx, cancel := context.WithCancel(context.Background())
+	operations, err = lifecycle.Open(serviceCtx, journal, lifecycle.Options{Adapter: config.Adapter, WithProfile: profiles.WithProfile, OperationTimeout: config.OperationTimeout, MFATimeout: config.MFATimeout})
+	if err != nil {
+		cancel()
+		_ = journal.Close()
 		return nil, ErrService
 	}
 	listener, err := net.Listen("unix", config.Socket)
 	if err != nil {
+		cancel()
+		_ = operations.Close()
 		return nil, ErrService
 	}
 	if os.Chmod(config.Socket, 0600) != nil {
 		_ = listener.Close()
+		cancel()
+		_ = operations.Close()
 		return nil, ErrService
 	}
-	return &Server{profiles: profiles, config: config, listener: listener, connections: make(map[net.Conn]bool), slots: make(chan struct{}, 32)}, nil
+	return &Server{operations: operations, cancel: cancel, profiles: profiles, config: config, listener: listener, connections: make(map[net.Conn]bool), slots: make(chan struct{}, 32)}, nil
 }
 func privateDirectory(path string) error {
 	if err := os.MkdirAll(path, 0700); err != nil {
@@ -87,16 +126,26 @@ func privateDirectory(path string) error {
 	return nil
 }
 func (s *Server) Close() error {
-	err := s.listener.Close()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.closed = true
-	for conn := range s.connections {
-		_ = conn.Close()
-	}
-	return err
+	s.closeOnce.Do(func() {
+		s.closeErr = s.listener.Close()
+		s.mu.Lock()
+		s.closed = true
+		s.cancel()
+		for conn := range s.connections {
+			_ = conn.Close()
+		}
+		s.mu.Unlock()
+		s.workers.Wait()
+		if err := s.operations.Close(); err != nil {
+			s.closeErr = err
+		}
+	})
+	return s.closeErr
 }
+
 func (s *Server) Serve(ctx context.Context) error {
+	defer s.Close()
+	s.operations.StartReconcile()
 	done := make(chan struct{})
 	go func() {
 		select {
@@ -129,25 +178,34 @@ func (s *Server) Serve(ctx context.Context) error {
 			continue
 		}
 		s.connections[conn] = true
-		s.mu.Unlock()
 		s.workers.Add(1)
+		s.mu.Unlock()
 		go func() {
 			defer s.workers.Done()
 			defer func() { <-s.slots }()
 			defer conn.Close()
 			defer func() { s.mu.Lock(); delete(s.connections, conn); s.mu.Unlock() }()
-			mux := &dispatcher{config: s.config, profiles: s.profiles}
+			connectionCtx, connectionCancel := context.WithCancel(ctx)
+			defer connectionCancel()
+			channel := rpcio.New(conn, true)
+			mux := &dispatcher{config: s.config, profiles: s.profiles, operations: s.operations, connectionCtx: connectionCtx, channel: channel, subscriptions: map[string]*subscription{}}
+			defer mux.closeSubscriptions()
 			server := jrpc2.NewServer(mux, &jrpc2.ServerOptions{DisableBuiltin: true, Concurrency: 1, AllowPush: true, NewContext: func() context.Context { return ctx }})
-			server.Start(rpcio.New(conn, true))
+			server.Start(channel)
 			_ = server.Wait()
 		}()
 	}
 }
 
 type dispatcher struct {
-	profiles *profilestore.Store
-	config   Config
-	session  protocol.Session
+	operations    *lifecycle.Manager
+	connectionCtx context.Context
+	channel       *rpcio.Channel
+	subMu         sync.Mutex
+	subscriptions map[string]*subscription
+	profiles      *profilestore.Store
+	config        Config
+	session       protocol.Session
 }
 
 func (d *dispatcher) Assign(_ context.Context, _ string) jrpc2.Handler { return d.handle }
@@ -231,13 +289,18 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 		if err != nil {
 			return nil, fault(protocol.CodeInvalidParams)
 		}
-		result, err := d.profiles.Delete(ctx, params.Profile, params.ExpectedRevision)
+		result, err := d.profiles.DeleteWith(ctx, params.Profile, params.ExpectedRevision, func() error { return d.operations.Forget(params.Profile) })
+		if errors.Is(err, lifecycle.ErrPersistence) {
+			return nil, lifecycleFault(err)
+		}
 		return result, profileFault(err)
+	case protocol.ConnectionEnsure, protocol.ConnectionDisconnect, protocol.ConnectionStatus, protocol.OperationStatus, protocol.OperationCancel, protocol.OperationSubscribe, protocol.OperationSubmitMFA:
+		return d.lifecycle(ctx, req, raw, guard.Method)
 	case protocol.SystemStatus:
 		if jsonstrict.Decode(raw, &struct{}{}, protocol.MaxMessageBytes) != nil {
 			return nil, fault(protocol.CodeInvalidParams)
 		}
-		return Status{Version: d.config.Version, API: protocol.CurrentAPI(), StateReady: true, DockerReady: dockerReady(ctx, d.config.DockerSocket)}, nil
+		return Status{Version: d.config.Version, API: protocol.CurrentAPI(), StateReady: d.operations.Ready(), RuntimeEnabled: d.config.Adapter != nil, DockerReady: dockerReady(ctx, d.config.DockerSocket)}, nil
 	default:
 		return nil, fault(protocol.CodeMethod)
 	}
@@ -310,6 +373,8 @@ func profileFault(err error) error {
 		return fault(protocol.CodeProfileActive)
 	case errors.Is(err, profilestore.ErrUnavailable):
 		return fault(protocol.CodeBackendUnavailable)
+	case errors.Is(err, lifecycle.ErrPersistence):
+		return fault(protocol.CodePersistence)
 	case errors.Is(err, profilestore.ErrUncertain):
 		return fault(protocol.CodeInterrupted)
 	default:

@@ -3,7 +3,9 @@
 This stage supplies runnable `vpnmodo` and `vpnmodo-controller` binaries, verified
 SSH transport, schema discovery and controller/Docker readiness. VPN profile
 management is now available through the [profile guide](../../docs/design/002-profile-storage.md).
-Connection operations, recovery and XAuth enforcement are later stages.
+Persistent operation coordination is described in the
+[operation guide](../../docs/design/003-persistent-operations.md). Real backend
+connection handlers, recovery and XAuth enforcement remain later stages.
 The status field `runtime_enabled` is false; backend descriptors describe schema
 requirements, not usable VPN sessions.
 
@@ -86,7 +88,7 @@ forwards bounded frames to the persistent service's private Unix socket. Closing
 stdin drains replies; closing a bridge leaves the service running. The service
 requires `system.hello` negotiation per connection and exposes `system.status`,
 `backend.list` and `backend.describe`. Profile management methods validate and provision protected VM storage;
-connection/operation methods remain reserved. Request/response logging is disabled.
+connection/operation methods use a persistent manager, with real adapters disabled. Request/response logging is disabled.
 
 The service bounds connections, outstanding calls, frame size/depth, idle reads
 and writes. Docker readiness uses the local `GET /_ping` endpoint. Profile mutations also

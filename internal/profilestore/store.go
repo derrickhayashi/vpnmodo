@@ -307,6 +307,13 @@ func (s *Store) change(ctx context.Context, name string, expected uint64, edit f
 	return result, err
 }
 func (s *Store) Delete(ctx context.Context, name string, expected uint64) (DeleteResult, error) {
+	return s.DeleteWith(ctx, name, expected, nil)
+}
+
+// DeleteWith runs beforeRemove under the profile transaction after inactivity and
+// revision checks. Lifecycle metadata is dropped before deleting the profile;
+// a subsequent filesystem error leaves a valid inactive profile for inspection.
+func (s *Store) DeleteWith(ctx context.Context, name string, expected uint64, beforeRemove func() error) (DeleteResult, error) {
 	if !profile.ValidName(name) || expected == 0 {
 		return DeleteResult{}, profile.ErrProfile
 	}
@@ -322,6 +329,11 @@ func (s *Store) Delete(ctx context.Context, name string, expected uint64) (Delet
 		if err := s.inactive(ctx, name); err != nil {
 			return err
 		}
+		if beforeRemove != nil {
+			if err := beforeRemove(); err != nil {
+				return err
+			}
+		}
 		if os.Remove(s.path(name)) != nil {
 			return ErrStorage
 		}
@@ -333,4 +345,19 @@ func (s *Store) Delete(ctx context.Context, name string, expected uint64) (Delet
 		return nil
 	})
 	return result, err
+}
+
+// WithProfile serializes lifecycle submission with profile edits. fn must never
+// re-enter the profile store; it may commit lifecycle intent under its own lock.
+func (s *Store) WithProfile(ctx context.Context, name string, fn func(Snapshot) error) error {
+	if !profile.ValidName(name) {
+		return profile.ErrProfile
+	}
+	return s.transaction(ctx, func(records map[string]record) error {
+		r, ok := records[name]
+		if !ok {
+			return ErrNotFound
+		}
+		return fn(s.snapshot(r))
+	})
 }

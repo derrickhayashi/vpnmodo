@@ -235,7 +235,7 @@ func containsOption(rule, name string) bool {
 }
 func mutationError(err error) error {
 	var fault *protocol.RPCError
-	if errors.As(err, &fault) && fault.Code != protocol.CodeInterrupted {
+	if errors.As(err, &fault) && fault.Code != protocol.CodeInterrupted && fault.Code != protocol.CodePersistence {
 		return err
 	}
 	return errors.New("profile change outcome unknown; inspect or list the VM profile before retrying; use profile register if local registration is missing")

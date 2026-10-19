@@ -109,3 +109,25 @@ func (p MFASubmitParams) EncodeForTransport() ([]byte, error) {
 		Code        json.RawMessage `json:"code"`
 	}{p.OperationID, p.ChallengeID, code})
 }
+
+// OperationFromRecord maps closed domain failure classifications to safe RPC errors.
+func OperationFromRecord(r operation.Record) Operation {
+	o := Operation{ID: r.ID, Profile: r.Profile, Kind: r.Kind, State: r.State, Revision: r.Revision, Challenge: r.Challenge}
+	if r.State == operation.Failed {
+		code := CodeBackendUnavailable
+		switch r.Failure {
+		case operation.Interrupted:
+			code = CodeInterrupted
+		case operation.TimedOut:
+			code = CodeTimeout
+		case operation.CredentialsFailed:
+			code = CodeCredentials
+		case operation.MFAExpired:
+			code = CodeMFAExpired
+		case operation.AuthenticationFailed:
+			code = CodeAuthentication
+		}
+		o.Failure = NewRPCError(code)
+	}
+	return o
+}

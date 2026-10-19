@@ -68,3 +68,18 @@ func TestExactFieldNamesAndNestedTypes(t *testing.T) {
 		t.Fatal("nil target accepted")
 	}
 }
+
+func TestMapValuesRequireExactFieldNames(t *testing.T) {
+	type entry struct {
+		Value int `json:"value"`
+	}
+	var target map[string]entry
+	if Decode([]byte(`{"example":{"value":1}}`), &target, 1024) != nil {
+		t.Fatal("valid map rejected")
+	}
+	for _, data := range []string{`{"example":{"Value":1}}`, `{"example":{"value":1,"Value":2}}`, `{"example":{"extra":1}}`} {
+		if Decode([]byte(data), &target, 1024) == nil {
+			t.Fatal("ambiguous map value accepted")
+		}
+	}
+}

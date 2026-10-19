@@ -159,6 +159,19 @@ func shape(data []byte, t reflect.Type) error {
 				return err
 			}
 		}
+	case reflect.Map:
+		if t.Key().Kind() != reflect.String {
+			return ErrShape
+		}
+		var entries map[string]json.RawMessage
+		if json.Unmarshal(data, &entries) != nil || entries == nil {
+			return ErrShape
+		}
+		for _, entry := range entries {
+			if err := shape(entry, t.Elem()); err != nil {
+				return err
+			}
+		}
 	case reflect.Slice, reflect.Array:
 		var items []json.RawMessage
 		if json.Unmarshal(data, &items) != nil {

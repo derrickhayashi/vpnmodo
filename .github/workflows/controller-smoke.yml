@@ -29,3 +29,13 @@ jobs:
         env:
           VPNMODO_ISOLATED_TEST_HOST: '1'
         run: python3 tests/smoke_controller.py --binary "$RUNNER_TEMP/vpnmodo" --image vpnmodo-controller:acceptance
+
+      - name: Build isolated synthetic operation test image
+        run: |
+          mkdir -p "$RUNNER_TEMP/operation-image"
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/operation-image/vpnmodo-controller" ./internal/controller
+          docker build --tag vpnmodo-controller:operation-acceptance --file tests/Dockerfile.operations "$RUNNER_TEMP/operation-image"
+      - name: Exercise persistent operations over verified SSH
+        env:
+          VPNMODO_ISOLATED_TEST_HOST: '1'
+        run: python3 tests/smoke_controller.py --binary "$RUNNER_TEMP/vpnmodo" --image vpnmodo-controller:operation-acceptance --operations
