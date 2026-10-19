@@ -203,7 +203,9 @@ def begin(cli, directory, state_root, bridge, cli_args):
 for port in (500,4500):
     with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as s:
         s.bind(('0.0.0.0',port))
-        assert s.sendto(b'vpnmodo-bypass',('192.0.2.1',port)) == len(b'vpnmodo-bypass')
+        try: sent = s.sendto(b'vpnmodo-bypass',('192.0.2.1',port))
+        except PermissionError: pass  # A local OUTPUT drop may fail sendto with EPERM.
+        else: assert sent == len(b'vpnmodo-bypass')
 """
         def send_ike():
             command(["docker", "run", "--rm", "--network", "container:" + guard_id, "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--entrypoint", "python3", "vpnmodo-xauth-gateway:acceptance", "-c", raw_ike_probe])
