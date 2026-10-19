@@ -5,7 +5,8 @@ The v1 profile, protocol and operation implementation is tracked in issue #2.
 Controller/profile/lifecycle management and managed L2TP/XAuth are implemented
 in the private stage branches. Workstation [service access and diagnostics](design/007-service-access.md)
 are implemented. Private release packaging supplies candidate artifacts;
-adoption and ARM64 release acceptance remain the final release gate. See
+ARM64 bundle and protocol acceptance remain the final release gate. Real
+adoption/cutover has passed; legacy rollback testing is outside release scope. See
 [v1 profiles, protocol and operations](design/001-v1-model.md)
 for the initial scope, ownership and lifecycle defaults selected for implementation.
 
@@ -295,8 +296,9 @@ design. Implementation can begin with schemas and the controller skeleton.
    Validate the complete path from installation to profile creation, connection,
    local service use and disconnect in a synthetic lab. Verify a legacy deployment
    remains operational alongside the new controller and exercise explicit adoption
-   and rollback using synthetic settings. Live customer-network
-   acceptance is separate and requires its own authorized deployment context.
+   using synthetic settings. Legacy rollback testing is outside the agreed release
+   scope. Live customer-network acceptance is separate and requires its own
+   authorized deployment context.
 
 For release, verify no secret values appear in protocol responses, error output,
 logs, CLI arguments or operation records. Credentials must remain usable only at

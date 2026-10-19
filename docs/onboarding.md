@@ -125,8 +125,9 @@ plan the explicit cutover with its owner. Preserve the old configuration and
 credentials for rollback. Stop the selected legacy recovery owner and session
 before starting the managed replacement if parallel login is unsafe. Never let
 two recovery owners manage the same session. Do not stop unrelated deployments.
-Detailed legacy adoption/rollback acceptance remains tracked in #9; loading a
-release is not automatic adoption.
+Real ARM64 adoption/cutover is recorded in #9. Legacy rollback testing is not a
+release gate; the retained fallback instructions are optional. Loading a release
+is not automatic adoption.
 
 ## 5. Connect, verify, and optionally expose a service
 

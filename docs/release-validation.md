@@ -8,9 +8,9 @@ was adopted. Later ARM64 trial adoption/cutover evidence is recorded below.
 
 | Target | Evidence | Remaining |
 | --- | --- | --- |
-| macOS arm64 | Native archive installation/version/help; explicit replacement; checksum/symlink refusal; temporary-prefix cleanup | Legacy rollback rehearsal |
+| macOS arm64 | Native archive installation/version/help; explicit replacement; checksum/symlink refusal; temporary-prefix cleanup | No further native-platform gate |
 | macOS amd64 | Cross-built archive and checksum | Outside the agreed release gate; native runtime unvalidated |
-| Ubuntu 24.04 arm64 | Full production Dockerfile build; verified offline image load; real L2TP and XAuth onboarding, two-hop forwarding, controller replacement and disposal | Legacy rollback rehearsal and fresh current-source bundle acceptance |
+| Ubuntu 24.04 arm64 | Full production Dockerfile build; verified offline image load; real L2TP and XAuth onboarding, two-hop forwarding, controller replacement and disposal | Fresh current-source bundle and full protocol acceptance |
 | Ubuntu 24.04 amd64 | Controller binary cross-build | Outside the agreed release gate; native build/runtime unvalidated |
 
 The agreed first-release qualification scope is macOS arm64 and Ubuntu 24.04
@@ -50,7 +50,7 @@ and remote bundle were removed after verifying no nested test containers remaine
 
 These onboarding checks are a subset, not a replacement for the previous full
 [packet/rekey/recovery evidence](../tests/local-lab/README.md). Issue #9 stays open
-for the legacy rollback rehearsal and the remaining ARM64 bundle acceptance.
+for the remaining ARM64 bundle and protocol acceptance.
 The unconfirmed startup observation #19 remains open after its separate 20-pass
 replacement investigation; no backend fix was claimed for it.
 
@@ -94,8 +94,8 @@ The focused packet fixture passes; the full protocol/lifetime suite has not
 been rerun for this correction. These
 patched trial images are not a new full production-Dockerfile release bundle.
 
-PR #20 remains draft. Issue #9 stays open for #21, fresh schema-2 bundle acceptance,
-and the legacy rollback rehearsal on the agreed ARM64 targets.
+PR #20 remains draft. Issue #9 stays open for #21 and fresh schema-2 bundle
+acceptance on the agreed ARM64 targets.
 No raw deployment settings, credentials, transcripts or packet metadata belong
 in this record. GitHub Actions remains disabled.
 
@@ -115,6 +115,8 @@ aliases selected the managed application. Fresh MFA, authenticated SSH and
 and cutover evidence; repeating that real cutover is not a remaining gate.
 
 The reverse transition back to the retained legacy deployment has a documented
-procedure but has not been exercised in this trial. A synthetic legacy rollback
-rehearsal remains pending. Customer settings and raw evidence stay outside this
-repository. Fresh full-bundle and rekey/protocol acceptance are separate gates.
+procedure but has not been exercised in this trial. The user explicitly excluded
+legacy rollback testing from release scope; no rollback rehearsal is pending or
+claimed as passed. Optional fallback notes remain available. Customer settings
+and raw evidence stay outside this repository. Fresh full-bundle and
+rekey/protocol acceptance remain the release gates.

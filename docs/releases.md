@@ -121,8 +121,9 @@ The existing packet/recovery acceptance suites remain required backend evidence.
 without shortening their production MFA/recovery policy. It exercises real
 authentication, private service access and controller replacement; it does not
 replace the full packet/failure/rekey suite. Real ARM64 adoption/cutover has
-passed, as recorded in the validation record. The synthetic legacy rollback
-rehearsal remains a separate release-gate check in #9. Keep the
+passed, as recorded in the validation record. Legacy rollback testing is outside
+the agreed release scope. Controller upgrade/replacement acceptance remains
+required. Keep the
 unreproduced startup observation #19 open; it is not a reproducible release blocker.
 
 Inside the isolated lab, after preparing the gateway/service fixture images from
