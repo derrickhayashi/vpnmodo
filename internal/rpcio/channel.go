@@ -19,6 +19,7 @@ type Channel struct {
 	server  bool
 	mu      sync.Mutex
 	pending map[string]bool
+	after   map[string]func()
 	drained chan struct{}
 	closed  chan struct{}
 	once    sync.Once
@@ -27,7 +28,7 @@ type Channel struct {
 func New(stream io.ReadWriteCloser, server bool) *Channel {
 	drained := make(chan struct{})
 	close(drained)
-	return &Channel{stream: stream, reader: protocol.NewFrameReader(stream), writer: protocol.NewFrameWriter(stream), server: server, pending: make(map[string]bool), drained: drained, closed: make(chan struct{})}
+	return &Channel{stream: stream, reader: protocol.NewFrameReader(stream), writer: protocol.NewFrameWriter(stream), server: server, pending: make(map[string]bool), after: map[string]func(){}, drained: drained, closed: make(chan struct{})}
 }
 func idKey(raw []byte) string {
 	var value any
@@ -127,10 +128,34 @@ func (c *Channel) Send(data []byte) error {
 			}()
 		}
 	}
-	return c.write(data)
+	err := c.write(data)
+	if err == nil && c.server {
+		var envelope struct {
+			ID json.RawMessage `json:"id"`
+		}
+		if json.Unmarshal(data, &envelope) == nil {
+			key := idKey(envelope.ID)
+			c.mu.Lock()
+			callback := c.after[key]
+			delete(c.after, key)
+			c.mu.Unlock()
+			if callback != nil {
+				go callback()
+			}
+		}
+	}
+	return err
 }
 func (c *Channel) Close() error {
 	var err error
 	c.once.Do(func() { close(c.closed); err = c.stream.Close() })
 	return err
+}
+
+// AfterResponse runs only after this response frame has been written. It lets
+// subscription notifications follow their initial snapshot on the wire.
+func (c *Channel) AfterResponse(id []byte, callback func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.after[idKey(id)] = callback
 }

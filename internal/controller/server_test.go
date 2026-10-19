@@ -13,19 +13,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/rpcio"
 )
 
 func startTestServer(t *testing.T) (Config, context.Context, context.CancelFunc) {
+	return startTestServerWith(t, nil)
+}
+func startTestServerWith(t *testing.T, adapter lifecycle.Adapter) (Config, context.Context, context.CancelFunc) {
 	t.Helper()
 	root, err := os.MkdirTemp("/tmp", "vpnmodo-test-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	config := Config{Socket: filepath.Join(root, "run", "controller.sock"), StateDir: filepath.Join(root, "state"), Version: "test"}
+	config := Config{Socket: filepath.Join(root, "run", "controller.sock"), StateDir: filepath.Join(root, "state"), Version: "test", Adapter: adapter}
 	dockerListener, err := net.Listen("unix", filepath.Join(root, "docker.sock"))
 	if err != nil {
 		t.Fatal(err)

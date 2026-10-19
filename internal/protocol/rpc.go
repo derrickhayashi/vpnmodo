@@ -44,6 +44,7 @@ const (
 	CredentialRotate     Method = "profile.rotate_credentials"
 	ProfileDelete        Method = "profile.delete"
 	ConnectionEnsure     Method = "connection.ensure"
+	ConnectionStatus     Method = "connection.status"
 	ConnectionDisconnect Method = "connection.disconnect"
 	OperationStatus      Method = "operation.status"
 	OperationSubscribe   Method = "operation.subscribe"
@@ -55,7 +56,7 @@ const (
 
 func (m Method) Known() bool {
 	switch m {
-	case Hello, SystemStatus, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
+	case Hello, SystemStatus, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionStatus, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
 		return true
 	default:
 		return false
@@ -168,11 +169,14 @@ const (
 	CodeInterrupted        ErrorCode = -32008
 	CodeBackendUnavailable ErrorCode = -32009
 	CodeProfileActive      ErrorCode = -32010
+	CodeTimeout            ErrorCode = -32011
+	CodePersistence        ErrorCode = -32012
+	CodeAuthentication     ErrorCode = -32013
 )
 
 var errorMessages = map[ErrorCode]string{
 	CodeParse: "Invalid JSON", CodeInvalidRequest: "Invalid request", CodeMethod: "Method not found", CodeInvalidParams: "Invalid parameters", CodeInternal: "Internal error",
-	CodeVersion: "Incompatible API version", CodeHandshake: "Version negotiation required", CodeNotFound: "Resource not found", CodeBusy: "Operation in progress", CodeConflict: "Resource conflict", CodeCredentials: "Credentials unavailable or invalid", CodeMFAExpired: "MFA challenge expired", CodeInterrupted: "Operation interrupted; explicit retry required", CodeBackendUnavailable: "Backend unavailable", CodeProfileActive: "Profile active; disconnect before changing it",
+	CodeVersion: "Incompatible API version", CodeHandshake: "Version negotiation required", CodeNotFound: "Resource not found", CodeBusy: "Operation in progress", CodeConflict: "Resource conflict", CodeCredentials: "Credentials unavailable or invalid", CodeMFAExpired: "MFA challenge expired", CodeInterrupted: "Operation interrupted; explicit retry required", CodeBackendUnavailable: "Backend unavailable", CodeProfileActive: "Profile active; disconnect before changing it", CodeTimeout: "Operation timed out", CodePersistence: "Operation persistence unavailable; restart and reconcile before retrying", CodeAuthentication: "Authentication failed",
 }
 
 // RPCError is deliberately closed: no raw stderr, paths, or arbitrary error data.

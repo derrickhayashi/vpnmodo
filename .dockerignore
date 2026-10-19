@@ -6,6 +6,10 @@
 !internal/controller/*.go
 !internal/jsonstrict/
 !internal/jsonstrict/*.go
+!internal/lifecycle/
+!internal/lifecycle/*.go
+!internal/operationstore/
+!internal/operationstore/*.go
 !internal/operation/
 !internal/operation/*.go
 !internal/privatefile/

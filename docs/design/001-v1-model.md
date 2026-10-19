@@ -1,8 +1,9 @@
 # V1 profiles, protocol and operation model
 
 Status: model baseline from issue #2, controller/SSH from issue #3, and secure
-profile management from issue #4. VPN connection and operation runtime work
-remains in subsequent issues. Storage and credential input details are in the
+profile management from issue #4, and persistent operation coordination from
+issue #5. Real VPN adapters remain in subsequent issues. Storage and credential
+input details are in the
 [profile storage guide](002-profile-storage.md).
 
 ## Package ownership
@@ -11,7 +12,9 @@ remains in subsequent issues. Storage and credential input details are in the
 | --- | --- |
 | `internal/profile` | Backend-specific settings, credential validation and managed deployment identities |
 | `internal/protocol` | JSON-RPC requests/responses, wire operation snapshots, MFA input and framing |
-| `internal/operation` | Lifecycle states, transitions and operation/challenge identity rules |
+| `internal/operation` | Lifecycle states, domain records and operation/challenge identities |
+| `internal/lifecycle` | Service-owned workers, intent, cancellation, MFA and reconciliation |
+| `internal/operationstore` | Protected transactional journal and bounded metadata |
 | `internal/secret` | Shared redacted values with explicit transport encoding |
 | `internal/jsonstrict` | Bounded, exact-shape JSON parsing |
 | `internal/rpcio` | Bounded jrpc2 channels and negotiated client |
@@ -148,18 +151,20 @@ Reserved method surface:
 | `profile.create` | Typed profile plus separate credential input |
 | `profile.list`, `profile.inspect` | Non-secret configuration, revision and credential presence |
 | `profile.update`, `profile.rotate_credentials`, `profile.delete` | Explicit mutation; expected revision and inactive-profile checks in issue #4 |
+| `connection.status` | Desired/observed state, intent generation and active/last operation IDs |
 | `connection.ensure`, `connection.disconnect` | Managed profile reference; return/reuse operation ID |
 | `operation.status`, `operation.cancel` | Opaque operation ID |
 | `operation.subscribe` | Current operation snapshot, then revisioned change notifications |
 | `operation.submit_mfa` | Operation ID, challenge ID and secret code |
 | `system.doctor` | Typed diagnostic checks; never secret read-back |
 
-The method constants reserve a vocabulary, not implemented handlers. Exact
+Method constants include implemented handlers and future reservations. Exact
 mutation/list/doctor payloads are completed with their owning implementation
 issues. The controller skeleton implements hello, system status and backend
 discovery over verified SSH and a private Unix socket. Profile management is implemented as described in the
-[storage guide](002-profile-storage.md). Connection/operation mutations remain
-reserved; `runtime_enabled` is false.
+[storage guide](002-profile-storage.md). Connection/operation RPC handlers are implemented with the
+[operation manager](003-persistent-operations.md); real adapters remain disabled
+and production `runtime_enabled` is false.
 
 `operation.changed` is a server notification without an ID. Client notifications
 must never mutate state and receive no response, including when rejected. Request
@@ -206,8 +211,9 @@ Kinds are ensure, disconnect, unattended recovery, and profile change. States ar
   delivery of every event. On reconnect fetch a snapshot. Use bounded queues;
   slow clients cannot block profile operations. Retain bounded non-secret history.
 
-These transition rules are executable here; persistence, locks, atomic challenge
-consumption, worker lifetime and crash reconciliation are issue #5.
+These transition rules, persistence, locking, atomic challenge consumption,
+worker lifetime and crash reconciliation are implemented in issue #5; see the
+[operation guide](003-persistent-operations.md).
 
 ## Fail-closed enforcement and dependencies
 
@@ -230,7 +236,7 @@ methods and request logging are disabled. OpenSSH supplies verified non-PTY
 transport; Python stdlib and Docker Compose handle explicit host bootstrap.
 The image runs a static Go binary without Docker/SSH tools or network access.
 
-For issue #5, bbolt is the proposed embedded transactional operation store, suited to one service per VM;
+Issue #5 implements a pinned bbolt transactional operation store, suited to one service per VM;
 do not put credentials or wire params into it. No HTTP/workflow/database server is
 required. Docker/Compose and Expect/native strongSwan remain backend adapters;
 the choice of authentication implementation must preserve interoperability.
