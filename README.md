@@ -126,6 +126,11 @@ XAuth uses secure MFA and mandatory kernel packet enforcement. See
 rules, lifecycle policy and release targets. Synthetic JSON profile examples live
 in `examples/profiles/v1/`. Existing standalone deployments remain supported.
 
+For private release candidates, see [release packaging](docs/releases.md) and
+[teammate onboarding](docs/onboarding.md). The packaging stage provides verified
+archives and pinned offline VM image bundles; the v1 adoption/platform release
+gate remains open in #9.
+
 With Go 1.27 installed:
 
 ```sh

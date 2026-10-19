@@ -5,7 +5,8 @@ profile management from issue #4, and persistent operation coordination from
 issue #5. Managed L2TP and XAuth are described in the
 [runtime](005-managed-l2tp.md) and [MFA/isolation](006-managed-xauth.md) guides.
 Workstation [service access](007-service-access.md) adds named forwards and
-live diagnostics. Release packaging remains a later stage. Storage and credential
+live diagnostics. Private [release packaging](../releases.md) supplies candidate artifacts;
+adoption and platform acceptance remain the final release gate. Storage and credential
 input details are in the
 [profile storage guide](002-profile-storage.md).
 

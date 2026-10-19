@@ -4,7 +4,8 @@ Status: discussion captured for implementation review, 2026-10-19.
 The v1 profile, protocol and operation implementation is tracked in issue #2.
 Controller/profile/lifecycle management and managed L2TP/XAuth are implemented
 in the private stage branches. Workstation [service access and diagnostics](design/007-service-access.md)
-are implemented in the next private feature stage; release packaging remains subsequent. See
+are implemented. Private release packaging supplies candidate artifacts;
+adoption and platform acceptance remain the final release gate. See
 [v1 profiles, protocol and operations](design/001-v1-model.md)
 for the initial scope, ownership and lifecycle defaults selected for implementation.
 

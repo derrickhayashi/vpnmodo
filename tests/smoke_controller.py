@@ -46,11 +46,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--image", required=True)
+    parser.add_argument("--upgrade-image", help="explicit different production image for the replacement check")
+    parser.add_argument("--onboarding-only", action="store_true", help="production-policy onboarding subset; not the complete backend regression")
     parser.add_argument("--operations", action="store_true", help="use only the synthetic Go test-binary image")
     parser.add_argument("--l2tp", action="store_true", help="real L2TP in an isolated synthetic gateway lab")
     parser.add_argument("--xauth", action="store_true", help="real XAuth MFA and packet isolation lab")
     parser.add_argument("--services-only", action="store_true", help="debug the real L2TP/service subset; not the full recovery suite")
     options = parser.parse_args()
+    if options.onboarding_only and (options.l2tp == options.xauth or options.operations):
+        parser.error("--onboarding-only requires exactly one real backend")
     if options.services_only and (not options.l2tp or options.xauth or options.operations):
         parser.error("--services-only requires only --l2tp")
     data_root = Path.home() / ".local/share/vpnmodo"
@@ -310,17 +314,17 @@ LogLevel VERBOSE
             cooldown = recovery_acceptance.begin(cli, directory, state)
         if options.xauth:
             import xauth_acceptance
-            lab = xauth_acceptance.begin(cli, directory, state, bridge, [str(options.binary.resolve()), "--config", str(registry)])
+            lab = xauth_acceptance.begin(cli, directory, state, bridge, [str(options.binary.resolve()), "--config", str(registry)], onboarding_only=options.onboarding_only)
         if options.l2tp:
             import l2tp_acceptance
-            lab = l2tp_acceptance.begin(cli, directory, state, services_only=options.services_only)
+            lab = l2tp_acceptance.begin(cli, directory, state, services_only=options.services_only or options.onboarding_only)
         marker = data_root / "controller-state" / "acceptance-marker"
         marker.write_text("synthetic-state")
         command(["docker", "stop", "vpnmodo-controller"])
         result = json.loads(cli("host", "setup", "example", "--image", options.image, "--json").stdout)
         assert result["action"] == "started"
         ready()
-        result = json.loads(cli("host", "setup", "example", "--image", options.image, "--replace", "--json").stdout)
+        result = json.loads(cli("host", "setup", "example", "--image", options.upgrade_image or options.image, "--replace", "--json").stdout)
         assert result["action"] == "replaced"
         ready()
         assert marker.read_text() == "synthetic-state"
@@ -348,7 +352,7 @@ LogLevel VERBOSE
         if inspected.returncode == 0:
             current = json.loads(inspected.stdout)[0]
             labels = current["Config"].get("Labels") or {}
-            if current["Config"]["Image"] == options.image and labels.get("io.vpnmodo.managed-by") == "vpnmodo" and labels.get("io.vpnmodo.component") == "controller":
+            if current["Config"]["Image"] in (options.image, options.upgrade_image) and labels.get("io.vpnmodo.managed-by") == "vpnmodo" and labels.get("io.vpnmodo.component") == "controller":
                 command(["docker", "rm", "-f", current["Id"]], required=False)
         if legacy_created:
             command(["docker", "rm", legacy], required=False)

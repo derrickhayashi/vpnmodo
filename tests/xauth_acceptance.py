@@ -186,7 +186,7 @@ class Lab:
             command(["docker", "network", "rm", NETWORK], required=False)
 
 
-def begin(cli, directory, state_root, bridge, cli_args):
+def begin(cli, directory, state_root, bridge, cli_args, onboarding_only=False):
     lab = Lab(cli, bridge, cli_args, directory)
     try:
         assert command(["docker", "network", "inspect", NETWORK], required=False).returncode != 0
@@ -277,6 +277,12 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
 """
         command(["docker", "run", "--rm", "--network", "container:" + cid, "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--entrypoint", "python3", "vpnmodo-xauth-gateway:acceptance", "-c", mark_probe])
         print("PASS: real aggressive PSK + XAUTH_PASSCODE, secure code consumption, private TCP/DNS", flush=True)
+        if onboarding_only:
+            from service_acceptance import ServiceLab
+            lab.services = ServiceLab(cli, directory, lab)
+            lab.services.begin()
+            lab.vpn_before_restart = lab.ids()["vpn"]["Id"]
+            return lab
         def rekey():
             command(["docker", "exec", lab.gateway, "swanctl", "--rekey", "--child", "lab"])
             command(["docker", "exec", cid, "vpn-servicecheck"])

@@ -15,3 +15,7 @@ ENV PATH="/opt/strongswan/sbin:/opt/strongswan/bin:${PATH}"
 COPY managed/ /usr/local/bin/
 RUN chmod 755 /usr/local/bin/vpn-*
 ENTRYPOINT ["charon-cmd"]
+
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.version=$VERSION org.opencontainers.image.revision=$REVISION

@@ -12,6 +12,10 @@ checks. The [managed XAuth adapter](../../docs/design/006-managed-xauth.md) adds
 secure MFA and mandatory kernel-enforced isolation, with explicit authentication
 after tunnel loss.
 
+For checksum-verified candidate binaries and offline images, use the
+[release guide](../../docs/releases.md) and [onboarding guide](../../docs/onboarding.md).
+The development build below remains available.
+
 ## Prerequisites and build
 
 The target is an existing Ubuntu 24.04 VM with SSH, Python 3, rootful Docker
