@@ -1,10 +1,10 @@
 # Controller recovery policy
 
-This is the first PR for issue #6. It implements the recovery coordinator and the
-standalone watchdog refusal rule. The next PR supplies the managed L2TP
-Docker/Compose adapter, per-profile credential mounts, ownership checks and Linux
-VPN acceptance. Production connection handlers remain disabled until that adapter
-is available. The synthetic acceptance adapter is compiled only into Go tests.
+The first PR for issue #6 supplied the recovery coordinator and standalone
+watchdog refusal rule. The [managed L2TP adapter](005-managed-l2tp.md) now supplies
+Docker/Compose lifecycle, per-profile credential mounts, ownership checks and Linux
+VPN acceptance. Production L2TP connection handlers are enabled; XAuth remains
+unavailable. The synthetic acceptance adapter is compiled only into Go tests.
 
 ## Health and recovery decisions
 
@@ -72,8 +72,7 @@ blocked until explicit ensure.
 ## Recovery ownership boundary
 
 Every adapter method must independently verify the managed project/profile labels
-and reject competing recovery owners. The concrete Docker enforcement belongs to
-the next PR. Creating a managed profile does not adopt any legacy containers.
+and reject competing recovery owners. The [L2TP adapter](005-managed-l2tp.md) supplies concrete Docker enforcement. Creating a managed profile does not adopt any legacy containers.
 
 The current standalone watchdog checks `io.vpnmodo.managed-by` on its selected VPN
 before any health-driven recovery or namespace repair. The value `vpnmodo` causes
@@ -95,5 +94,5 @@ uses private synthetic runtime files, with short test-only intervals, to assert
 bounded retries, application repair without reauthentication, stopped forwarding,
 intent preservation, persisted cooldown/budget and restart without login. This is
 controller-policy evidence. It does not establish L2TP interoperability or XAuth
-packet isolation, and issue #6 remains open for the Docker/Compose adapter and its
-Linux backend evidence.
+packet isolation, and is supplemented by the real L2TP interoperability and recovery lab described
+in the adapter design.

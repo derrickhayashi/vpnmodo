@@ -352,11 +352,7 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 			return ErrRuntime
 		}
 		for key, value := range map[string]secret.Value{"username": c.Username, "password": c.Password, "psk": c.PSK} {
-			// Explicit protected-file provisioning boundary; no retained plaintext value.
-			if !value.Check(func(s string) bool {
-				_, err := privatefile.Write(filepath.Join(dir, key), []byte(s))
-				return err == nil
-			}) {
+			if _, err := privatefile.Write(filepath.Join(dir, key), value.BytesForProtectedFile()); err != nil {
 				return ErrRuntime
 			}
 		}
@@ -373,7 +369,10 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 		return err
 	})
 	if err != nil {
-		return nil, lifecycle.ErrCredentials
+		if errors.Is(err, profile.ErrCredentials) {
+			return nil, lifecycle.ErrCredentials
+		}
+		return nil, ErrRuntime
 	}
 	return &out, nil
 }
@@ -456,6 +455,14 @@ func (a *Adapter) RepairForwarding(ctx context.Context, p profile.Profile) error
 	if err = a.Quiesce(ctx, p); err != nil {
 		return err
 	}
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = a.Quiesce(cleanup, p)
+		}
+	}()
 	if err = a.Verify(ctx, p); err != nil {
 		return err
 	}
@@ -464,11 +471,9 @@ func (a *Adapter) RepairForwarding(ctx context.Context, p profile.Profile) error
 	}
 	health, err = a.Check(ctx, p)
 	if err == nil && health == operation.HealthHealthy {
+		succeeded = true
 		return nil
 	}
-	cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_ = a.Quiesce(cleanup, p)
 	return ErrRuntime
 }
 

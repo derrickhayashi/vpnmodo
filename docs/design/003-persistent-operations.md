@@ -1,7 +1,7 @@
 # Persistent operations and lifecycle coordination
 
 Issue #5 supplies a service-owned operation manager and a protected bbolt journal.
-Real L2TP/XAuth adapters remain disabled in the production controller. Synthetic
+The [managed L2TP adapter](005-managed-l2tp.md) now runs in the production controller; XAuth remains unavailable. Synthetic
 adapters exist only in Go tests and a separate acceptance image built from a Go
 test binary. There is no production flag/environment variable/profile value that
 activates the synthetic backend. Profile edits remain synchronous atomic
@@ -20,9 +20,8 @@ vpnmodo operation watch op-0123456789abcdef0123456789abcdef --host my-vm --json
 vpnmodo operation cancel op-0123456789abcdef0123456789abcdef --host my-vm --json
 ```
 
-Until backend integration, ensure/disconnect return backend-unavailable in the
-production image. The commands are implemented and exercised using the injected
-synthetic adapter. `ensure`/`disconnect` return a queued operation snapshot; they
+L2TP ensure/disconnect use the real adapter in the production image. XAuth remains
+backend-unavailable. Tests can inject a separate synthetic adapter. `ensure`/`disconnect` return a queued operation snapshot; they
 do not claim that a connection is ready. `--wait` subscribes until terminal state.
 Watch output with `--json` is one JSON snapshot per line. Failed/cancelled watches
 exit nonzero after printing the final snapshot. Closing SSH/the watcher does not
@@ -132,8 +131,8 @@ proves a tunnel is healthy.
 
 The [recovery policy](004-recovery-policy.md) adds bounded background monitoring,
 closed health classifications and persisted retry/cooldown metadata. It runs only
-for adapters implementing the recovery interface. Real backend activation and
-Docker ownership enforcement remain the next L2TP integration PR.
+for adapters implementing the recovery interface. The [L2TP adapter](005-managed-l2tp.md) supplies real backend activation and
+Docker ownership enforcement.
 
 ## Validation
 

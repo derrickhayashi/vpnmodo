@@ -379,6 +379,6 @@ func (s *Store) WithCredentials(ctx context.Context, name string, fn func(Snapsh
 		if err != nil || jsonstrict.Decode(data, &c, profile.MaxProfileBytes) != nil || c.Validate() != nil {
 			return profile.ErrCredentials
 		}
-		return fn(s.snapshot(r), c)
+		return fn(Snapshot{Profile: r.Profile, Revision: r.Revision, CredentialsPresent: true}, c)
 	})
 }

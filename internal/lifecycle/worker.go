@@ -119,6 +119,8 @@ func (m *Manager) fail(w *worker, err error, observed operation.Observed) {
 	}
 	failure := operation.BackendFailed
 	switch {
+	case errors.Is(err, ErrCredentials):
+		failure = operation.CredentialsFailed
 	case errors.Is(err, ErrExpired):
 		failure = operation.MFAExpired
 	case errors.Is(err, ErrAuthentication):
