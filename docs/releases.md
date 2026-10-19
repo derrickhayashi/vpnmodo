@@ -120,8 +120,9 @@ The existing packet/recovery acceptance suites remain required backend evidence.
 `--onboarding-only` in the isolated harness tests packaged production images
 without shortening their production MFA/recovery policy. It exercises real
 authentication, private service access and controller replacement; it does not
-replace the full packet/failure/rekey suite. Legacy coexistence, explicit cutover
-and rollback with fresh MFA remain separate release-gate checks in #9. Keep the
+replace the full packet/failure/rekey suite. Real ARM64 adoption/cutover has
+passed, as recorded in the validation record. The synthetic legacy rollback
+rehearsal remains a separate release-gate check in #9. Keep the
 unreproduced startup observation #19 open; it is not a reproducible release blocker.
 
 Inside the isolated lab, after preparing the gateway/service fixture images from

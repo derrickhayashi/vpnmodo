@@ -3,13 +3,14 @@
 Tested source: `728b9a4b3a97c74df2b16ba7d58d7935b6ef331f`.
 Candidate binary identity: `v0.1.0-rc.1+git.728b9a4b3a97`.
 Subsequent edits in this PR document the results and clarify installation steps.
-No release was published and no customer deployment was adopted.
+At that initial revision, no release was published and no existing deployment
+was adopted. Later ARM64 trial adoption/cutover evidence is recorded below.
 
 | Target | Evidence | Remaining |
 | --- | --- | --- |
-| macOS arm64 | Native archive installation/version/help; explicit replacement; checksum/symlink refusal; temporary-prefix cleanup | Final adoption workflow |
+| macOS arm64 | Native archive installation/version/help; explicit replacement; checksum/symlink refusal; temporary-prefix cleanup | Legacy rollback rehearsal |
 | macOS amd64 | Cross-built archive and checksum | Outside the agreed release gate; native runtime unvalidated |
-| Ubuntu 24.04 arm64 | Full production Dockerfile build; verified offline image load; real L2TP and XAuth onboarding, two-hop forwarding, controller replacement and disposal | Legacy VPN adoption/cutover/rollback |
+| Ubuntu 24.04 arm64 | Full production Dockerfile build; verified offline image load; real L2TP and XAuth onboarding, two-hop forwarding, controller replacement and disposal | Legacy rollback rehearsal and fresh current-source bundle acceptance |
 | Ubuntu 24.04 amd64 | Controller binary cross-build | Outside the agreed release gate; native build/runtime unvalidated |
 
 The agreed first-release qualification scope is macOS arm64 and Ubuntu 24.04
@@ -49,7 +50,7 @@ and remote bundle were removed after verifying no nested test containers remaine
 
 These onboarding checks are a subset, not a replacement for the previous full
 [packet/rekey/recovery evidence](../tests/local-lab/README.md). Issue #9 stays open
-for explicit legacy adoption/rollback and the remaining ARM64 bundle acceptance.
+for the legacy rollback rehearsal and the remaining ARM64 bundle acceptance.
 The unconfirmed startup observation #19 remains open after its separate 20-pass
 replacement investigation; no backend fix was claimed for it.
 
@@ -94,7 +95,7 @@ been rerun for this correction. These
 patched trial images are not a new full production-Dockerfile release bundle.
 
 PR #20 remains draft. Issue #9 stays open for #21, fresh schema-2 bundle acceptance,
-and legacy cutover/rollback with fresh MFA on the agreed ARM64 targets.
+and the legacy rollback rehearsal on the agreed ARM64 targets.
 No raw deployment settings, credentials, transcripts or packet metadata belong
 in this record. GitHub Actions remains disabled.
 
@@ -103,3 +104,17 @@ The explicitly authorized next attempt succeeded. That diagnostic identifies
 the stage, not the peer-side cause or code validity. Earlier spontaneous loss of
 kernel IPsec state remains unexplained; short application success does not
 establish that the PMTU correction addresses session lifetime.
+
+## Existing-deployment adoption and cutover
+
+The native ARM64 trial completed real adoption and cutover: an existing VPN
+configuration became a managed profile, credentials stayed on the VM, the legacy
+session was stopped and retained, and the existing workstation wrapper/SSH
+aliases selected the managed application. Fresh MFA, authenticated SSH and
+256 KiB transfers in both directions passed. This counts as functional adoption
+and cutover evidence; repeating that real cutover is not a remaining gate.
+
+The reverse transition back to the retained legacy deployment has a documented
+procedure but has not been exercised in this trial. A synthetic legacy rollback
+rehearsal remains pending. Customer settings and raw evidence stay outside this
+repository. Fresh full-bundle and rekey/protocol acceptance are separate gates.
