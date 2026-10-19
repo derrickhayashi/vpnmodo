@@ -105,3 +105,27 @@ func escape(v any) any {
 	}
 	return v
 }
+
+// applicationManifest contains no VPN service or service dependency. An
+// application repair cannot recreate/start a VPN through Compose reconciliation.
+// The immutable container ID also binds the workload to the verified namespace.
+func applicationManifest(d deployment, root, vpnID string) ([]byte, error) {
+	if !containerPattern.MatchString(vpnID) {
+		return nil, ErrRuntime
+	}
+	data, err := manifest(d, root)
+	if err != nil {
+		return nil, err
+	}
+	var full struct {
+		Name     string                    `json:"name"`
+		Services map[string]map[string]any `json:"services"`
+	}
+	if json.Unmarshal(data, &full) != nil {
+		return nil, ErrRuntime
+	}
+	app := full.Services["application"]
+	app["network_mode"] = "container:" + vpnID
+	// Strings were already escaped by manifest; do not interpolate them twice.
+	return json.Marshal(map[string]any{"name": full.Name, "services": map[string]any{"application": app}})
+}

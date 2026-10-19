@@ -91,7 +91,8 @@ are outside this isolation boundary.
 
 Health reporting separates private endpoint failures, namespace detachment and
 IPsec loss. Endpoint failure alone never starts another login. A healthy tunnel
-can repair only its application namespace without MFA. On IPsec loss, stop the
+can repair only its application namespace without MFA. The application-only
+manifest pins the verified container ID and contains no VPN service to reconcile. On IPsec loss, stop the
 application and report authentication required; do not begin a new PSK/password
 attempt in the background. An explicit ensure creates a fresh attempt/challenge.
 The kernel filter remains the protection while the controller is unavailable.

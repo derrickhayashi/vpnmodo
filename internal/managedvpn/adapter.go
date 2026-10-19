@@ -390,7 +390,28 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 }
 func (a *Adapter) compose(ctx context.Context, p profile.Profile, service string) error {
 	id, _ := profile.Identity(p.Name)
-	_, err := a.docker.Run(ctx, "compose", "--project-name", id.Project, "--project-directory", a.dir(p), "--env-file", "/dev/null", "-f", filepath.Join(a.dir(p), "compose.json"), "up", "-d", "--no-deps", "--pull", "never", "--force-recreate", service)
+	filename, recreation := "compose.json", "--force-recreate"
+	if service == "application" {
+		d, cs, err := a.owned(ctx, p)
+		if err != nil {
+			return err
+		}
+		vpn := cs["vpn"]
+		if d == nil || vpn.ID == "" || !vpn.State.Running || vpn.State.Paused || vpn.State.Restarting {
+			return ErrRuntime
+		}
+		data, err := applicationManifest(*d, a.dir(p), vpn.ID)
+		if err != nil {
+			return err
+		}
+		filename, recreation = "application.compose.json", "--no-recreate"
+		if _, err := privatefile.Write(filepath.Join(a.dir(p), filename), data); err != nil {
+			return ErrRuntime
+		}
+	} else if service != "vpn" {
+		return ErrRuntime
+	}
+	_, err := a.docker.Run(ctx, "compose", "--project-name", id.Project, "--project-directory", a.dir(p), "--env-file", "/dev/null", "-f", filepath.Join(a.dir(p), filename), "up", "-d", "--no-deps", "--pull", "never", recreation, service)
 	if err != nil {
 		return ErrRuntime
 	}
@@ -603,7 +624,7 @@ func (a *Adapter) Forget(ctx context.Context, name string) error {
 			return ErrRuntime
 		}
 	}
-	for _, filename := range []string{"compose.json", "deployment.json", "resolv.conf"} {
+	for _, filename := range []string{"compose.json", "application.compose.json", "deployment.json", "resolv.conf"} {
 		path := filepath.Join(root, filename)
 		if _, err := privatefile.Read(path, 2*profile.MaxProfileBytes); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ErrRuntime

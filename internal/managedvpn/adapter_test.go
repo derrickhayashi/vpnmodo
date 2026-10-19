@@ -468,3 +468,44 @@ func TestXAuthPrivateChallengeAndManifest(t *testing.T) {
 		})
 	}
 }
+
+func TestApplicationRepairCannotReconcileVPNService(t *testing.T) {
+	a, f, _, p := setup(t)
+	ctx := context.Background()
+	if err := a.Connect(ctx, p, nil); err != nil {
+		t.Fatal(err)
+	}
+	before := f.containers[strings.Repeat("a", 64)].ID
+	if err := a.RepairForwarding(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(a.dir(p), "application.compose.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m struct {
+		Services map[string]map[string]any
+		Secrets  map[string]any
+	}
+	if json.Unmarshal(data, &m) != nil || len(m.Services) != 1 || len(m.Secrets) != 0 {
+		t.Fatal("application manifest has other resources")
+	}
+	if m.Services["application"]["network_mode"] != "container:"+before || m.Services["vpn"] != nil {
+		t.Fatal("VPN dependency in application repair")
+	}
+	if f.containers[strings.Repeat("a", 64)].ID != before {
+		t.Fatal("VPN changed")
+	}
+	found := false
+	for _, args := range f.calls {
+		if args[0] == "compose" && args[len(args)-1] == "application" {
+			found = true
+			if !strings.Contains(strings.Join(args, " "), "--no-recreate") {
+				t.Fatal("application repair may recreate dependencies")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing application create")
+	}
+}
