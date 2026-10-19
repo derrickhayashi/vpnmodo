@@ -1,0 +1,25 @@
+--- a/src/charon-cmd/cmd/cmd_connection.c
++++ b/src/charon-cmd/cmd/cmd_connection.c
+@@ -587,5 +587,22 @@
+ 			(callback_job_cb_t)initiate, this, NULL,
+ 			(callback_job_cancel_t)return_false, JOB_PRIO_CRITICAL));
+ 
++	/* Managed usernames are credentials: read the protected mount, never argv.
++	 * The legacy CLI and its defaults remain unchanged. */
++	if (getenv("VPNMODO_MANAGED_XAUTH"))
++	{
++		char username[4097];
++		FILE *file = fopen("/run/secrets/vpn_username", "r");
++		size_t length = file ? fread(username, 1, sizeof(username), file) : 0;
++		if (file) { fclose(file); }
++		if (!length || length >= sizeof(username) ||
++			memchr(username, '\0', length) || memchr(username, '\r', length) ||
++			memchr(username, '\n', length))
++		{
++			exit(1);
++		}
++		this->xautheap = strndup(username, length);
++		memwipe(username, sizeof(username));
++	}
+ 	return &this->public;
+ }

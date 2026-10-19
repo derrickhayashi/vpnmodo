@@ -1,0 +1,78 @@
+#!/usr/bin/expect -f
+# The only parsed diagnostic is CHILD_SA establishment. Control is fixed enum
+# state, not forwarded log output. Login deadlines cannot be reset by log floods.
+umask 077
+log_user 0
+exp_internal 0
+set timeout 90
+set established 0
+set psk_sent 0
+set password_sent 0
+set otp_sent 0
+set deadline [expr {[clock seconds] + 90}]
+proc state {value} {
+    set f [open /run/vpn/state.new w 0600]
+    puts $f $value
+    close $f
+    file rename -force /run/vpn/state.new /run/vpn/state
+}
+proc failure {} {state failed; catch {exec kill -TERM [exp_pid]}; exit 2}
+trap {failure} {SIGTERM SIGINT SIGHUP}
+proc credential {name} {
+    set f [open /run/secrets/vpn_$name r]
+    set v [read $f 4097]; close $f
+    if {[string length $v] == 0 || [string length $v] > 4096 || [regexp {[\r\n\x00]} $v]} {failure}
+    return $v
+}
+set route [exec ip -4 route get $env(VPN_SERVER)]
+if {![regexp {src ([0-9.]+)} $route -> identity]} {failure}
+set args [list --debug 1 --host $env(VPN_SERVER) --identity $identity --remote-identity %any --profile ikev1-xauth-psk-am]
+foreach p [split $env(VPN_IKE_PROPOSALS) ,] {lappend args --ike-proposal $p}
+foreach p [split $env(VPN_ESP_PROPOSALS) ,] {lappend args --esp-proposal $p}
+spawn -noecho charon-cmd {*}$args
+# Disable PTY echo before sending any credential, including a fast initial PSK.
+stty -echo < $spawn_out(slave,name)
+while {1} {
+    if {!$established} {
+        set timeout [expr {$deadline - [clock seconds]}]
+        if {$timeout <= 0} {failure}
+    } else {set timeout -1}
+    expect {
+        -exact "Preshared Key: " {
+            if {$psk_sent || $established} {failure}
+            set psk_sent 1
+            send -- "[credential psk]\r"
+        }
+        -exact "EAP password: " {
+            if {!$psk_sent || $password_sent || $established} {failure}
+            set password_sent 1
+            send -- "[credential password]\r"
+        }
+        -exact "PIN: " {
+            if {!$password_sent || $otp_sent || $established} {failure}
+            set otp_sent 1
+            state mfa
+            set deadline [expr {[clock seconds] + 180}]
+            while {![file exists /run/vpn/code]} {
+                if {[clock seconds] >= $deadline} {failure}
+                after 100
+            }
+            set f [open /run/vpn/code r]; set code [read $f 12]; close $f
+            file delete /run/vpn/code
+            if {![regexp {^[0-9]{4,10}$} $code]} {failure}
+            state submitted
+            send -- "$code\r"; unset code
+            set deadline [expr {[clock seconds] + 90}]
+        }
+        -re {([^\r\n]+)\r?\n} {
+            if {[regexp {CHILD_SA .* established with SPIs} $expect_out(1,string)]} {
+                if {!$password_sent || !$otp_sent} {failure}
+                set established 1
+                state established
+                close [open /run/vpn/ready w 0600]
+            }
+        }
+        timeout {failure}
+        eof {failure}
+    }
+}

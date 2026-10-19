@@ -15,8 +15,8 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/l2tp"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/managedvpn"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
@@ -36,8 +36,9 @@ type Status struct {
 	RuntimeEnabled bool                `json:"runtime_enabled"`
 }
 type Config struct {
-	EnableL2TP                                bool
-	L2TPRunner                                l2tp.Runner
+	EnableL2TP, EnableXAuth                   bool
+	XAuthImage                                string
+	L2TPRunner                                managedvpn.Runner
 	L2TPImage, ApplicationImage, DockerBinary string
 	Socket, StateDir, DockerSocket, Version   string
 	Adapter                                   lifecycle.Adapter
@@ -102,12 +103,16 @@ func Listen(config Config) (*Server, error) {
 		}
 		runner := config.L2TPRunner
 		if runner == nil {
-			runner = l2tp.CLI{Binary: binary, Socket: config.DockerSocket}
+			runner = managedvpn.CLI{Binary: binary, Socket: config.DockerSocket}
 		}
-		config.Adapter, err = l2tp.New(filepath.Join(config.StateDir, "deployments"), config.L2TPImage, config.ApplicationImage, profiles, runner)
-		if err != nil {
+		adapter, e := managedvpn.New(filepath.Join(config.StateDir, "deployments"), config.L2TPImage, config.ApplicationImage, profiles, runner)
+		if e != nil {
 			return nil, ErrService
 		}
+		if config.EnableXAuth && adapter.EnableXAuth(config.XAuthImage) != nil {
+			return nil, ErrService
+		}
+		config.Adapter = adapter
 	}
 	journal, err := operationstore.Open(config.StateDir)
 	if err != nil {

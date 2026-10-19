@@ -206,6 +206,12 @@ func (m *Manager) runRecovery(w *worker) {
 	}
 	fresh := health == operation.HealthTunnelDown
 	if fresh {
+		descriptor, e := profile.DescribeBackend(w.p.Backend.Type)
+		if e != nil || !descriptor.Capabilities.AutomaticRecovery {
+			w.recoveryRetry = false
+			m.fail(w, ErrAuthentication, operation.ObservedDisconnected)
+			return
+		}
 		// Application is stopped before any VPN namespace replacement.
 		err = a.Disconnect(w.ctx, w.p)
 		if err == nil {

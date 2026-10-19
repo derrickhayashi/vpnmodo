@@ -1,4 +1,4 @@
-package l2tp
+package managedvpn
 
 import (
 	"context"
@@ -26,9 +26,9 @@ var namespacePattern = regexp.MustCompile(`^net:\[[0-9]+\]$`)
 var containerPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 type Adapter struct {
-	root, image, application string
-	store                    *profilestore.Store
-	docker                   Runner
+	root, image, xauth, application string
+	store                           *profilestore.Store
+	docker                          Runner
 }
 
 func New(root, image, application string, store *profilestore.Store, docker Runner) (*Adapter, error) {
@@ -41,11 +41,11 @@ func New(root, image, application string, store *profilestore.Store, docker Runn
 	if !imagePattern.MatchString(image) || !imagePattern.MatchString(application) || store == nil || docker == nil || privatefile.Dir(root) != nil {
 		return nil, ErrRuntime
 	}
-	return &Adapter{root, image, application, store, docker}, nil
+	return &Adapter{root: root, image: image, application: application, store: store, docker: docker}, nil
 }
 func (a *Adapter) dir(p profile.Profile) string { return filepath.Join(a.root, p.Name) }
 func (a *Adapter) valid(p profile.Profile) error {
-	if p.Validate() != nil || p.Backend.Type != profile.L2TP {
+	if p.Validate() != nil || !a.Supports(p.Backend.Type) {
 		return lifecycle.ErrUnavailable
 	}
 	return nil
@@ -66,7 +66,7 @@ func (a *Adapter) saved(p profile.Profile) (*deployment, error) {
 		return nil, ErrRuntime
 	}
 	var d deployment
-	if jsonstrict.Decode(data, &d, 2*profile.MaxProfileBytes) != nil || d.SchemaVersion != 1 || d.Revision == 0 || d.Profile.Name != p.Name || d.Profile.Validate() != nil || d.Profile.Backend.Type != profile.L2TP || !tokenPattern.MatchString(d.Token) || !imagePattern.MatchString(d.VPNImage) || !imagePattern.MatchString(d.ApplicationImage) {
+	if jsonstrict.Decode(data, &d, 2*profile.MaxProfileBytes) != nil || d.SchemaVersion != 1 || d.Revision == 0 || d.Profile.Name != p.Name || d.Profile.Validate() != nil || !a.Supports(d.Profile.Backend.Type) || !tokenPattern.MatchString(d.Token) || !imagePattern.MatchString(d.VPNImage) || !imagePattern.MatchString(d.ApplicationImage) {
 		return nil, ErrRuntime
 	}
 	return &d, nil
@@ -121,7 +121,7 @@ func (a *Adapter) owned(ctx context.Context, p profile.Profile) (*deployment, ma
 		c := values[0]
 		labels := c.Config.Labels
 		service := labels["com.docker.compose.service"]
-		if d == nil || !id.Matches(labels["com.docker.compose.project"], labels) || (service != "vpn" && service != "application") || labels[backendLabel] != string(profile.L2TP) || labels[revisionLabel] != d.labels()[revisionLabel] || out[service].ID != "" {
+		if d == nil || !id.Matches(labels["com.docker.compose.project"], labels) || (service != "vpn" && service != "application") || labels[backendLabel] != string(p.Backend.Type) || labels[revisionLabel] != d.labels()[revisionLabel] || out[service].ID != "" {
 			return nil, nil, ErrOwnership
 		}
 		expected := d.VPNImage
@@ -146,7 +146,7 @@ func (a *Adapter) owned(ctx context.Context, p profile.Profile) (*deployment, ma
 			return nil, nil, ErrRuntime
 		}
 		var nets []struct{ Labels map[string]string }
-		if json.Unmarshal(raw, &nets) != nil || len(nets) != 1 || !id.Matches(nets[0].Labels["com.docker.compose.project"], nets[0].Labels) || nets[0].Labels[backendLabel] != string(profile.L2TP) {
+		if json.Unmarshal(raw, &nets) != nil || len(nets) != 1 || !id.Matches(nets[0].Labels["com.docker.compose.project"], nets[0].Labels) || nets[0].Labels[backendLabel] != string(p.Backend.Type) {
 			return nil, nil, ErrOwnership
 		}
 	}
@@ -258,7 +258,7 @@ func (a *Adapter) Check(ctx context.Context, p profile.Profile) (operation.Healt
 	}
 	return operation.HealthHealthy, nil
 }
-func (a *Adapter) CanRecover(p profile.Profile) bool { return p.Backend.Type == profile.L2TP }
+func (a *Adapter) CanRecover(p profile.Profile) bool { return a.Supports(p.Backend.Type) }
 func (a *Adapter) Quiesce(ctx context.Context, p profile.Profile) error {
 	_, cs, err := a.owned(ctx, p)
 	if err != nil {
@@ -359,7 +359,11 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 		if _, err := privatefile.Write(filepath.Join(a.dir(p), "resolv.conf"), []byte("nameserver 127.0.0.1\noptions ndots:0\n")); err != nil {
 			return ErrRuntime
 		}
-		out = deployment{1, p, snapshot.Revision, token, a.image, a.application}
+		image := a.image
+		if p.Backend.Type == profile.XAuth {
+			image = a.xauth
+		}
+		out = deployment{1, p, snapshot.Revision, token, image, a.application}
 		data, err := manifest(out, a.dir(p))
 		if err != nil {
 			return ErrRuntime
@@ -387,10 +391,18 @@ func (a *Adapter) compose(ctx context.Context, p profile.Profile, service string
 	}
 	return nil
 }
-func (a *Adapter) Connect(ctx context.Context, p profile.Profile, _ func(context.Context) (secret.Value, error)) error {
+func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func(context.Context) (secret.Value, error)) error {
 	d, cs, err := a.owned(ctx, p)
 	if err != nil {
 		return err
+	}
+	// An interrupted XAuth login is never resumed: an explicit ensure creates
+	// a fresh attempt/challenge after disposing the old private tmpfs.
+	if p.Backend.Type == profile.XAuth && cs["vpn"].ID != "" {
+		if err = a.Disconnect(ctx, p); err != nil {
+			return err
+		}
+		cs = map[string]container{}
 	}
 	// Already-starting sessions get their remaining bounded startup time, not a
 	// parallel login. Healthy sessions are handled by Observe/Verify instead.
@@ -406,7 +418,11 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, _ func(context
 			return ErrRuntime
 		}
 	} else {
-		for _, image := range []string{a.image, a.application} {
+		image := a.image
+		if p.Backend.Type == profile.XAuth {
+			image = a.xauth
+		}
+		for _, image := range []string{image, a.application} {
 			if _, err = a.docker.Run(ctx, "image", "inspect", image); err != nil {
 				return ErrRuntime
 			}
@@ -424,6 +440,7 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, _ func(context
 			return err
 		}
 	}
+	codeSent := false
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -434,6 +451,39 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, _ func(context
 		c := cs["vpn"]
 		if c.ID == "" || !c.State.Running {
 			return ErrRuntime
+		}
+		if p.Backend.Type == profile.XAuth {
+			state, e := a.exec(ctx, c, "/usr/local/bin/vpn-auth-state")
+			if e != nil {
+				return ErrRuntime
+			}
+			switch strings.TrimSpace(string(state)) {
+			case "starting", "established":
+			case "mfa":
+				if codeSent || challenge == nil {
+					return lifecycle.ErrAuthentication
+				}
+				codeSent = true
+				code, e := challenge(ctx)
+				if e != nil {
+					return e
+				}
+				input := code.BytesForProtectedFile()
+				runner, ok := a.docker.(InputRunner)
+				if !ok {
+					clear(input)
+					return ErrRuntime
+				}
+				_, e = runner.RunInput(ctx, input, "exec", "-i", c.ID, "/usr/local/bin/vpn-submit-code")
+				clear(input)
+				if e != nil {
+					return ErrRuntime
+				}
+			case "failed":
+				return lifecycle.ErrAuthentication
+			default:
+				return ErrRuntime
+			}
 		}
 		if ok, err := a.tunnel(ctx, c); err != nil {
 			return err
@@ -480,7 +530,20 @@ func (a *Adapter) RepairForwarding(ctx context.Context, p profile.Profile) error
 	return ErrRuntime
 }
 
-func (a *Adapter) Supports(b profile.BackendType) bool { return b == profile.L2TP }
+// EnableXAuth is operator configuration, never a profile or RPC option.
+func (a *Adapter) EnableXAuth(image string) error {
+	if image == "" {
+		image = DefaultXAuthImage
+	}
+	if !imagePattern.MatchString(image) {
+		return ErrRuntime
+	}
+	a.xauth = image
+	return nil
+}
+func (a *Adapter) Supports(b profile.BackendType) bool {
+	return b == profile.L2TP || b == profile.XAuth && a.xauth != ""
+}
 
 // Forget is called only under the inactive profile-deletion transaction. It does
 // not reenter the profile store or infer ownership from names alone.

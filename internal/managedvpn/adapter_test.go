@@ -1,4 +1,4 @@
-package l2tp
+package managedvpn
 
 import (
 	"context"

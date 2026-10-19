@@ -51,7 +51,7 @@ func TestProfileRoundTripAndBackendIsolation(t *testing.T) {
 		"bad IPv4":                 strings.Replace(xauthProfile, "203.0.113.10", "999.1.1.1", 1),
 		"leading-zero IPv4":        strings.Replace(xauthProfile, "203.0.113.10", "203.0.113.010", 1),
 		"IPv6 gateway":             strings.Replace(xauthProfile, "203.0.113.10", "2001:db8::1", 1),
-		"wrong backend attributes": strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","dns":["192.0.2.53"]`, 1),
+		"wrong backend attributes": strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","force_encapsulation":true`, 1),
 		"failclosed optout":        strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","fail_closed":false`, 1),
 		"secret in profile":        strings.Replace(xauthProfile, `"name":"example"`, `"name":"example","password":"synthetic-sensitive"`, 1),
 		"duplicate field":          strings.Replace(xauthProfile, `"name":"example"`, `"name":"example","name":"other"`, 1),
@@ -94,7 +94,7 @@ func TestBackendMetadataAndDefaults(t *testing.T) {
 			}
 		}
 		for _, f := range d.ConfigFields {
-			if kind == XAuth && (f.Name == "dns" || f.Name == "force_encapsulation") {
+			if kind == XAuth && f.Name == "force_encapsulation" {
 				t.Fatal("wrong backend fields")
 			}
 		}
