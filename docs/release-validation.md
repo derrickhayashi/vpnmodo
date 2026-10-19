@@ -52,3 +52,34 @@ Native macOS terminal acceptance also runs `python3 tests/smoke_terminal.py`.
 This uses synthetic input on a controlling PTY to verify idle waiting, hidden
 MFA/credential input, cancellation and restored terminal settings. Version/help
 checks alone do not exercise these prompts.
+
+## Native onboarding follow-up: Docker stores and hidden input
+
+Revision `8deb0974a931` includes explicit noninteractive-sudo host registration,
+the schema-2 portable image loader/installed receipt, a stable public SSH proxy,
+and native hidden-terminal input fixes. The portable loader was exercised against
+Docker 29.1.3 with its containerd image store using the existing verified ARM64
+production image content. All four destination-local IDs resolved and the
+controller binary identity matched. Classic-store ID resolution and reserved-tag
+collision refusal have unit coverage; a fresh complete native classic-store
+bundle build/load remains to be repeated for the schema-2 format.
+
+The native macOS terminal harness passed hidden credential/MFA input, waiting,
+cancellation and terminal restoration. Local Go race tests/vet and 84 Python
+tests passed. Synthetic Expect replay distinguishes repeated PIN, client exit
+after MFA, post-MFA timeout and an established idle session. The controller also
+preserves authentication classification when a concurrent health exec is killed
+as the VPN process exits.
+
+A native ARM64 functional trial used these compiled controller changes and the
+updated Expect script layered on the previously verified production base images.
+It completed managed XAuth login and private TCP checks, then authenticated SSH
+through the public proxy. A protected-route MTU/MSS workaround was required for
+the larger SSH exchange; lowering only the namespace interface MTU did not help.
+This is tracked by #21 and is not yet persisted across fresh login/rekey. These
+patched trial images are not a new full production-Dockerfile release bundle.
+
+PR #20 remains draft. Issue #9 stays open for #21, fresh schema-2 bundle acceptance,
+legacy cutover/rollback with fresh MFA, and the remaining native amd64 matrix.
+No raw deployment settings, credentials, transcripts or packet metadata belong
+in this record. GitHub Actions remains disabled.
