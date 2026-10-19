@@ -1,9 +1,6 @@
 --- a/src/charon-cmd/cmd/cmd_connection.c
 +++ b/src/charon-cmd/cmd/cmd_connection.c
-@@ -350,6 +350,13 @@
- 		.mode = MODE_TUNNEL,
- 	};
- 
+@@ -352,0 +353,7 @@
 +	/* Only the kernel's completed ESP transform may mark NAT-T packets for
 +	 * the namespace firewall. Workloads have no capability to set SO_MARK. */
 +	if (getenv("VPNMODO_MANAGED_XAUTH"))
@@ -11,13 +8,7 @@
 +		child.set_mark_out.value = 0x76706e6d;
 +		child.set_mark_out.mask = 0xffffffff;
 +	}
- 	child_cfg = child_cfg_create("cmd", &child);
- 	if (this->child_proposals->get_count(this->child_proposals))
- 	{
-@@ -587,5 +594,22 @@
- 			(callback_job_cb_t)initiate, this, NULL,
- 			(callback_job_cancel_t)return_false, JOB_PRIO_CRITICAL));
- 
+@@ -589,0 +597,17 @@
 +	/* Managed usernames are credentials: read the protected mount, never argv.
 +	 * The legacy CLI and its defaults remain unchanged. */
 +	if (getenv("VPNMODO_MANAGED_XAUTH"))
@@ -35,14 +26,9 @@
 +		this->xautheap = strndup(username, length);
 +		memwipe(username, sizeof(username));
 +	}
- 	return &this->public;
- }
 --- a/src/charon-cmd/cmd/cmd_creds.c
 +++ b/src/charon-cmd/cmd/cmd_creds.c
-@@ -112,6 +112,13 @@
- 	}
- 	shared = shared_key_create(type, chunk_clone(chunk_from_str(pwd)));
- 	memwipe(pwd, strlen(pwd));
+@@ -114,0 +115,7 @@
 +	/* Managed XAuth codes/passwords must never be replayed from this cache.
 +	 * A second request reaches the one-attempt prompt guard instead. */
 +	if (getenv("VPNMODO_MANAGED_XAUTH") &&
@@ -50,6 +36,3 @@
 +	{
 +		return shared;
 +	}
- 	/* cache password in case it is required more than once */
- 	this->creds->add_shared(this->creds, shared, NULL);
- 	return shared->get_ref(shared);
