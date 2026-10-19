@@ -1,6 +1,12 @@
-# VPN sidecar collection
+# vpnmodo
 
 Private development workspace: see [development boundaries and checks](docs/development.md).
+
+The planned `vpnmodo` CLI manages VPN profiles through a containerized
+`vpnmodo-controller` on each user's Linux VM. See the
+[implementation requirements](docs/implementation-requirements.md) and
+[staged delivery plan](docs/implementation-plan.md). The new control layer is
+not implemented yet; the existing backends and commands below remain available.
 
 Reusable Docker VPN backends for SSH, Ansible and private service access.
 Customer projects own their profiles, deployment settings and runtime state;

@@ -13,6 +13,8 @@ visibility is an additional safeguard, not permission to store customer data.
 - Keep the original public repository read-only. Do not push or publish there
   without an explicit request. A future public PR must use reviewed patches on
   a branch based on the original repository; never merge this private history.
+- New product/CLI name: `vpnmodo`; controller executable/image/service:
+  `vpnmodo-controller`. Keep existing legacy launcher commands operational.
 - Workstation and VM each belong to one user. The planned control layer uses Go
   and JSON-RPC over SSH; existing backend behavior remains the migration base.
 
