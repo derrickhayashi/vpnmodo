@@ -75,7 +75,7 @@ IPv6 is disabled for all/default interfaces and its filter policies drop traffic
 Loopback egress is limited to 127.0.0.1, excluding Docker's embedded resolver at
 127.0.0.11. An optional XAuth `dns` list names IPv4 VPN resolvers; local dnsmasq
 forwards only to that list, and its traffic still requires IPsec. It has no host or
-ordinary-resolver fallback. Without a configured DNS list, use an IP health target;
+ordinary-resolver fallback. Without a configured DNS list, profile validation requires an IPv4 health target;
 private hostname resolution is unavailable. Both containers receive a read-only
 resolver file pointing to 127.0.0.1. This fixed nonsecret file is mode 0444 for the
 workload UID; its host parent remains 0700. Credentials remain 0600.

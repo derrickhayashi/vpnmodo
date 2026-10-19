@@ -8,7 +8,9 @@ Persistent operation coordination is described in the
 [managed L2TP adapter](../../docs/design/005-managed-l2tp.md) now supplies real
 Docker/Compose lifecycle and controller-owned recovery. `runtime_enabled` reports
 that adapter wiring; image/kernel prerequisites and a verified VPN are separate
-checks. XAuth runtime remains unavailable pending its mandatory enforcement stage.
+checks. The [managed XAuth adapter](../../docs/design/006-managed-xauth.md) adds
+secure MFA and mandatory kernel-enforced isolation, with explicit authentication
+after tunnel loss.
 
 ## Prerequisites and build
 
@@ -40,10 +42,13 @@ backend/application images explicitly on the VM before connection:
 
 ```sh
 docker build -t vpnmodo-l2tp:dev containers/l2tp-ipsec
+docker build -t vpnmodo-xauth:dev containers/ipsec-xauth
 docker pull alpine:3.22
 ```
 
-The VM needs PPP (`ppp_generic`, `ppp_async`, `/dev/ppp`) and kernel IPsec support.
+The VM needs kernel IPsec/netfilter support. XAuth requires native XFRM output
+marks and IPv6-disable sysctls, tested on Ubuntu 24.04. L2TP additionally needs
+PPP (`ppp_generic`, `ppp_async`, `/dev/ppp`).
 xl2tpd can use userspace L2TP when optional kernel L2TP acceleration is absent.
 The adapter never installs modules, creates host devices, builds or pulls images.
 

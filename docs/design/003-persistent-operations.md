@@ -1,7 +1,8 @@
 # Persistent operations and lifecycle coordination
 
 Issue #5 supplies a service-owned operation manager and a protected bbolt journal.
-The [managed L2TP adapter](005-managed-l2tp.md) now runs in the production controller; XAuth remains unavailable. Synthetic
+The managed [L2TP](005-managed-l2tp.md) and [XAuth](006-managed-xauth.md) adapters
+run in the production controller. Synthetic
 adapters exist only in Go tests and a separate acceptance image built from a Go
 test binary. There is no production flag/environment variable/profile value that
 activates the synthetic backend. Profile edits remain synchronous atomic
@@ -132,7 +133,9 @@ proves a tunnel is healthy.
 The [recovery policy](004-recovery-policy.md) adds bounded background monitoring,
 closed health classifications and persisted retry/cooldown metadata. It runs only
 for adapters implementing the recovery interface. The [L2TP adapter](005-managed-l2tp.md) supplies real backend activation and
-Docker ownership enforcement.
+Docker ownership enforcement. XAuth also monitors health and repairs a detached
+application, but tunnel loss requires explicit fresh authentication. Its kernel
+filter protects traffic independently of monitoring.
 
 ## Validation
 

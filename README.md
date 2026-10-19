@@ -118,7 +118,8 @@ See the [operation guide](docs/design/003-persistent-operations.md) for persiste
 intent, status and cancellation, and the
 [recovery policy](docs/design/004-recovery-policy.md) for bounded retries and
 health classification. The [managed L2TP runtime](docs/design/005-managed-l2tp.md)
-is now connected; XAuth activation remains a later stage. See
+and [managed XAuth runtime](docs/design/006-managed-xauth.md) are connected.
+XAuth uses secure MFA and mandatory kernel packet enforcement. See
 [v1 profiles, protocol and operations](docs/design/001-v1-model.md) for schemas, API
 rules, lifecycle policy and release targets. Synthetic JSON profile examples live
 in `examples/profiles/v1/`. Existing standalone deployments remain supported.

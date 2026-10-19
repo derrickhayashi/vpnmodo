@@ -1,5 +1,4 @@
-// Package controller runs VM-local discovery, status and profile administration.
-// VPN connection/operation handlers come in subsequent stages.
+// Package controller runs VM-local profile administration and durable VPN operations.
 package controller
 
 import (
@@ -36,9 +35,9 @@ type Status struct {
 	RuntimeEnabled bool                `json:"runtime_enabled"`
 }
 type Config struct {
-	EnableL2TP, EnableXAuth                   bool
+	EnableManagedVPN, EnableXAuth             bool
 	XAuthImage                                string
-	L2TPRunner                                managedvpn.Runner
+	DockerRunner                              managedvpn.Runner
 	L2TPImage, ApplicationImage, DockerBinary string
 	Socket, StateDir, DockerSocket, Version   string
 	Adapter                                   lifecycle.Adapter
@@ -96,12 +95,12 @@ func Listen(config Config) (*Server, error) {
 	if err != nil {
 		return nil, ErrService
 	}
-	if config.EnableL2TP && config.Adapter == nil {
+	if config.EnableManagedVPN && config.Adapter == nil {
 		binary := config.DockerBinary
 		if binary == "" {
 			binary = "/usr/local/bin/docker"
 		}
-		runner := config.L2TPRunner
+		runner := config.DockerRunner
 		if runner == nil {
 			runner = managedvpn.CLI{Binary: binary, Socket: config.DockerSocket}
 		}

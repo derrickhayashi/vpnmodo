@@ -88,7 +88,13 @@ func (p Profile) Validate() error {
 	if !ValidName(p.Name) || !validHost(p.Health.Host) || p.Health.Port < 1 || p.Health.Port > 65535 {
 		return ErrProfile
 	}
-	return p.Backend.Validate()
+	if err := p.Backend.Validate(); err != nil {
+		return err
+	}
+	if p.Backend.Type == XAuth && len(p.Backend.XAuth.DNS) == 0 && !ipv4(p.Health.Host) {
+		return ErrProfile
+	}
+	return nil
 }
 
 func (b Backend) Validate() error {

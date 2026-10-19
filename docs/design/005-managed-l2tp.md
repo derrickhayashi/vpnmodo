@@ -1,10 +1,8 @@
 # Managed L2TP/IPsec runtime
 
 Issue #6 now connects the persistent lifecycle/recovery coordinator to a real
-L2TP adapter. Production `vpnmodo-controller serve` enables this backend. XAuth
-schemas remain discoverable, but its connection operations return backend
-unavailable before recording connected intent. XAuth activation and mandatory
-packet isolation are issue #7. Service forwards remain issue #8.
+L2TP adapter. Production `vpnmodo-controller serve` enables this backend. The [managed XAuth adapter](006-managed-xauth.md) adds separate MFA and mandatory
+packet isolation in issue #7. Service forwards remain issue #8.
 
 ## Runtime and images
 

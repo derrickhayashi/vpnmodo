@@ -215,7 +215,8 @@ func (m *Manager) reconcileConnected(previous operation.Connection) {
 	record := m.state.Operations[c.LastOperation]
 	interruptedLogin := snapshot.Profile.Backend.Type == profile.XAuth && record.Kind == operation.EnsureConnection && record.Failure == operation.Interrupted
 	m.mu.Unlock()
-	established, err := false, error(nil)
+	var established bool
+	var err error
 	if interruptedLogin {
 		err = m.options.Adapter.Disconnect(ctx, snapshot.Profile)
 	} else {

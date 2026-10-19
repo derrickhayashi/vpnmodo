@@ -163,8 +163,10 @@ mutation/list/doctor payloads are completed with their owning implementation
 issues. The controller skeleton implements hello, system status and backend
 discovery over verified SSH and a private Unix socket. Profile management is implemented as described in the
 [storage guide](002-profile-storage.md). Connection/operation RPC handlers are implemented with the
-[operation manager](003-persistent-operations.md); the [L2TP adapter](005-managed-l2tp.md) is enabled and XAuth remains unavailable
-and production `runtime_enabled` reports the L2TP adapter wiring.
+[operation manager](003-persistent-operations.md). The managed [L2TP](005-managed-l2tp.md)
+and [XAuth](006-managed-xauth.md) adapters are enabled. Production
+`runtime_enabled` reports that wiring; backend images and verified connectivity
+remain separate checks.
 
 `operation.changed` is a server notification without an ID. Client notifications
 must never mutate state and receive no response, including when rejected. Request

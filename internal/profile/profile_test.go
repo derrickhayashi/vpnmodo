@@ -44,25 +44,26 @@ func TestProfileRoundTripAndBackendIsolation(t *testing.T) {
 		}
 	}
 	for name, input := range map[string]string{
-		"future schema":            strings.Replace(xauthProfile, `"schema_version":1`, `"schema_version":2`, 1),
-		"missing schema":           strings.Replace(xauthProfile, `"schema_version":1,`, ``, 1),
-		"wrong case":               strings.Replace(xauthProfile, `"schema_version"`, `"SCHEMA_VERSION"`, 1),
-		"hostname xauth":           strings.Replace(xauthProfile, "203.0.113.10", "vpn.example.com", 1),
-		"bad IPv4":                 strings.Replace(xauthProfile, "203.0.113.10", "999.1.1.1", 1),
-		"leading-zero IPv4":        strings.Replace(xauthProfile, "203.0.113.10", "203.0.113.010", 1),
-		"IPv6 gateway":             strings.Replace(xauthProfile, "203.0.113.10", "2001:db8::1", 1),
-		"wrong backend attributes": strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","force_encapsulation":true`, 1),
-		"failclosed optout":        strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","fail_closed":false`, 1),
-		"secret in profile":        strings.Replace(xauthProfile, `"name":"example"`, `"name":"example","password":"synthetic-sensitive"`, 1),
-		"duplicate field":          strings.Replace(xauthProfile, `"name":"example"`, `"name":"example","name":"other"`, 1),
-		"null config":              strings.Replace(xauthProfile, `{"server":"203.0.113.10"}`, `null`, 1),
-		"null port":                strings.Replace(xauthProfile, `"port":22`, `"port":null`, 1),
-		"bad port":                 strings.Replace(xauthProfile, `"port":22`, `"port":65536`, 1),
-		"unsafe name":              strings.Replace(xauthProfile, `"name":"example"`, `"name":"../example"`, 1),
-		"unsafe host":              strings.Replace(l2tpProfile, "vpn.example.com", "vpn.example.com;id", 1),
-		"invalid numeric host":     strings.Replace(l2tpProfile, "vpn.example.com", "999.1.1.1", 1),
-		"unknown backend":          strings.Replace(l2tpProfile, "l2tp-ipsec", "tailscale", 1),
-		"proposal command":         strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","ike_proposals":["aes256;id"]`, 1),
+		"future schema":                   strings.Replace(xauthProfile, `"schema_version":1`, `"schema_version":2`, 1),
+		"missing schema":                  strings.Replace(xauthProfile, `"schema_version":1,`, ``, 1),
+		"wrong case":                      strings.Replace(xauthProfile, `"schema_version"`, `"SCHEMA_VERSION"`, 1),
+		"hostname xauth":                  strings.Replace(xauthProfile, "203.0.113.10", "vpn.example.com", 1),
+		"bad IPv4":                        strings.Replace(xauthProfile, "203.0.113.10", "999.1.1.1", 1),
+		"leading-zero IPv4":               strings.Replace(xauthProfile, "203.0.113.10", "203.0.113.010", 1),
+		"IPv6 gateway":                    strings.Replace(xauthProfile, "203.0.113.10", "2001:db8::1", 1),
+		"wrong backend attributes":        strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","force_encapsulation":true`, 1),
+		"hostname health without VPN DNS": strings.Replace(xauthProfile, `"host":"192.0.2.10"`, `"host":"health.example.com"`, 1),
+		"failclosed optout":               strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","fail_closed":false`, 1),
+		"secret in profile":               strings.Replace(xauthProfile, `"name":"example"`, `"name":"example","password":"synthetic-sensitive"`, 1),
+		"duplicate field":                 strings.Replace(xauthProfile, `"name":"example"`, `"name":"example","name":"other"`, 1),
+		"null config":                     strings.Replace(xauthProfile, `{"server":"203.0.113.10"}`, `null`, 1),
+		"null port":                       strings.Replace(xauthProfile, `"port":22`, `"port":null`, 1),
+		"bad port":                        strings.Replace(xauthProfile, `"port":22`, `"port":65536`, 1),
+		"unsafe name":                     strings.Replace(xauthProfile, `"name":"example"`, `"name":"../example"`, 1),
+		"unsafe host":                     strings.Replace(l2tpProfile, "vpn.example.com", "vpn.example.com;id", 1),
+		"invalid numeric host":            strings.Replace(l2tpProfile, "vpn.example.com", "999.1.1.1", 1),
+		"unknown backend":                 strings.Replace(l2tpProfile, "l2tp-ipsec", "tailscale", 1),
+		"proposal command":                strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","ike_proposals":["aes256;id"]`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := DecodeProfile([]byte(input))
@@ -165,4 +166,12 @@ func FuzzDecodeProfile(f *testing.F) {
 			t.Fatal("accepted profile cannot round trip", err)
 		}
 	})
+}
+
+func TestXAuthHostnameHealthRequiresExplicitVPNResolver(t *testing.T) {
+	input := strings.Replace(xauthProfile, `"host":"192.0.2.10"`, `"host":"health.example.com"`, 1)
+	input = strings.Replace(input, `"server":"203.0.113.10"`, `"server":"203.0.113.10","dns":["192.0.2.53"]`, 1)
+	if _, err := DecodeProfile([]byte(input)); err != nil {
+		t.Fatal(err)
+	}
 }
