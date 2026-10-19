@@ -25,3 +25,19 @@ launcher with a fresh emailed code. Do not assume PPP/DNS setup from L2TP.
 Both backends use `Dockerfile`, image-only `compose.yaml`, and an explicit
 `compose.build.yaml` override for local builds. The launcher builds with that
 override before runtime deployment.
+
+### Managed XAuth safe failure diagnostics
+
+Managed attempts suppress transcripts and never retry authentication. Fixed
+process exit reasons can be recovered from Docker lifecycle events after cleanup:
+20 repeated/unexpected PSK prompt; 21 password prompt; 22 PIN prompt;
+23 initial login timeout; 24 MFA input timeout; 25 timeout after MFA submission;
+26 client exit before submission; 27 client exit after submission;
+28 invalid MFA input; 29 invalid mounted credentials;
+30 establishment before required MFA; 31 established client exit.
+Exit 2 remains the generic authentication guard. An exit reason identifies a
+stage, not proof that a user entered an incorrect code. Repeated prompts or
+client exits require diagnosis before another explicit attempt with fresh MFA.
+A concurrent health-check exec may exit 137 when the VPN process exits; the
+controller reads the owned VPN container's status to preserve authentication
+failure classification. No credential or raw client output is retained.

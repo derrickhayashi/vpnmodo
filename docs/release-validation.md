@@ -47,3 +47,8 @@ These onboarding checks are a subset, not a replacement for the previous full
 for explicit legacy adoption/rollback and the remaining platform release gate.
 The unconfirmed startup observation #19 remains open after its separate 20-pass
 replacement investigation; no backend fix was claimed for it.
+
+Native macOS terminal acceptance also runs `python3 tests/smoke_terminal.py`.
+This uses synthetic input on a controlling PTY to verify idle waiting, hidden
+MFA/credential input, cancellation and restored terminal settings. Version/help
+checks alone do not exercise these prompts.

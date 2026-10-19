@@ -66,19 +66,7 @@ func prompt(ctx context.Context) (profile.Credentials, error) {
 		return profile.Credentials{}, ErrInput
 	}
 	defer term.Restore(fd, state)
-	finished := make(chan struct{})
-	stopped := make(chan struct{})
-	defer func() { close(finished); <-stopped }()
-	go func() {
-		defer close(stopped)
-		select {
-		case <-ctx.Done():
-			_ = term.Restore(fd, state)
-			_ = terminal.Close()
-		case <-finished:
-		}
-	}()
-	reader := term.NewTerminal(terminal, "")
+	reader := term.NewTerminal(terminalIO{ctx: ctx, file: terminal, fd: fd}, "")
 	values := make([]secret.Value, 3)
 	for i, label := range []string{"Username", "Password", "Pre-shared key"} {
 		if ctx.Err() != nil {

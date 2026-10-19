@@ -4,6 +4,7 @@
 log_user 0
 exp_internal 0
 set timeout 90
+set stage initial
 set established 0
 set psk_sent 0
 set password_sent 0
@@ -25,12 +26,18 @@ proc shutdown {status} {
     }
     exit $status
 }
-proc failure {} {shutdown 2}
+# Fixed exit reasons survive container cleanup through Docker lifecycle events.
+# They contain no transcript, endpoint, username or submitted credential.
+proc failure {{reason 2}} {shutdown $reason}
+proc timed_out {} {
+    global stage
+    switch -- $stage { initial {failure 23} waiting {failure 24} submitted {failure 25} default {failure 2} }
+}
 trap {shutdown 0} {SIGTERM SIGINT SIGHUP}
 proc credential {name} {
     set f [open /run/secrets/vpn_$name r]
     set v [read $f 4097]; close $f
-    if {[string length $v] == 0 || [string length $v] > 4096 || [regexp {[\r\n\x00]} $v]} {failure}
+    if {[string length $v] == 0 || [string length $v] > 4096 || [regexp {[\r\n\x00]} $v]} {failure 29}
     return $v
 }
 set route [exec ip -4 route get $env(VPN_SERVER)]
@@ -44,44 +51,49 @@ stty -echo < $spawn_out(slave,name)
 while {1} {
     if {!$established} {
         set timeout [expr {$deadline - [clock seconds]}]
-        if {$timeout <= 0} {failure}
+        if {$timeout <= 0} {timed_out}
     } else {set timeout -1}
     expect {
         -exact "Preshared Key: " {
-            if {$psk_sent || $established} {failure}
+            if {$psk_sent || $established} {failure 20}
             set psk_sent 1
             send -- "[credential psk]\r"
         }
         -exact "EAP password: " {
-            if {!$psk_sent || $password_sent || $established} {failure}
+            if {!$psk_sent || $password_sent || $established} {failure 21}
             set password_sent 1
             send -- "[credential password]\r"
         }
         -exact "PIN: " {
-            if {!$password_sent || $otp_sent || $established} {failure}
+            if {!$password_sent || $otp_sent || $established} {failure 22}
             set otp_sent 1
             state mfa
+            set stage waiting
             set deadline [expr {[clock seconds] + 180}]
             while {![file exists /run/vpn/code]} {
-                if {[clock seconds] >= $deadline} {failure}
+                if {[clock seconds] >= $deadline} {timed_out}
                 after 100
             }
             set f [open /run/vpn/code r]; set code [read $f 12]; close $f
             file delete /run/vpn/code
-            if {![regexp {^[0-9]{4,10}$} $code]} {failure}
+            if {![regexp {^[0-9]{4,10}$} $code]} {failure 28}
             state submitted
+            set stage submitted
             send -- "$code\r"; unset code
             set deadline [expr {[clock seconds] + 90}]
         }
         -re {([^\r\n]+)\r?\n} {
             if {[regexp {CHILD_SA .* established with SPIs} $expect_out(1,string)]} {
-                if {!$password_sent || !$otp_sent} {failure}
+                if {!$password_sent || !$otp_sent} {failure 30}
                 set established 1
+                set stage established
                 state established
                 close [open /run/vpn/ready w 0600]
             }
         }
-        timeout {failure}
-        eof {failure}
+        timeout {timed_out}
+        eof {
+            switch -- $stage { submitted {failure 27} established {failure 31} default {failure 26} }
+        }
     }
 }
