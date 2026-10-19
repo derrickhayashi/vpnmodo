@@ -5,6 +5,7 @@ our gateway. Capture filters the VPN's physical MAC: encrypted packets forwarded
 by the gateway have a different MAC, while a plaintext fallback is observable.
 """
 import json
+import re
 from pathlib import Path
 import time
 import uuid
@@ -68,11 +69,19 @@ class Lab:
     def capture(self, tag, action, expected=0):
         vpn = self.ids()["vpn"]
         mac = vpn["NetworkSettings"]["Networks"][NETWORK]["MacAddress"]
+        assert re.fullmatch(r"[0-9a-f:]{17}", mac)
         path = "/run/lab/" + tag
         rule = "ether src " + mac + " and (tcp port 28080 or udp port 28081 or port 53)"
-        script = 'tcpdump -n -i eth0 -U -w ' + path + '.pcap "' + rule + '" >/dev/null 2>&1 & p=$!; echo $p > ' + path + '.pid; wait $p; touch ' + path + '.done'
+        script = 'tcpdump -Z root -n -i eth0 -U -w ' + path + '.pcap "' + rule + '" >' + path + '.log 2>&1 & p=$!; echo $p > ' + path + '.pid; wait $p; touch ' + path + '.done'
         command(["docker", "exec", "-d", self.sink, "sh", "-c", script])
-        time.sleep(0.4)
+        for _ in range(30):
+            ready = command(["docker", "exec", self.sink, "test", "-s", path + ".pcap"], required=False).returncode == 0
+            done = command(["docker", "exec", self.sink, "test", "-f", path + ".done"], required=False).returncode == 0
+            if done:
+                raise RuntimeError("synthetic packet capture could not start")
+            if ready: break
+            time.sleep(0.1)
+        else: raise RuntimeError("synthetic packet capture did not become ready")
         try:
             action()
             time.sleep(0.5)
@@ -168,6 +177,14 @@ def begin(cli, directory, state_root, bridge):
             command(["docker", "exec", cid, "vpn-servicecheck"])
             lab.probes(application=True)
         lab.capture("authenticated-child-rekey", rekey)
+        # Neither Docker DNS nor IPv6 can bypass the namespace policy.
+        app = ids["application"]["Id"]
+        assert command(["docker", "exec", app, "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"]).stdout.strip() == b"1"
+        assert command(["docker", "exec", app, "cat", "/proc/sys/net/ipv6/conf/default/disable_ipv6"]).stdout.strip() == b"1"
+        assert command(["docker", "exec", app, "timeout", "2", "nslookup", "private.example", "127.0.0.11"], required=False).returncode != 0
+        assert command(["docker", "exec", app, "nc", "-6", "-z", "-w", "1", "2001:db8::2", "28080"], required=False).returncode != 0
+        assert command(["docker", "exec", app, "sh", "-c", "echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6"], required=False).returncode != 0
+        print("PASS: Docker DNS fallback and workload IPv6 bypass are blocked", flush=True)
         # A quiet interval longer than the old Expect login timeout must survive.
         time.sleep(95)
         command(["docker", "exec", cid, "vpn-servicecheck"])
@@ -233,6 +250,23 @@ def begin(cli, directory, state_root, bridge):
         command(["docker", "exec", lab.gateway, "swanctl", "--reload-settings"])
         lab.disconnect()
         print("PASS: repeated real XAuth PIN request is refused without cached code replay", flush=True)
+        # Crash while awaiting a code: dispose the interrupted namespace and
+        # challenge, preserve the vault, and require a new explicit attempt.
+        pending = lab.ensure_challenge()
+        old_vpn = lab.ids()["vpn"]["Id"]
+        command(["docker", "kill", "vpnmodo-controller"])
+        for _ in range(60):
+            if cli("host", "check", "example", "--json", required=False).returncode == 0:
+                break
+            time.sleep(0.3)
+        interrupted = lab.wait_operation(pending["id"], "failed")
+        assert interrupted["failure"]["code"] == -32008
+        for _ in range(60):
+            if not lab.ids(): break
+            time.sleep(0.2)
+        assert not lab.ids(), "interrupted login namespace survived controller restart"
+        lab.disconnect()
+        print("PASS: controller crash discards interrupted MFA namespace without fresh login", flush=True)
         # Establish another real session for controller replacement acceptance.
         lab.authenticate()
         lab.vpn_before_restart = lab.ids()["vpn"]["Id"]

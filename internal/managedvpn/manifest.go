@@ -60,6 +60,7 @@ func manifest(d deployment, root string) ([]byte, error) {
 		vpn := services["vpn"].(map[string]any)
 		delete(vpn, "devices")
 		vpn["init"] = true
+		vpn["dns"] = []string{"127.0.0.1"}
 		vpn["entrypoint"] = []string{"/usr/local/bin/vpn-managed-xauth"}
 		vpn["read_only"] = true
 		mounts := []any{map[string]any{"type": "bind", "source": filepath.Join(root, "xauth-resolv.conf"), "target": "/etc/resolv.conf", "read_only": true, "bind": map[string]bool{"create_host_path": false}}}

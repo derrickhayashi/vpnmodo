@@ -15,8 +15,18 @@ proc state {value} {
     close $f
     file rename -force /run/vpn/state.new /run/vpn/state
 }
-proc failure {} {state failed; catch {exec kill -TERM [exp_pid]}; exit 2}
-trap {failure} {SIGTERM SIGINT SIGHUP}
+proc shutdown {status} {
+    global spawn_id
+    state failed
+    if {[info exists spawn_id]} {
+        catch {exec kill -TERM [exp_pid -i $spawn_id]}
+        set timeout 1
+        catch {expect -i $spawn_id {eof {catch {wait -i $spawn_id}} timeout {catch {exec kill -KILL [exp_pid -i $spawn_id]}}}}
+    }
+    exit $status
+}
+proc failure {} {shutdown 2}
+trap {shutdown 0} {SIGTERM SIGINT SIGHUP}
 proc credential {name} {
     set f [open /run/secrets/vpn_$name r]
     set v [read $f 4097]; close $f
