@@ -60,6 +60,7 @@ type L2TPConfig struct {
 }
 
 type XAuthConfig struct {
+	DNS          []string `json:"dns,omitempty" format:"ipv4-list"`
 	Server       string   `json:"server" required:"true" format:"ipv4"`
 	IKEProposals []string `json:"ike_proposals,omitempty" format:"proposal-list"`
 	ESPProposals []string `json:"esp_proposals,omitempty" format:"proposal-list"`
@@ -87,7 +88,13 @@ func (p Profile) Validate() error {
 	if !ValidName(p.Name) || !validHost(p.Health.Host) || p.Health.Port < 1 || p.Health.Port > 65535 {
 		return ErrProfile
 	}
-	return p.Backend.Validate()
+	if err := p.Backend.Validate(); err != nil {
+		return err
+	}
+	if p.Backend.Type == XAuth && len(p.Backend.XAuth.DNS) == 0 && !ipv4(p.Health.Host) {
+		return ErrProfile
+	}
+	return nil
 }
 
 func (b Backend) Validate() error {
@@ -110,8 +117,13 @@ func (b Backend) Validate() error {
 		if b.XAuth == nil || b.L2TP != nil {
 			return ErrProfile
 		}
-		if !ipv4(b.XAuth.Server) {
+		if !ipv4(b.XAuth.Server) || len(b.XAuth.DNS) > 8 {
 			return ErrProfile
+		}
+		for _, address := range b.XAuth.DNS {
+			if !ipv4(address) {
+				return ErrProfile
+			}
 		}
 		return validateProposals(b.XAuth.IKEProposals, b.XAuth.ESPProposals)
 	default:
@@ -222,6 +234,7 @@ func EffectiveL2TPConfig(c L2TPConfig) L2TPConfig {
 }
 
 func EffectiveXAuthConfig(c XAuthConfig) XAuthConfig {
+	c.DNS = append([]string(nil), c.DNS...)
 	c.IKEProposals = proposalsOr(c.IKEProposals, []string{"aes128-sha1-modp1536", "aes256-sha256-modp1536"})
 	c.ESPProposals = proposalsOr(c.ESPProposals, []string{"aes128-sha1-modp1536", "aes256-sha1-modp1536"})
 	return c

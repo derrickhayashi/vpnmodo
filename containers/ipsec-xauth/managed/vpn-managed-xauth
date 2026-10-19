@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+umask 077
+mkdir -p /run/vpn
+chmod 700 /run/vpn
+printf 'starting\n' > /run/vpn/state
+vpn-enforce
+# The default Docker resolver is never used for managed private lookups.
+if [ -n "${VPN_DNS:-}" ]; then
+    set --
+    oldifs=$IFS; IFS=,
+    for address in $VPN_DNS; do set -- "$@" "--server=$address"; done
+    IFS=$oldifs
+    dnsmasq --keep-in-foreground --no-resolv --no-hosts --bind-interfaces --listen-address=127.0.0.1 --user=nobody --pid-file=/run/vpn/dns.pid "$@" >/dev/null 2>&1 &
+fi
+# charon-cmd otherwise uses ephemeral IKE ports. Fixed ports let the namespace
+# firewall keep precise peer/source/destination exceptions.
+cat > /run/vpn/strongswan.conf <<'CONFIG'
+include /etc/strongswan.conf
+charon-cmd {
+    port = 500
+    port_nat_t = 4500
+}
+CONFIG
+export STRONGSWAN_CONF=/run/vpn/strongswan.conf
+export VPNMODO_MANAGED_XAUTH=1
+# All strongSwan diagnostics and PTY contents stay out of Docker logs/protocol.
+exec /usr/local/bin/vpn-xauth-expect >/dev/null 2>&1

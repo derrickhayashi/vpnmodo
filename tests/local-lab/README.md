@@ -67,9 +67,19 @@ runtime state. The outer lab image remains cached for reuse. Remove only the
 bundle directory you created when finished.
 
 The run covers controller setup/repair and profile handling, persistent operations
-and simulated MFA/recovery, and the real IPsec/L2TP/PPP gateway/client suite with
-DNS, application network sharing and recovery. XAuth protocol MFA and packet
-observed fail-closed acceptance remain the next implementation stage.
+and simulated MFA/recovery, the real IPsec/L2TP/PPP gateway/client suite, and the
+real aggressive PSK/XAUTH_PASSCODE suite. XAuth uses a separate reachable escape
+sink with a deliberate capture positive control before zero-plaintext assertions.
+It tests DNS/IPv6, rekey, quiet sessions, active TCP/UDP flows after SA/policy loss,
+MFA failure/expiry/repetition and controller restart. Only the test binary shortens
+the MFA window to 45 seconds; production keeps its normal deadline. The quiet
+session interval exceeds 90 seconds while controller probes are paused.
+
+The synthetic observer runs the tcpdump binary under a lab-specific executable
+path. Ubuntu's host tcpdump AppArmor attachment otherwise prevents the nested
+container's helper from signalling it, even with a container unconfined setting.
+This keeps capture lifecycle deterministic without changing VM AppArmor policy
+or production container configuration.
 
 The runner writes its final exit code to /tmp/vpnmodo-lab.exit inside the outer
 container. For remote automation, capture output and poll this file so a held
@@ -78,10 +88,32 @@ the whole suite passed.
 
 ## Current validation
 
+The complete production controller Dockerfile also builds successfully on the
+local ARM64 VM. Go race tests and vet pass; the CLI cross-builds for macOS/Linux
+arm64/amd64 and the controller for Linux arm64/amd64.
+
 Ubuntu 24.04 ARM64 local acceptance passes verified SSH/controller/profile
 handling and the full real IKEv1/IPsec/L2TP/PPP/TCP/DNS suite, including endpoint
 outage, namespace repair, tunnel-loss recovery, failed recovery, explicit
 stop/reconnect, controller recreation and credential disposal.
+
+The XAuth suite also passes real aggressive PSK/XAUTH_PASSCODE over NAT-T,
+private TCP/DNS, authenticated CHILD rekey and quiet sessions. Physical-veth
+positive controls observe 2 unprivileged IKE-port probes before login, 4 ordinary
+plaintext probes, and 10 packets after policy/routing loss with enforcement
+intentionally opened. Every protected phase observes zero client plaintext,
+including existing TCP/UDP flows with SAs/policies removed while the controller
+and client are suspended. Kernel counters also require zero received plaintext
+and no dropped capture packets. The suite covers IPv6/Docker DNS bypass refusal,
+SO_MARK forgery refusal, expired/incorrect/repeated MFA, actual controller-process
+crash, hidden terminal input, session-preserving recreation and credential cleanup.
+
+Application repair now uses a separate application-only manifest pinned to the
+verified VPN container ID. It cannot start/recreate a VPN through Compose
+service-dependency reconciliation. The L2TP namespace test waits for its external
+replacement to become healthy before resuming the controller, then requires
+application-only repair. The full real L2TP suite and three stop/reconnect cycles
+pass with that precondition and without external namespace monitors.
 
 A foreground idle sleep deferred the VPN shell's TERM handler beyond Docker's
 two-second stop limit. The container could be force-killed before telling the
@@ -90,7 +122,10 @@ stops a real VPN just after a new sleep starts, requires a clean exit and peer
 session cleanup within the existing limit, then reconnects three times.
 Neither the service-probe timeout nor the recovery policy was relaxed.
 
-Run packet-capture processes inside the disposable VPN/gateway containers so
-Docker terminates them with their owners. An external nsenter capture can retain
-a retired network namespace and change the behavior being measured. Keep all
-captures and runtime diagnostics outside the checkout.
+The XAuth observer captures the host side of the VPN veth in the outer lab's
+stable namespace, before bridge routing. Positive controls verify it sees both
+the pre-login direct path and the post-login route through the gateway. Each
+observer is stopped and reaped after its phase; it holds no VPN namespace
+reference. Avoid external nsenter captures in a dynamic VPN namespace: they can
+retain a retired namespace and change reconnect behavior. Keep all captures and
+runtime diagnostics outside the checkout.

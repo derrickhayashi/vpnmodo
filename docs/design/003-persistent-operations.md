@@ -1,7 +1,8 @@
 # Persistent operations and lifecycle coordination
 
 Issue #5 supplies a service-owned operation manager and a protected bbolt journal.
-The [managed L2TP adapter](005-managed-l2tp.md) now runs in the production controller; XAuth remains unavailable. Synthetic
+The managed [L2TP](005-managed-l2tp.md) and [XAuth](006-managed-xauth.md) adapters
+run in the production controller. Synthetic
 adapters exist only in Go tests and a separate acceptance image built from a Go
 test binary. There is no production flag/environment variable/profile value that
 activates the synthetic backend. Profile edits remain synchronous atomic
@@ -20,8 +21,9 @@ vpnmodo operation watch op-0123456789abcdef0123456789abcdef --host my-vm --json
 vpnmodo operation cancel op-0123456789abcdef0123456789abcdef --host my-vm --json
 ```
 
-L2TP ensure/disconnect use the real adapter in the production image. XAuth remains
-backend-unavailable. Tests can inject a separate synthetic adapter. `ensure`/`disconnect` return a queued operation snapshot; they
+L2TP and XAuth ensure/disconnect use real managed adapters in the production
+image. XAuth uses the [secure MFA interface](006-managed-xauth.md). Tests can
+inject a separate synthetic adapter. `ensure`/`disconnect` return a queued operation snapshot; they
 do not claim that a connection is ready. `--wait` subscribes until terminal state.
 Watch output with `--json` is one JSON snapshot per line. Failed/cancelled watches
 exit nonzero after printing the final snapshot. Closing SSH/the watcher does not
@@ -132,7 +134,9 @@ proves a tunnel is healthy.
 The [recovery policy](004-recovery-policy.md) adds bounded background monitoring,
 closed health classifications and persisted retry/cooldown metadata. It runs only
 for adapters implementing the recovery interface. The [L2TP adapter](005-managed-l2tp.md) supplies real backend activation and
-Docker ownership enforcement.
+Docker ownership enforcement. XAuth also monitors health and repairs a detached
+application, but tunnel loss requires explicit fresh authentication. Its kernel
+filter protects traffic independently of monitoring.
 
 ## Validation
 
@@ -142,12 +146,14 @@ expiry/repeated prompts, deadlines, bounded observers/history, restart, and jour
 failures before/after publication and after a new connection starts. RPC tests
 cover reconnect, ordered snapshots/notifications and disabled production backends.
 
-The isolated Ubuntu SSH workflow first validates the production controller, then
-builds a separate synthetic test-binary image in a binary-only Docker context. It
+The [local Ubuntu lab](../../tests/local-lab/README.md) first validates the
+production controller, then builds a separate synthetic test-binary image in a
+binary-only Docker context. Hosted Actions remains disabled. It
 verifies operations after the initiating SSH exits, concurrent callers, CLI watch,
 MFA submission/replay, cancellation, controller restart, established-session reuse,
 interrupted MFA without retry, persisted disconnect intent and secret-free journal
-bytes. It never logs into a VPN or changes a customer deployment. Synthetic success
-does not establish VPN interoperability or XAuth packet isolation.
+bytes. That synthetic suite never logs into a VPN or changes a customer
+deployment. Separate real L2TP and XAuth suites provide protocol and packet
+evidence; synthetic success alone does not establish either.
 
 Reference: [bbolt v1.5.0](https://pkg.go.dev/go.etcd.io/bbolt@v1.5.0).

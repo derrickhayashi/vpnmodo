@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/l2tp"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/managedvpn"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
@@ -91,8 +91,12 @@ func runSyntheticProcess(ctx context.Context, args []string) error {
 		config := Config{Socket: *socket, StateDir: *root, DockerSocket: "/var/run/docker.sock", Version: "synthetic-test-only", Adapter: adapter, OperationTimeout: 3 * time.Minute, MFATimeout: 90 * time.Second, Recovery: lifecycle.RecoveryPolicy{Interval: 100 * time.Millisecond, ProbeTimeout: 3 * time.Second, Cooldown: 2 * time.Second, MaxBackoff: 8 * time.Second}}
 		if os.Getenv("VPNMODO_L2TP_TEST_PROCESS") == "1" {
 			config.Adapter = nil
-			config.L2TPRunner = &traceDocker{root: *root, base: l2tp.CLI{Binary: "/usr/local/bin/docker", Socket: "/var/run/docker.sock"}}
-			config.EnableL2TP = true
+			config.DockerRunner = &traceDocker{root: *root, base: managedvpn.CLI{Binary: "/usr/local/bin/docker", Socket: "/var/run/docker.sock"}}
+			config.EnableManagedVPN = true
+			config.EnableXAuth = os.Getenv("VPNMODO_XAUTH_TEST_PROCESS") == "1"
+			if config.EnableXAuth {
+				config.MFATimeout = 45 * time.Second
+			}
 			config.Version = "l2tp-test-only"
 			config.OperationTimeout = 3 * time.Minute
 			config.Recovery = lifecycle.RecoveryPolicy{Interval: time.Second, ProbeTimeout: 15 * time.Second, Cooldown: 3 * time.Second, MaxBackoff: 12 * time.Second}
@@ -278,10 +282,11 @@ func (f *fileAdapter) RepairForwarding(ctx context.Context, p profile.Profile) e
 // Synthetic lab diagnostics allowlist command phases and process states only.
 // No args, environment, credentials, backend text or raw Docker payload is saved.
 type traceDocker struct {
-	mu    sync.Mutex
-	root  string
-	base  l2tp.Runner
-	steps []map[string]any
+	mu           sync.Mutex
+	root         string
+	base         managedvpn.Runner
+	steps        []map[string]any
+	vpnInstances map[string]int
 }
 
 func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
@@ -305,7 +310,14 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 			phase = "ready"
 		}
 	}
-	row := map[string]any{"phase": phase, "ok": err == nil}
+	row := map[string]any{"phase": phase, "ok": err == nil, "time": time.Now().UTC().Format(time.RFC3339Nano)}
+	cid, discoveredVPN := "", false
+	if args[0] == "exec" {
+		cid = args[1]
+	}
+	if args[0] == "stop" || args[0] == "rm" {
+		cid = args[len(args)-1]
+	}
 	if phase == "service" && err != nil {
 		addr, _ := d.base.Run(ctx, "exec", args[1], "ip", "-4", "address", "show", "dev", "ppp0")
 		row["expected_local"] = strings.Contains(string(addr), "inet 198.51.100.")
@@ -330,6 +342,7 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	if args[0] == "inspect" && err == nil {
 		var cs []struct {
+			ID    string `json:"Id"`
 			State struct {
 				Running  bool
 				ExitCode int
@@ -342,11 +355,23 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 				row["role"] = role
 				row["running"] = cs[0].State.Running
 				row["process_exit"] = cs[0].State.ExitCode
+				if role == "vpn" {
+					cid, discoveredVPN = cs[0].ID, true
+				}
 			}
 		}
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.vpnInstances == nil {
+		d.vpnInstances = map[string]int{}
+	}
+	if discoveredVPN && d.vpnInstances[cid] == 0 {
+		d.vpnInstances[cid] = len(d.vpnInstances) + 1
+	}
+	if instance := d.vpnInstances[cid]; instance != 0 {
+		row["vpn_instance"] = instance
+	}
 	d.steps = append(d.steps, row)
 	if len(d.steps) > 200 {
 		d.steps = d.steps[len(d.steps)-200:]
@@ -354,4 +379,12 @@ func (d *traceDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 	data, _ := json.Marshal(d.steps)
 	_, _ = privatefile.Write(filepath.Join(d.root, "l2tp-trace.json"), data)
 	return out, err
+}
+
+// Private input is deliberately excluded from the synthetic diagnostic trace.
+func (d *traceDocker) RunInput(ctx context.Context, input []byte, args ...string) ([]byte, error) {
+	if r, ok := d.base.(managedvpn.InputRunner); ok {
+		return r.RunInput(ctx, input, args...)
+	}
+	return nil, ErrService
 }

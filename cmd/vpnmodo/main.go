@@ -29,7 +29,7 @@ func main() {
 }
 func run(base context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME --image IMAGE [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo profile help\n       vpnmodo connection {ensure|disconnect|status} ALIAS [--wait] [--json]\n       vpnmodo operation {status|cancel|watch} ID --host HOST [--json]\n       vpnmodo version")
+		fmt.Fprintln(output, "Usage: vpnmodo [--config FILE] host add NAME --ssh TARGET [--ssh-config FILE]\n       vpnmodo [--config FILE] host list\n       vpnmodo [--config FILE] host setup NAME --image IMAGE [--replace] [--json]\n       vpnmodo [--config FILE] host check NAME [--json]\n       vpnmodo profile help\n       vpnmodo connection {ensure|disconnect|status} ALIAS [--wait] [--json]\n       vpnmodo operation {status|cancel|watch} ID --host HOST [--json]\n       vpnmodo operation submit-mfa ID --host HOST --challenge ID [--code-stdin] [--json]\n       vpnmodo version")
 		return nil
 	}
 	root := flag.NewFlagSet("vpnmodo", flag.ContinueOnError)

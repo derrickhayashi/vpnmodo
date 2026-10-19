@@ -142,6 +142,20 @@ def begin(cli, directory, state_root):
         try:
             command(["docker", "compose", "--project-name", PROJECT, "--env-file", "/dev/null", "-f", str(state_root / "deployments" / NAME / "compose.json"), "up", "-d", "--no-deps", "--pull", "never", "--force-recreate", "vpn"])
             replacement = lab.ids()["vpn"]["Id"]
+            # This case tests repair of an application beside a healthy VPN.
+            # Wait for the externally recreated VPN to finish startup while the
+            # controller is paused; tunnel-loss recovery is exercised separately.
+            deadline = time.monotonic() + 150
+            while True:
+                current = lab.ids()["vpn"]
+                assert current["Id"] == replacement, "manual VPN replacement changed before controller resumed"
+                assert current["State"]["Running"], "manual VPN replacement failed during startup"
+                ready = command(["docker", "exec", replacement, "test", "-f", "/run/vpn/ready"], required=False).returncode == 0
+                if ready and command(["docker", "exec", replacement, "vpn-servicecheck"], required=False).returncode == 0:
+                    break
+                if time.monotonic() > deadline:
+                    raise RuntimeError("manual VPN replacement did not become healthy")
+                time.sleep(0.3)
         finally:
             command(["docker", "unpause", "vpnmodo-controller"])
         lab.wait(lambda c: c["observed"] == "connected" and "active_operation" not in c and lab.ids().get("application", {}).get("Id") != app_before, timeout=150)

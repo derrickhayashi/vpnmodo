@@ -39,6 +39,7 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--operations", action="store_true", help="use only the synthetic Go test-binary image")
     parser.add_argument("--l2tp", action="store_true", help="real L2TP in an isolated synthetic gateway lab")
+    parser.add_argument("--xauth", action="store_true", help="real XAuth MFA and packet isolation lab")
     options = parser.parse_args()
     data_root = Path.home() / ".local/share/vpnmodo"
     if data_root.exists() or data_root.is_symlink():
@@ -295,6 +296,9 @@ LogLevel VERBOSE
             interrupted_id = operations_acceptance.begin(cli, bridge, [str(options.binary.resolve()), "--config", str(registry)], directory, state)
             import recovery_acceptance
             cooldown = recovery_acceptance.begin(cli, directory, state)
+        if options.xauth:
+            import xauth_acceptance
+            lab = xauth_acceptance.begin(cli, directory, state, bridge, [str(options.binary.resolve()), "--config", str(registry)])
         if options.l2tp:
             import l2tp_acceptance
             lab = l2tp_acceptance.begin(cli, directory, state)
@@ -311,6 +315,8 @@ LogLevel VERBOSE
         if options.operations:
             operations_acceptance.after_restart(cli, state, interrupted_id)
             recovery_acceptance.after_restart(cli, state, cooldown)
+        if options.xauth:
+            xauth_acceptance.after_restart(cli, state, lab)
         if options.l2tp:
             l2tp_acceptance.after_restart(cli, state, lab)
         retained = safe_result(cli("profile", "inspect", "example-profile", "--json"))

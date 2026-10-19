@@ -1,4 +1,4 @@
-package l2tp
+package managedvpn
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 
 const backendLabel = "io.vpnmodo.backend"
 const revisionLabel = "io.vpnmodo.revision"
+const DefaultXAuthImage = "vpnmodo-xauth:dev"
 const DefaultImage = "vpnmodo-l2tp:dev"
 const DefaultApplicationImage = "alpine:3.22"
 
@@ -26,13 +27,20 @@ type deployment struct {
 
 func (d deployment) labels() map[string]string {
 	id, _ := profile.Identity(d.Profile.Name)
-	id.Labels[backendLabel] = string(profile.L2TP)
+	id.Labels[backendLabel] = string(d.Profile.Backend.Type)
 	id.Labels[revisionLabel] = strconv.FormatUint(d.Revision, 10)
 	return id.Labels
 }
 func manifest(d deployment, root string) ([]byte, error) {
 	id, _ := profile.Identity(d.Profile.Name)
-	c := profile.EffectiveL2TPConfig(*d.Profile.Backend.L2TP)
+	c := profile.L2TPConfig{}
+	if d.Profile.Backend.Type == profile.L2TP {
+		c = profile.EffectiveL2TPConfig(*d.Profile.Backend.L2TP)
+	} else {
+		x := profile.EffectiveXAuthConfig(*d.Profile.Backend.XAuth)
+		force := true
+		c = profile.L2TPConfig{Server: x.Server, DNS: x.DNS, IKEProposals: x.IKEProposals, ESPProposals: x.ESPProposals, ForceEncapsulation: &force}
+	}
 	force := "no"
 	if *c.ForceEncapsulation {
 		force = "yes"
@@ -47,6 +55,22 @@ func manifest(d deployment, root string) ([]byte, error) {
 		"vpn":         map[string]any{"image": d.VPNImage, "labels": d.labels(), "cap_add": []string{"NET_ADMIN", "NET_RAW"}, "devices": []string{"/dev/ppp:/dev/ppp"}, "sysctls": map[string]string{"net.ipv6.conf.all.disable_ipv6": "1", "net.ipv6.conf.default.disable_ipv6": "1"}, "environment": env, "secrets": []string{"vpn_username", "vpn_password", "vpn_psk"}, "restart": "no", "tmpfs": []string{"/run:rw,nosuid,nodev,mode=0755"}, "logging": map[string]any{"driver": "none"}, "healthcheck": map[string]any{"test": []string{"CMD", "/usr/local/bin/vpn-tunnelcheck"}, "interval": "10s", "timeout": "5s", "retries": 2, "start_period": "150s"}},
 		"application": map[string]any{"image": d.ApplicationImage, "labels": d.labels(), "network_mode": "service:vpn", "user": strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), "volumes": []any{map[string]any{"type": "bind", "source": filepath.Join(root, "resolv.conf"), "target": "/etc/resolv.conf", "read_only": true, "bind": map[string]bool{"create_host_path": false}}}, "restart": "no", "read_only": true, "cap_drop": []string{"ALL"}, "security_opt": []string{"no-new-privileges:true"}, "logging": map[string]any{"driver": "none"}, "command": []string{"sleep", "infinity"}},
 	}, "secrets": secrets, "networks": map[string]any{"default": map[string]any{"labels": d.labels()}}}
+	if d.Profile.Backend.Type == profile.XAuth {
+		services := model["services"].(map[string]any)
+		vpn := services["vpn"].(map[string]any)
+		delete(vpn, "devices")
+		vpn["init"] = true
+		vpn["dns"] = []string{"127.0.0.1"}
+		vpn["entrypoint"] = []string{"/usr/local/bin/vpn-managed-xauth"}
+		vpn["read_only"] = true
+		mounts := []any{map[string]any{"type": "bind", "source": filepath.Join(root, "xauth-resolv.conf"), "target": "/etc/resolv.conf", "read_only": true, "bind": map[string]bool{"create_host_path": false}}}
+		services["application"].(map[string]any)["volumes"] = mounts
+		vpn["volumes"] = mounts
+		vpn["security_opt"] = []string{"no-new-privileges:true"}
+		vpn["tmpfs"] = []string{"/run:rw,nosuid,nodev,mode=0755", "/tmp:rw,nosuid,nodev,noexec,mode=1777"}
+		// IKE bypass is root-only; workloads always use an unprivileged UID.
+		services["application"].(map[string]any)["user"] = "65534:65534"
+	}
 	// Compose interpolates dollar signs even in JSON. All manifest strings are data.
 	return json.Marshal(escape(model))
 }
@@ -80,4 +104,28 @@ func escape(v any) any {
 		return r
 	}
 	return v
+}
+
+// applicationManifest contains no VPN service or service dependency. An
+// application repair cannot recreate/start a VPN through Compose reconciliation.
+// The immutable container ID also binds the workload to the verified namespace.
+func applicationManifest(d deployment, root, vpnID string) ([]byte, error) {
+	if !containerPattern.MatchString(vpnID) {
+		return nil, ErrRuntime
+	}
+	data, err := manifest(d, root)
+	if err != nil {
+		return nil, err
+	}
+	var full struct {
+		Name     string                    `json:"name"`
+		Services map[string]map[string]any `json:"services"`
+	}
+	if json.Unmarshal(data, &full) != nil {
+		return nil, ErrRuntime
+	}
+	app := full.Services["application"]
+	app["network_mode"] = "container:" + vpnID
+	// Strings were already escaped by manifest; do not interpolate them twice.
+	return json.Marshal(map[string]any{"name": full.Name, "services": map[string]any{"application": app}})
 }

@@ -1,10 +1,8 @@
 # Managed L2TP/IPsec runtime
 
 Issue #6 now connects the persistent lifecycle/recovery coordinator to a real
-L2TP adapter. Production `vpnmodo-controller serve` enables this backend. XAuth
-schemas remain discoverable, but its connection operations return backend
-unavailable before recording connected intent. XAuth activation and mandatory
-packet isolation are issue #7. Service forwards remain issue #8.
+L2TP adapter. Production `vpnmodo-controller serve` enables this backend. The [managed XAuth adapter](006-managed-xauth.md) adds separate MFA and mandatory
+packet isolation in issue #7. Service forwards remain issue #8.
 
 ## Runtime and images
 
@@ -41,8 +39,11 @@ Existing default networks must also carry the managed identity/backend labels.
 A name alone never confers ownership. These checks prevent accidental adoption;
 they are not a sandbox against the VM user or Docker administrator.
 
-Compose creates/recreates only the requested service with no dependencies or
-orphan removal. Teardown removes exact owned IDs, application first, then VPN;
+VPN startup uses its managed manifest. Application repair uses a separate
+application-only manifest pinned to the verified VPN container ID, with no VPN
+service definition or service dependency. Compose cannot replace or start a VPN
+while repairing its workload, including when an external Compose version created
+the healthy replacement. No orphan removal is used. Teardown removes exact owned IDs, application first, then VPN;
 it never runs a broad `down`, wildcard removal or automatic legacy cutover.
 Deletion removes the owned network only if Docker permits it without disturbing
 active users. A failed deletion retains the profile for explicit repair/retry.

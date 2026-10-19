@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/credentialinput"
 	"io"
 	"time"
 
@@ -23,6 +24,8 @@ func operationCommand(base context.Context, registry string, args []string, out 
 	flags.SetOutput(io.Discard)
 	target := flags.String("host", "", "")
 	machine := flags.Bool("json", false, "")
+	challenge := flags.String("challenge", "", "")
+	codeStdin := flags.Bool("code-stdin", false, "")
 	wait := flags.Bool("wait", false, "")
 	if flags.Parse(args[3:]) != nil || flags.NArg() != 0 {
 		return errors.New("invalid operation options")
@@ -59,9 +62,14 @@ func operationCommand(base context.Context, registry string, args []string, out 
 			method = protocol.OperationStatus
 		case "cancel":
 			method = protocol.OperationCancel
+		case "submit-mfa":
+			method = protocol.OperationSubmitMFA
 		default:
 			return errors.New("unknown operation command")
 		}
+	}
+	if method != protocol.OperationSubmitMFA && (*challenge != "" || *codeStdin) {
+		return errors.New("MFA input options require operation submit-mfa")
 	}
 	if *wait && method == protocol.ConnectionStatus {
 		return errors.New("--wait requires ensure or disconnect")
@@ -95,16 +103,35 @@ func operationCommand(base context.Context, registry string, args []string, out 
 		}
 		return emit(connection)
 	}
+	if method == protocol.OperationSubmitMFA {
+		if !operation.ValidChallengeID(*challenge) {
+			return errors.New("current --challenge is required")
+		}
+		code, e := credentialinput.ReadCode(ctx, *codeStdin)
+		if e != nil {
+			return e
+		}
+		payload, e := (protocol.MFASubmitParams{OperationID: name, ChallengeID: *challenge, Code: code}).EncodeForTransport()
+		if e != nil {
+			return e
+		}
+		defer clear(payload)
+		params = json.RawMessage(payload)
+	}
 	var snapshot protocol.Operation
 	if err = client.Call(ctx, method, params, &snapshot); err != nil {
 		return err
 	}
 	if *wait || command == "watch" {
-		return watchOperation(ctx, client, snapshot.ID, emit)
+		return watchOperationPrompt(ctx, client, snapshot.ID, emit, !*machine)
 	}
 	return emit(snapshot)
 }
 func watchOperation(ctx context.Context, client *rpcio.Client, id string, emit func(any) error) error {
+	return watchOperationPrompt(ctx, client, id, emit, false)
+}
+func watchOperationPrompt(ctx context.Context, client *rpcio.Client, id string, emit func(any) error, interactive bool) error {
+	prompted := ""
 	var snapshot protocol.Operation
 	if err := client.Call(ctx, protocol.OperationSubscribe, protocol.OperationParams{OperationID: id}, &snapshot); err != nil {
 		return err
@@ -115,6 +142,25 @@ func watchOperation(ctx context.Context, client *rpcio.Client, id string, emit f
 		}
 		if err := emit(value); err != nil {
 			return false, err
+		}
+		if interactive && value.State == operation.AwaitingMFA && value.Challenge.ID != prompted {
+			prompted = value.Challenge.ID
+			promptCtx, cancel := context.WithDeadline(ctx, value.Challenge.ExpiresAt)
+			code, err := credentialinput.ReadCode(promptCtx, false)
+			cancel()
+			if err != nil {
+				return true, err
+			}
+			payload, err := (protocol.MFASubmitParams{OperationID: id, ChallengeID: prompted, Code: code}).EncodeForTransport()
+			if err != nil {
+				return true, err
+			}
+			var result protocol.Operation
+			err = client.Call(ctx, protocol.OperationSubmitMFA, json.RawMessage(payload), &result)
+			clear(payload)
+			if err != nil {
+				return true, err
+			}
 		}
 		if value.State == operation.Failed {
 			return true, value.Failure

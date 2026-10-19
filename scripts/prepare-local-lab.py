@@ -35,7 +35,7 @@ def main():
     builds = [
         ["go", "build", "-trimpath", "-o", str(artifacts / "vpnmodo"), "./cmd/vpnmodo"],
         ["go", "build", "-trimpath", "-o", str(production / "vpnmodo-controller"), "./cmd/vpnmodo-controller"],
-        ["go", "test", "-c", "-o", str(operations / "vpnmodo-controller"), "./internal/controller"],
+        ["go", "test", "-trimpath", "-c", "-o", str(operations / "vpnmodo-controller"), "./internal/controller"],
     ]
     for args in builds:
         subprocess.run(args, cwd=source, env=env, check=True)

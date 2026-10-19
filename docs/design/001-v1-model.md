@@ -2,7 +2,9 @@
 
 Status: model baseline from issue #2, controller/SSH from issue #3, and secure
 profile management from issue #4, and persistent operation coordination from
-issue #5. Real VPN adapters remain in subsequent issues. Storage and credential
+issue #5. Managed L2TP and XAuth are described in the
+[runtime](005-managed-l2tp.md) and [MFA/isolation](006-managed-xauth.md) guides.
+Service access and release packaging remain later stages. Storage and credential
 input details are in the
 [profile storage guide](002-profile-storage.md).
 
@@ -40,7 +42,7 @@ unchanged by this package split.
   Linux arm64/amd64 on Ubuntu 24.04 LTS with rootful Docker Engine and Compose v2.
   VM creation, Windows and Linux workstation support are outside initial scope.
   These are release targets, not a claim that runtime acceptance has passed.
-- Build with Go 1.27; CI pins Go 1.27.1. There is no Go runtime requirement for
+- Build with Go 1.27.1; hosted Actions remains disabled. There is no Go runtime requirement for
   teammates installing eventual compiled binaries. The controller/SSH stage
   adds runnable executables; see the [controller guide](../../containers/controller/README.md).
 
@@ -67,7 +69,8 @@ Use the exported decode helpers, not bare `json.Unmarshal`, at trust boundaries.
 L2TP accepts an IPv4 gateway or ASCII DNS hostname, optional IPv4 DNS addresses,
 `force_encapsulation`, and IKE/ESP proposal arrays. Encapsulation defaults to true;
 DNS/proposal lists are bounded. XAuth requires an IPv4 gateway literal and accepts
-IKE/ESP proposals. There is no switch to disable fail-closed behavior. Descriptor
+IKE/ESP proposals and optional IPv4 VPN DNS addresses. A hostname health target
+requires that DNS list; there is no ordinary-resolver fallback. There is no switch to disable fail-closed behavior. Descriptor
 capabilities express required runtime behavior, not verification of a running VPN.
 IPsec proposal syntax is checked here; algorithm support/negotiation belongs to
 the backend. Existing legacy proposal defaults are retained for compatibility.
@@ -163,8 +166,10 @@ mutation/list/doctor payloads are completed with their owning implementation
 issues. The controller skeleton implements hello, system status and backend
 discovery over verified SSH and a private Unix socket. Profile management is implemented as described in the
 [storage guide](002-profile-storage.md). Connection/operation RPC handlers are implemented with the
-[operation manager](003-persistent-operations.md); the [L2TP adapter](005-managed-l2tp.md) is enabled and XAuth remains unavailable
-and production `runtime_enabled` reports the L2TP adapter wiring.
+[operation manager](003-persistent-operations.md). The managed [L2TP](005-managed-l2tp.md)
+and [XAuth](006-managed-xauth.md) adapters are enabled. Production
+`runtime_enabled` reports that wiring; backend images and verified connectivity
+remain separate checks.
 
 `operation.changed` is a server notification without an ID. Client notifications
 must never mutate state and receive no response, including when rejected. Request

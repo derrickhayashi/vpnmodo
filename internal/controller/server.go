@@ -1,5 +1,4 @@
-// Package controller runs VM-local discovery, status and profile administration.
-// VPN connection/operation handlers come in subsequent stages.
+// Package controller runs VM-local profile administration and durable VPN operations.
 package controller
 
 import (
@@ -15,8 +14,8 @@ import (
 
 	"github.com/creachadair/jrpc2"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/l2tp"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/managedvpn"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
@@ -36,8 +35,9 @@ type Status struct {
 	RuntimeEnabled bool                `json:"runtime_enabled"`
 }
 type Config struct {
-	EnableL2TP                                bool
-	L2TPRunner                                l2tp.Runner
+	EnableManagedVPN, EnableXAuth             bool
+	XAuthImage                                string
+	DockerRunner                              managedvpn.Runner
 	L2TPImage, ApplicationImage, DockerBinary string
 	Socket, StateDir, DockerSocket, Version   string
 	Adapter                                   lifecycle.Adapter
@@ -95,19 +95,23 @@ func Listen(config Config) (*Server, error) {
 	if err != nil {
 		return nil, ErrService
 	}
-	if config.EnableL2TP && config.Adapter == nil {
+	if config.EnableManagedVPN && config.Adapter == nil {
 		binary := config.DockerBinary
 		if binary == "" {
 			binary = "/usr/local/bin/docker"
 		}
-		runner := config.L2TPRunner
+		runner := config.DockerRunner
 		if runner == nil {
-			runner = l2tp.CLI{Binary: binary, Socket: config.DockerSocket}
+			runner = managedvpn.CLI{Binary: binary, Socket: config.DockerSocket}
 		}
-		config.Adapter, err = l2tp.New(filepath.Join(config.StateDir, "deployments"), config.L2TPImage, config.ApplicationImage, profiles, runner)
-		if err != nil {
+		adapter, e := managedvpn.New(filepath.Join(config.StateDir, "deployments"), config.L2TPImage, config.ApplicationImage, profiles, runner)
+		if e != nil {
 			return nil, ErrService
 		}
+		if config.EnableXAuth && adapter.EnableXAuth(config.XAuthImage) != nil {
+			return nil, ErrService
+		}
+		config.Adapter = adapter
 	}
 	journal, err := operationstore.Open(config.StateDir)
 	if err != nil {

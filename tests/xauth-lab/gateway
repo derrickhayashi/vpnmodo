@@ -1,0 +1,69 @@
+#!/bin/sh
+# Synthetic PSK aggressive-mode + two-round password/passcode XAuth only.
+set -eu
+umask 077
+mkdir -p /run/lab
+sysctl -w net.ipv4.ip_forward=1 >/dev/null
+ip address add 198.51.100.1/32 dev lo
+cat > /etc/strongswan.conf <<'CONFIG'
+charon {
+  load_modular = yes
+  i_dont_care_about_security_and_use_aggressive_mode_psk = yes
+  plugins {
+    include strongswan.d/charon/*.conf
+    eap-radius {
+      servers {
+        lab {
+          address = 127.0.0.1
+          secret = synthetic-radius
+        }
+      }
+      xauth {
+        lab {
+          password = Synthetic password
+          passcode = Synthetic code
+        }
+      }
+    }
+  }
+}
+include strongswan.d/*.conf
+CONFIG
+cat > /etc/swanctl/swanctl.conf <<'CONFIG'
+connections {
+  lab {
+    version = 1
+    aggressive = yes
+    encap = yes
+    local_addrs = 192.0.2.1
+    remote_addrs = %any
+    proposals = aes256-sha256-modp2048
+    pools = lab
+    local {
+      auth = psk
+      id = 192.0.2.1
+    }
+    remote { auth = psk }
+    remote-xauth { auth = xauth-radius:lab }
+    children {
+      lab {
+        local_ts = 0.0.0.0/0
+        remote_ts = dynamic
+        esp_proposals = aes256-sha256
+        rekey_time = 0s
+        dpd_action = clear
+      }
+    }
+  }
+}
+pools { lab { addrs = 198.51.100.10-198.51.100.20 } }
+secrets { ike-lab { secret = synthetic-shared } }
+CONFIG
+python3 /usr/local/bin/radius.py >/run/lab/radius-output 2>&1 &
+python3 /usr/local/bin/sink.py >/run/lab/sink-output 2>&1 &
+dnsmasq --keep-in-foreground --no-resolv --no-hosts --address=/private.example/198.51.100.1 --local=/private.example/ >/dev/null 2>&1 &
+/usr/lib/ipsec/charon >/run/lab/charon-output 2>&1 &
+i=0
+until swanctl --load-all >/run/lab/load-output 2>&1; do i=$((i+1)); test "$i" -lt 30; sleep 1; done
+touch /run/lab/ready
+exec sleep infinity
