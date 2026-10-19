@@ -468,7 +468,10 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 			switch strings.TrimSpace(string(state)) {
 			case "starting", "established":
 			case "mfa":
-				if codeSent || challenge == nil {
+				if codeSent {
+					break
+				}
+				if challenge == nil {
 					return lifecycle.ErrAuthentication
 				}
 				codeSent = true

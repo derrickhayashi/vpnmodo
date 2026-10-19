@@ -67,9 +67,19 @@ runtime state. The outer lab image remains cached for reuse. Remove only the
 bundle directory you created when finished.
 
 The run covers controller setup/repair and profile handling, persistent operations
-and simulated MFA/recovery, and the real IPsec/L2TP/PPP gateway/client suite with
-DNS, application network sharing and recovery. XAuth protocol MFA and packet
-observed fail-closed acceptance remain the next implementation stage.
+and simulated MFA/recovery, the real IPsec/L2TP/PPP gateway/client suite, and the
+real aggressive PSK/XAUTH_PASSCODE suite. XAuth uses a separate reachable escape
+sink with a deliberate capture positive control before zero-plaintext assertions.
+It tests DNS/IPv6, rekey, quiet sessions, active TCP/UDP flows after SA/policy loss,
+MFA failure/expiry/repetition and controller restart. Only the test binary shortens
+the MFA window to 45 seconds; production keeps its normal deadline. The quiet
+session interval exceeds 90 seconds while controller probes are paused.
+
+The synthetic observer runs the tcpdump binary under a lab-specific executable
+path. Ubuntu's host tcpdump AppArmor attachment otherwise prevents the nested
+container's helper from signalling it, even with a container unconfined setting.
+This keeps capture lifecycle deterministic without changing VM AppArmor policy
+or production container configuration.
 
 The runner writes its final exit code to /tmp/vpnmodo-lab.exit inside the outer
 container. For remote automation, capture output and poll this file so a held

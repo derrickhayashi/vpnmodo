@@ -228,7 +228,11 @@ def begin(cli, directory, state_root, bridge, cli_args):
         assert command(["docker", "exec", app, "sh", "-c", "echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6"], required=False).returncode != 0
         print("PASS: Docker DNS fallback and workload IPv6 bypass are blocked", flush=True)
         # A quiet interval longer than the old Expect login timeout must survive.
-        time.sleep(95)
+        command(["docker", "pause", "vpnmodo-controller"])
+        try:
+            time.sleep(95)
+        finally:
+            command(["docker", "unpause", "vpnmodo-controller"])
         command(["docker", "exec", cid, "vpn-servicecheck"])
         last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
         assert lab.ids()["vpn"]["Id"] == cid

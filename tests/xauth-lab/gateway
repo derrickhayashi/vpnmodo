@@ -34,6 +34,7 @@ connections {
   lab {
     version = 1
     aggressive = yes
+    encap = yes
     local_addrs = 192.0.2.1
     remote_addrs = %any
     proposals = aes256-sha256-modp2048

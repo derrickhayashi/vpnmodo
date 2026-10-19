@@ -4,9 +4,8 @@ set code [read stdin 12]
 if {![eof stdin] || ![regexp {^[0-9]{4,10}$} $code]} {exit 1}
 set f [open /run/vpn/state r]; set state [string trim [read $f]]; close $f
 if {$state ne "mfa"} {exit 1}
-set f [open /run/vpn/code {WRONLY CREAT EXCL} 0600]
+set f [open /run/vpn/code.pending {WRONLY CREAT EXCL} 0600]
 puts -nonewline $f $code
 close $f
-set f [open /run/vpn/state.new w 0600]; puts $f submitted; close $f
-file rename -force /run/vpn/state.new /run/vpn/state
+file rename /run/vpn/code.pending /run/vpn/code
 unset code

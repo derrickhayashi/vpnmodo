@@ -3,4 +3,4 @@ set -eu
 vpn-enforce check
 [ "$(cat /run/vpn/state)" = established ] || exit 1
 ip xfrm state | grep -q 'proto esp' || exit 1
-ip -o xfrm policy | grep 'dir out' | grep "dst $VPN_SERVER " | grep -q 'proto esp.*mode tunnel' || exit 1
+ip -o xfrm policy | tr '\\' ' ' | grep 'dir out' | grep "dst $VPN_SERVER " | grep -q 'proto esp.*mode tunnel' || exit 1

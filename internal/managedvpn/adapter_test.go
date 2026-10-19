@@ -395,7 +395,9 @@ func (f *fakeDocker) RunInput(ctx context.Context, input []byte, args ...string)
 	if !f.codeAccepted {
 		return nil, ErrRuntime
 	}
-	if !f.repeatChallenge {
+	if f.repeatChallenge {
+		f.authState = "failed"
+	} else {
 		f.authState = "established"
 		f.tunnel = true
 	}
