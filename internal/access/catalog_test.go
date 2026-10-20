@@ -38,8 +38,8 @@ func TestCatalogRejectsAmbiguityAndUnsafeEndpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Chmod(path, 0644)
-	if _, err := Load(path); err == nil {
-		t.Fatal("public definition accepted")
+	if _, err := Load(path); err != nil {
+		t.Fatalf("ordinary input permissions rejected: %v", err)
 	}
 	for _, host := range []string{"-oProxyCommand=bad", "host;bad", "::1", "[::1]", "host\nother", "$(bad)", "host:22"} {
 		d := definition()
@@ -179,4 +179,25 @@ func TestDoctorClassifiesAnUnownedOccupiedPortWithoutStoppingIt(t *testing.T) {
 		t.Fatal("unowned listener was stopped")
 	}
 	conn.Close()
+}
+
+func TestSavedCatalogRemainsPrivate(t *testing.T) {
+	registry := filepath.Join(t.TempDir(), "hosts.json")
+	if err := Configure(context.Background(), registry, "example", definition()); err != nil {
+		t.Fatal(err)
+	}
+	path := catalogPath(registry, "example")
+	if _, err := Read(registry, "example"); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("saved catalog is not private")
+	}
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Read(registry, "example"); err == nil {
+		t.Fatal("nonprivate saved catalog accepted")
+	}
 }

@@ -191,7 +191,9 @@ func TestCombinedFileValidationBeforeSSH(t *testing.T) {
 	if os.Chmod(file, 0644) != nil {
 		t.Fatal("chmod fixture")
 	}
-	if _, err := readProfileFile(file); err == nil {
-		t.Fatal("read shared credential file")
+	input["credentials"] = map[string]string{"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
+	writeCombined(t, file, input)
+	if _, err := readProfileFile(file); err != nil {
+		t.Fatalf("ordinary input permissions rejected: %v", err)
 	}
 }

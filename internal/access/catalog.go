@@ -58,7 +58,10 @@ func (d Definition) Validate() error {
 	return nil
 }
 func Load(path string) (Definition, error) {
-	data, err := privatefile.Read(path, 64*1024)
+	data, err := privatefile.ReadInput(path, 64*1024)
+	return decode(data, err)
+}
+func decode(data []byte, err error) (Definition, error) {
 	if err != nil {
 		return Definition{}, ErrConfig
 	}
@@ -75,7 +78,8 @@ func Read(registry, alias string) (Definition, error) {
 	if !profile.ValidName(alias) {
 		return Definition{}, ErrConfig
 	}
-	d, err := Load(catalogPath(registry, alias))
+	data, err := privatefile.Read(catalogPath(registry, alias), 64*1024)
+	d, err := decode(data, err)
 	if err != nil {
 		if _, e := os.Lstat(catalogPath(registry, alias)); errors.Is(e, os.ErrNotExist) {
 			return Definition{1, []Service{}}, nil

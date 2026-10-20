@@ -42,7 +42,19 @@ func Dir(path string) error {
 	}
 	return nil
 }
+
+// Read requires private permissions for vpnmodo-managed files.
 func Read(path string, limit int) ([]byte, error) {
+	return read(path, limit, true)
+}
+
+// ReadInput accepts ordinary permissions on user-supplied configuration files.
+// Ownership, regular-file, symlink and size checks still apply.
+func ReadInput(path string, limit int) ([]byte, error) {
+	return read(path, limit, false)
+}
+
+func read(path string, limit int, requirePrivate bool) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, os.ErrNotExist
@@ -52,7 +64,7 @@ func Read(path string, limit int) ([]byte, error) {
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || !Owned(info) || info.Mode().Perm()&0077 != 0 || info.Size() > int64(limit) {
+	if err != nil || !info.Mode().IsRegular() || !Owned(info) || (requirePrivate && info.Mode().Perm()&0077 != 0) || info.Size() > int64(limit) {
 		return nil, ErrStorage
 	}
 	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))

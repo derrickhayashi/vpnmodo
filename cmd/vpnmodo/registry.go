@@ -15,9 +15,9 @@ type registryCredentials struct {
 }
 
 func readRegistryFile(path string) (*registryCredentials, error) {
-	data, err := privatefile.Read(path, 16*1024)
+	data, err := privatefile.ReadInput(path, 16*1024)
 	if err != nil {
-		return nil, errors.New("registry auth file unavailable; use an owner-only regular JSON file (chmod 600)")
+		return nil, errors.New("registry auth file unavailable; use a readable regular JSON file")
 	}
 	defer clear(data)
 	var result registryCredentials

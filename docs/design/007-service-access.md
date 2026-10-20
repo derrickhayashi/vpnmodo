@@ -8,7 +8,7 @@ Existing `scripts/vpn-services` mappings are not imported or rewritten.
 ## Configure once
 
 Register a managed profile alias using the profile commands, then write a private
-service definition on your workstation (mode 0600):
+service definition on your workstation:
 
 ```json
 {
@@ -39,7 +39,6 @@ the VM or workstation loopback. V1 accepts IPv4 literals and ASCII DNS names;
 IPv6 forwarding targets are excluded by the current VPN namespace policy.
 
 ```sh
-chmod 600 /absolute/path/to/services.json
 vpnmodo service configure work-vpn --file /absolute/path/to/services.json
 vpnmodo up work-vpn
 vpnmodo status work-vpn
