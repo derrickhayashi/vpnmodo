@@ -1,8 +1,8 @@
 # Public-image setup and optional configuration
 
-Status: agreed interface; implementation is pending the configuration fields.
-This describes the next setup interface, not commands supported by the current
-released CLI. See the [README](../../README.md#installation) for installation.
+Status: the optional setup flag is implemented as a no-op; configuration fields
+remain undecided. See the [README](../../README.md#installation) for published
+release installation instructions.
 
 ## Setup interface
 
@@ -15,15 +15,15 @@ Setup remains usable without a configuration file:
 vpnmodo setup
 ```
 
-Users can optionally supply setup configuration with the planned command:
+Users can optionally pass a setup configuration path:
 
 ```sh
 vpnmodo setup --config config.json
 ```
 
-This option belongs to `setup` only. The file's fields and their behavior are
-undecided. Do not invent settings or ship an option that silently ignores its
-input; define its behavior before implementing it.
+This option belongs to `setup` only. For now, its value is accepted but ignored:
+setup does not open, validate, copy, save or otherwise act on the file. The file
+does not need to exist. Configuration fields and their behavior remain undecided.
 
 Setup continues to prepare the single managed Lima VM, `vpn-vm`, and its
 controller. The optional configuration does not introduce additional VM paths.
@@ -38,8 +38,8 @@ change that profile contract.
 ## Implementation boundaries
 
 The existing global `vpnmodo --config FILE` selects internal host-registry state.
-It is not the planned setup configuration input. Implementing the setup option
-must not treat the supplied configuration as mutable host-registry state.
+It is separate from the setup-local option. The supplied setup configuration
+does not select or overwrite that internal host-registry state.
 
 Public image availability and anonymous pulls must be verified before publishing
 this as the released installation flow. Maintainer authentication for pushing

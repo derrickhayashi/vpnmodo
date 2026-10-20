@@ -297,7 +297,7 @@ For contributors, see [managed VPN and proxy internals](docs/internals.md),
 [implementation requirements](docs/implementation-requirements.md),
 [controller internals](containers/controller/README.md),
 [profile storage](docs/design/002-profile-storage.md),
-[planned setup configuration](docs/design/008-setup-configuration.md),
+[setup configuration contract](docs/design/008-setup-configuration.md),
 [recovery policy](docs/design/004-recovery-policy.md),
 [release builds/upgrades](docs/releases.md) and the
 [isolated Linux lab](tests/local-lab/README.md). The bundled
