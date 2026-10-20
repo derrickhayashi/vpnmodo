@@ -1,35 +1,44 @@
-# Managed local environment
+# Lima environment
 
-The supported installation path is one Apple Silicon Mac and one local Lima VM.
-The user installs the standalone `vpnmodo` executable and runs:
+`vpnmodo setup` prepares the single managed Lima VM `vpn-vm`. On an Apple Silicon
+Mac it installs Lima if needed, creates or starts Ubuntu, installs Docker, pulls
+the release images and starts the controller. It returns after readiness checks.
+
+Registry authentication is optional and separate from VPN configuration. Public
+images need no auth file:
 
 ```sh
-vpnmodo setup --file "$HOME/vpnmodo-private/work.json"
+vpnmodo setup
 ```
 
-Setup installs Lima using Homebrew if needed, creates Ubuntu, provisions Docker,
-kernel support and the release images, starts the controller, and waits for it to
-be ready. It finishes when the controller is ready. VPN settings remain in a JSON profile
-configured separately with `vpnmodo profile create NAME --file PROFILE.json`.
-Profile creation automatically uses this managed environment.
+The current release images are private GHCR packages. For those, supply an
+owner-only JSON file containing GitHub `username` and `token`:
 
-The provisioning YAML, image installer and pinned image manifest are embedded in
-the executable. VM account creation, SSH keys and networking are handled by native
-Lima. The CLI uses Lima's generated SSH configuration directly. Users do not
-select a VM, register a host, transfer setup files or run separate activation.
+```sh
+vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
+```
 
-The images are private GHCR packages. Supply GitHub `username` and `token` in the
-same JSON's `registry` object; the token needs `read:packages` and package access.
-Setup never prompts for registry credentials. Credentials
-are saved with mode 0600 and supplied to the guest through a protected file or
-SSH stdin. The Mac does not need Python or Docker.
+The token needs `read:packages` and package access. See the complete
+[installation instructions](../README.md#installation). There are no registry
+credential prompts. Without a supplied file, setup reuses saved auth if available
+or prepares anonymous image pulls. Private pulls still require valid access.
 
-Running setup again reuses the managed environment and existing profiles. It can
-refresh saved image credentials and finish an interrupted image installation.
-Private setup files live under the vpnmodo configuration directory, normally
-`~/Library/Application Support/vpnmodo/setup/vpn-vm/` on macOS. To correct an
-incorrect registry token, edit `registry` in your original JSON and rerun
-`vpnmodo setup --file PROFILE.json`.
+Setup does not read VPN profiles. Create one from its separate JSON file:
 
-Use `vpnmodo up NAME` to connect, respond to MFA when required, and
-`vpnmodo down NAME` to disconnect. See [installation and usage](../README.md).
+```sh
+vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
+vpnmodo up work
+```
+
+The VPN JSON contains settings and username/password/PSK for either supported
+backend. Only XAuth connection MFA is prompted interactively.
+
+Lima manages SSH keys, the guest user, connection details and the generated SSH
+configuration. No fixed VM IP, host registration or manual forwarding setup is
+needed. Repeated setup reuses this environment and existing profiles. Correct a
+registry login by editing its separate auth JSON and rerunning the same setup
+command with `--registry-auth`.
+
+Private setup files are cached under
+`~/Library/Application Support/vpnmodo/setup/vpn-vm/` on macOS. Keep registry auth
+and VPN input files protected outside Git. See [usage](../README.md#usage).

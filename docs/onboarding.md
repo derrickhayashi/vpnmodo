@@ -1,7 +1,9 @@
 # Onboarding and profile maintenance
 
 Start with [README installation](../README.md#installation).
-`vpnmodo setup --file PROFILE.json` prepares the single managed local environment. VPN configuration stays in JSON.
+`vpnmodo setup` prepares the single managed local environment. Registry auth,
+when needed, uses a separate optional `--registry-auth FILE`. VPN configuration
+stays in its own JSON file.
 Then use [README usage](../README.md#usage) to connect and access private services.
 
 Create a profile with `vpnmodo profile create NAME --file PROFILE.json`. It uses
@@ -9,17 +11,17 @@ the managed VM and reads `credentials.username`, `credentials.password` and
 `credentials.psk` from that same file for both supported VPN types.
 VM selection and manual host registration are not part of the CLI.
 
-## One input file
+## One input file per VPN
 
 Use one owner-only JSON file containing the connection settings and a
-`credentials` object. For private image setup, include a `registry` object with
-GitHub `username` and `token`; existing saved registry access can also be reused.
-Both L2TP/IPsec and XAuth use this format. See the complete JSON examples in the
+`credentials` object. Both L2TP/IPsec and XAuth use this format. Registry auth
+belongs in a separate optional JSON file containing GitHub `username` and `token`;
+it is never part of the VPN profile. Public images need no auth file. See the complete JSON examples in the
 [README](../README.md#vpn-configuration).
 
 ```sh
 chmod 600 "$HOME/vpnmodo-private/work.json"
-vpnmodo setup --file "$HOME/vpnmodo-private/work.json"
+vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
 vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
 vpnmodo up work
 ```

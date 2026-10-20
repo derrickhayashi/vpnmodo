@@ -30,7 +30,6 @@ func combinedProfile(t *testing.T, backend string) (string, map[string]any) {
 		t.Fatal("invalid fixture")
 	}
 	input["credentials"] = map[string]string{"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
-	input["registry"] = map[string]string{"username": "synthetic-registry-user", "token": "synthetic-registry-token"}
 	path := filepath.Join(t.TempDir(), "vpn.json")
 	writeCombined(t, path, input)
 	return path, input
@@ -44,7 +43,7 @@ func writeCombined(t *testing.T, path string, input map[string]any) {
 }
 func noFileSecrets(t *testing.T, output []byte) {
 	t.Helper()
-	for _, v := range []string{"synthetic-user", "synthetic-password", "synthetic-shared", "synthetic-registry-user", "synthetic-registry-token"} {
+	for _, v := range []string{"synthetic-user", "synthetic-password", "synthetic-shared"} {
 		if bytes.Contains(output, []byte(v)) {
 			t.Fatal("credential appeared in output or reference")
 		}
@@ -172,7 +171,6 @@ func TestCombinedFileValidationBeforeSSH(t *testing.T) {
 		strings.Replace(string(original), `"credentials":{`, `"credentials":null,"unused":{`, 1),
 		strings.Replace(string(original), `"psk":"synthetic-shared"`, `"psk":""`, 1),
 		strings.Replace(string(original), `"password":"synthetic-password"`, `"password":"synthetic-password","password":"duplicate"`, 1),
-		strings.Replace(string(original), `"token":"synthetic-registry-token"`, `"token":""`, 1),
 	} {
 		if os.WriteFile(file, []byte(bad), 0600) != nil {
 			t.Fatal("write invalid fixture")

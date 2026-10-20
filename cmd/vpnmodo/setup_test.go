@@ -171,24 +171,62 @@ func TestSetupRepairsRunningInstanceAfterBootFailure(t *testing.T) {
 	}
 }
 
-func TestSetupRegistryFromSameJSONWithoutPrompt(t *testing.T) {
-	file, _ := combinedProfile(t, "l2tp-ipsec")
-	input, err := readProfileFile(file)
+func TestSetupRegistryFromSeparateFileWithoutPrompt(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "registry-auth.json")
+	if os.WriteFile(file, []byte(`{"username":"synthetic-registry-user","token":"synthetic-registry-token"}`), 0600) != nil {
+		t.Fatal("write registry fixture")
+	}
+	input, err := readRegistryFile(file)
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "auth.json")
-	if err := ensureRegistryAuth(path, input.Registry); err != nil {
+	if err := ensureRegistryAuth(path, input); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := privatefile.Read(path, 16*1024)
-	if err != nil || !bytes.Contains(raw, []byte("ghcr.io")) {
+	before, err := privatefile.Read(path, 16*1024)
+	if err != nil || !bytes.Contains(before, []byte("ghcr.io")) {
 		t.Fatal("private registry auth not saved")
 	}
-	if err := ensureRegistryAuth(filepath.Join(t.TempDir(), "missing.json"), nil); err == nil {
-		t.Fatal("missing auth did not fail without prompting")
+	if err := ensureRegistryAuth(path, nil); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := privatefile.Read(path, 16*1024)
+	if !bytes.Equal(before, after) {
+		t.Fatal("saved registry access changed on retry")
 	}
 	if err := ensureRegistryAuth(path, &registryCredentials{Username: secret.New("synthetic-registry-user"), Token: secret.New("updated-synthetic-token")}); err != nil {
 		t.Fatal(err)
+	}
+	changed, _ := privatefile.Read(path, 16*1024)
+	if bytes.Equal(before, changed) {
+		t.Fatal("supplied replacement not applied")
+	}
+}
+
+func TestSetupProvisionAnonymousAndRetry(t *testing.T) {
+	registry, dir, _ := fakeLima(t)
+	path := filepath.Join(dir, "ghcr-config.json")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	for i := 0; i < 2; i++ {
+		if _, _, err := provisionLima(context.Background(), registry, nil, &output); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := privatefile.Read(path, 16*1024)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var auth struct {
+			Auths map[string]json.RawMessage `json:"auths"`
+		}
+		if json.Unmarshal(raw, &auth) != nil || auth.Auths == nil || len(auth.Auths) != 0 {
+			t.Fatal("anonymous setup did not use empty Docker auth")
+		}
+	}
+	if strings.Contains(output.String(), "Enter") || strings.Contains(output.String(), "token:") {
+		t.Fatal("anonymous setup prompted for credentials")
 	}
 }

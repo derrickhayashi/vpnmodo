@@ -8,8 +8,9 @@ workstation and authorized local VM.
 
 ## Single-file CLI download
 
-The current standalone CLI release is `v0.1.0-rc.10`. Download `vpnmodo-darwin-arm64`
-from the authenticated private release page, install it and run `vpnmodo setup --file PROFILE.json`.
+The current standalone CLI release is `v0.1.0-rc.11`. Download `vpnmodo-darwin-arm64`
+from the authenticated private release page, install it and run `vpnmodo setup`. For private images supply the optional
+`--registry-auth FILE` described in [installation](../README.md#installation).
 The supported environment is one Apple Silicon Mac with one Lima VM managed by
 vpnmodo. Setup prepares the controller. VPN settings remain in JSON profiles, which
 automatically use the managed VM. There is no host selection, external VM setup

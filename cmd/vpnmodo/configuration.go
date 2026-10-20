@@ -3,11 +3,9 @@ package main
 import (
 	"errors"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/credentialinput"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
 )
 
 // The input file includes secrets; the controller profile and local reference do not.
@@ -17,12 +15,6 @@ type profileFile struct {
 	Backend       profile.Backend      `json:"backend"`
 	Health        profile.TCPHealth    `json:"health"`
 	Credentials   *profile.Credentials `json:"credentials,omitempty"`
-	Registry      *registryCredentials `json:"registry,omitempty"`
-}
-
-type registryCredentials struct {
-	Username secret.Value `json:"username"`
-	Token    secret.Value `json:"token"`
 }
 
 func (f profileFile) configuration() profile.Profile {
@@ -45,12 +37,6 @@ func readProfileFile(path string) (profileFile, error) {
 	if result.Credentials != nil && result.Credentials.Validate() != nil {
 		return profileFile{}, profile.ErrCredentials
 	}
-	if result.Registry != nil {
-		auth, err := credentialinput.RegistryConfig(result.Registry.Username, result.Registry.Token)
-		clear(auth)
-		if err != nil {
-			return profileFile{}, errors.New("invalid registry credentials in JSON")
-		}
-	}
+
 	return result, nil
 }

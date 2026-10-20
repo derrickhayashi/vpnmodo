@@ -24,22 +24,22 @@ import (
 
 func setupCommand(base context.Context, registry string, args []string, out io.Writer) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(out, "Usage: vpnmodo setup [--file PROFILE.json]\nCreates the managed local environment and starts the controller.")
+		fmt.Fprintln(out, "Usage: vpnmodo setup [--registry-auth FILE]\nCreates the managed local environment and starts the controller.\nOptional registry auth JSON contains username and token; omit it for public images.")
 		return nil
 	}
 	flags := flag.NewFlagSet("setup", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	file := flags.String("file", "", "")
+	file := flags.String("registry-auth", "", "")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
-		return errors.New("usage: vpnmodo setup [--file PROFILE.json]")
+		return errors.New("usage: vpnmodo setup [--registry-auth FILE]")
 	}
 	var auth *registryCredentials
 	if *file != "" {
-		input, err := readProfileFile(*file)
+		var err error
+		auth, err = readRegistryFile(*file)
 		if err != nil {
 			return err
 		}
-		auth = input.Registry
 	}
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
 		return errors.New("setup requires an Apple Silicon Mac")
@@ -233,7 +233,7 @@ func setupSSH(ctx context.Context, h host.Host, command string, input []byte) er
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdin = bytes.NewReader(input)
 	if cmd.Run() != nil {
-		return errors.New("VM image preparation failed; check GHCR access and retry setup")
+		return errors.New("VM image preparation failed; private images need setup --registry-auth FILE")
 	}
 	return nil
 }
@@ -242,7 +242,7 @@ func ensureRegistryAuth(path string, supplied *registryCredentials) error {
 	if supplied != nil {
 		data, err := credentialinput.RegistryConfig(supplied.Username, supplied.Token)
 		if err != nil {
-			return errors.New("invalid registry credentials in JSON")
+			return errors.New("invalid registry auth; JSON needs username and token")
 		}
 		defer clear(data)
 		_, err = privatefile.Write(path, data)
@@ -256,15 +256,17 @@ func ensureRegistryAuth(path string, supplied *registryCredentials) error {
 				Auth string `json:"auth"`
 			} `json:"auths"`
 		}
-		if json.Unmarshal(data, &config) != nil || config.Auths["ghcr.io"].Auth == "" {
-			return errors.New("invalid saved GHCR credentials; supply registry access with setup --file FILE")
+		if json.Unmarshal(data, &config) != nil || config.Auths == nil || len(config.Auths) != 0 && config.Auths["ghcr.io"].Auth == "" {
+			return errors.New("invalid saved GHCR credentials; supply setup --registry-auth FILE")
 		}
 		return nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return errors.New("private release images need registry access; include registry.username and registry.token in JSON and run vpnmodo setup --file FILE")
+	// Lima's data provisioner always needs a file, including anonymous pulls.
+	_, err = privatefile.Write(path, []byte("{\"auths\":{}}\n"))
+	return err
 }
 
 func waitSetupReady(base context.Context, h host.Host, version string) error {

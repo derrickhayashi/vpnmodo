@@ -1,5 +1,27 @@
 # ARM64 release validation
 
+## Optional separate registry auth — 2026-10-20
+
+CLI rc.11 keeps setup credentials separate from VPN configuration. Setup accepts
+optional `--registry-auth FILE` with GitHub `username` and `token`. With no
+supplied or saved credentials it prepares empty Docker auth for anonymous pulls;
+retries accept this anonymous configuration. Saved private access can be reused,
+and a supplied auth file replaces it. No credential prompts are added.
+
+Each VPN JSON contains only connection settings and its username/password/PSK
+credentials, using the same format for both backends. Setup still prepares only
+the VM/controller; profile creation reads its own VPN file afterwards.
+
+| Check | Result |
+| --- | --- |
+| Optional auth | Local tests pass for anonymous provisioning/retry, separate private auth input, cached reuse and explicit replacement |
+| Secret handling | Registry input rejects malformed/duplicate fields and exposed file permissions without disclosing values; both VPN input/RPC tests still pass |
+| Local checks | Full Go race tests, vet, 26 documentation JSON/shell blocks and secret scans pass |
+
+These are local input/provisioner tests. The release images remain private;
+no real anonymous pull, VM reset or new VPN authentication was performed. The
+previous post-MFA failure remains unresolved. Runtime image digests are unchanged.
+
 ## One-file configuration — 2026-10-20
 
 CLI identity: `v0.1.0-rc.10+git.7b01d6ffff00`.

@@ -32,7 +32,7 @@ for qualification and the unresolved intermittent startup/session observations
 ## Installation
 
 On an **Apple Silicon Mac**, download one file:
-[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.10/vpnmodo-darwin-arm64).
+[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.11/vpnmodo-darwin-arm64).
 Sign in to GitHub to download this private release.
 
 Install it:
@@ -46,13 +46,39 @@ vpnmodo version
 
 Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` once for new terminals.
 
-Prepare the single JSON file below, then run setup with that file. Setup installs
-Lima through Homebrew if needed, creates the managed Ubuntu VM, installs Docker
-and the release images, starts the controller and checks readiness. Repeated
-setup reuses the same environment. If Homebrew is missing, install it from
-[brew.sh](https://brew.sh) first.
+Setup creates the managed Ubuntu VM, installs Docker and the release images,
+starts the controller and checks readiness. It installs Lima through Homebrew
+if needed; install [Homebrew](https://brew.sh) first if it is missing.
 
-There is no VM selection, manual host registration or separate setup-file download.
+For **public images**, run `vpnmodo setup` without an auth file. The current
+release images are **private**, so supply a separate registry auth file:
+
+```sh
+umask 077
+mkdir -p "$HOME/vpnmodo-private"
+chmod 700 "$HOME/vpnmodo-private"
+nano "$HOME/vpnmodo-private/registry-auth.json"
+```
+
+Save your GitHub package credentials in that file:
+
+```json
+{
+  "username": "YOUR_GITHUB_USERNAME",
+  "token": "YOUR_GITHUB_TOKEN"
+}
+```
+
+The token needs `read:packages` and access to the private packages. Then run:
+
+```sh
+chmod 600 "$HOME/vpnmodo-private/registry-auth.json"
+vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
+```
+
+This file is optional for public registries. Repeated setup reuses the same VM
+and previously saved registry access. Setup does not read VPN configuration or
+start a VPN connection. There is no VM selection or separate setup-file download.
 
 ## VPN configuration
 
@@ -67,9 +93,8 @@ nano "$HOME/vpnmodo-private/work.json"
 
 Save **one** of the following JSON profiles as `work.json`. Replace the example
 server, DNS and health addresses with your VPN's approved settings. Fill in the
-VPN credentials and your GitHub account/token for private image pulls. The token
-needs `read:packages` and package access. Both VPN types use the same credentials
-and registry sections. `health` must identify a TCP service reachable through the
+VPN username, password and pre-shared key. Both VPN types use the same
+`credentials` section; registry access stays in the separate setup file. `health` must identify a TCP service reachable through the
 VPN, such as a private SSH server; it is used to check tunnel readiness.
 
 **L2TP/IPsec:** the gateway may be a DNS name or IPv4 address.
@@ -91,10 +116,6 @@ VPN, such as a private SSH server; it is used to check tunnel readiness.
     "username": "YOUR_VPN_USERNAME",
     "password": "YOUR_VPN_PASSWORD",
     "psk": "YOUR_VPN_PSK"
-  },
-  "registry": {
-    "username": "YOUR_GITHUB_USERNAME",
-    "token": "YOUR_GITHUB_TOKEN"
   }
 }
 ```
@@ -118,10 +139,6 @@ supported emailed-code MFA flow.
     "username": "YOUR_VPN_USERNAME",
     "password": "YOUR_VPN_PASSWORD",
     "psk": "YOUR_VPN_PSK"
-  },
-  "registry": {
-    "username": "YOUR_GITHUB_USERNAME",
-    "token": "YOUR_GITHUB_TOKEN"
   }
 }
 ```
@@ -130,14 +147,14 @@ Then, on the **Mac**:
 
 ```sh
 chmod 600 "$HOME/vpnmodo-private/work.json"
-vpnmodo setup --file "$HOME/vpnmodo-private/work.json"
 vpnmodo profile create work \
   --file "$HOME/vpnmodo-private/work.json"
 vpnmodo profile inspect work
 ```
 
-The same file supplies setup and profile creation; neither asks for credentials.
-Keep it private and outside Git: it contains plaintext secrets. The VM stores
+This VPN file supplies settings and credentials for profile creation. Keep it
+private and outside Git: it contains plaintext secrets. Setup and profile creation
+never prompt for credentials. The VM stores
 VPN credentials separately from its profile metadata in protected files, and SSH
 encrypts transport. Profile output and local references omit the secrets.
 Only XAuth prompts for the fresh MFA code when connecting; L2TP does not prompt.
