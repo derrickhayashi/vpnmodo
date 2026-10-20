@@ -173,3 +173,25 @@ to run on the VM host daemon. The L2TP gateway build uses `vpnmodo-l2tp:dev`, an
 the XAuth pre-login guard uses `vpnmodo-xauth:dev`; when testing release-only images,
 point these fixture aliases at the verified corresponding image IDs inside the
 isolated daemon. Actual managed profiles continue using their pinned image IDs.
+
+## Publishing in-place upgrade metadata
+
+See [updating an installation](upgrading.md) for the user workflow. This feature
+requires two additional assets in the selected GitHub release. Build the CLI and
+publish the Linux arm64 registry images from the same committed revision and
+version, then generate the descriptor:
+
+```sh
+python3 scripts/build-upgrade-manifest.py \
+  --cli-dir /absolute/private/build/cli \
+  --runtime /absolute/private/build/linux-arm64/registry-release.json
+```
+
+Upload `upgrade-darwin-arm64.json` and the raw `vpnmodo-darwin-arm64` binary from
+the CLI output directory to that version's GitHub release. Verify that the
+Releases API reports SHA-256 asset digests before directing users to upgrade.
+The descriptor records API major 1 and state schema 1, CLI size/hash, matched
+CLI/controller identity, and the four immutable GHCR image references. Releases
+requiring another state schema must provide a separately designed migration;
+changing this descriptor's compatibility numbers does not implement migration.
+Do not publish unqualified images or enable additional release CI workflows.

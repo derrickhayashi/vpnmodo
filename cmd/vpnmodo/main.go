@@ -28,7 +28,7 @@ func run(base context.Context, args []string, output io.Writer) error {
 		return proxyCommand(base, args)
 	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(output, "Usage: vpnmodo setup [--config FILE] [--registry-auth FILE]\n       vpnmodo {up|down|status|doctor} PROFILE\n       vpnmodo logs PROFILE [--since 24h] [--limit 200] [--before SEQUENCE] [--json]\n       vpnmodo profile help\n       vpnmodo service {configure|start|stop|status} PROFILE\n       vpnmodo operation {status|cancel|watch|submit-mfa} ID\n       vpnmodo proxy PROFILE HOST PORT\n       vpnmodo version")
+		fmt.Fprintln(output, "Usage: vpnmodo upgrade [--check] [--version TAG]\n       vpnmodo setup [--config FILE] [--registry-auth FILE]\n       vpnmodo {up|down|status|doctor} PROFILE\n       vpnmodo logs PROFILE [--since 24h] [--limit 200] [--before SEQUENCE] [--json]\n       vpnmodo profile help\n       vpnmodo service {configure|start|stop|status} PROFILE\n       vpnmodo operation {status|cancel|watch|submit-mfa} ID\n       vpnmodo proxy PROFILE HOST PORT\n       vpnmodo version")
 		return nil
 	}
 	root := flag.NewFlagSet("vpnmodo", flag.ContinueOnError)
@@ -41,6 +41,9 @@ func run(base context.Context, args []string, output io.Writer) error {
 	if len(args) == 1 && args[0] == "version" {
 		fmt.Fprintln(output, version)
 		return nil
+	}
+	if len(args) > 0 && args[0] == "upgrade" {
+		return upgradeCommand(base, *registry, args[1:], output)
 	}
 	if len(args) > 0 && args[0] == "setup" {
 		return setupCommand(base, *registry, args[1:], output)

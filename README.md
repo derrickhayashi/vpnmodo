@@ -306,3 +306,5 @@ The older standalone launchers are documented in the
 [legacy deployment guide](docs/deployment.md), [launcher profiles](docs/profiles.md),
 [watchdog guide](watchdog/README.md) and
 [legacy service forwarding guide](docs/remote-services.md).
+
+See [updating an existing installation](docs/upgrading.md) for the in-place CLI and container upgrade workflow.

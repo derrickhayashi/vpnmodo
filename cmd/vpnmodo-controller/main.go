@@ -48,6 +48,8 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	switch args[0] {
+	case "upgrade-check":
+		return controller.CheckUpgrade(*state)
 	case "serve":
 		if !filepath.IsAbs(*state) {
 			return controller.ErrService

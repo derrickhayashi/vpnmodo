@@ -2,6 +2,8 @@
 !go.mod
 !go.sum
 !internal/
+!internal/eventlog/
+!internal/eventlog/*.go
 !internal/controller/
 !internal/controller/*.go
 !internal/jsonstrict/

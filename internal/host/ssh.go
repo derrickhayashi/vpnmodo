@@ -144,6 +144,8 @@ func safeSetupError(code string) string {
 		return "controller name belongs to another deployment"
 	case "replace_required":
 		return "controller differs; use explicit --replace to upgrade or repair"
+	case "upgrade_pending":
+		return "an upgrade is pending; use vpnmodo upgrade --resume or --rollback"
 	case "storage":
 		return "private controller storage is unavailable"
 	default:
