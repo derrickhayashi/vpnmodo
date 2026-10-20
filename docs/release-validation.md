@@ -28,6 +28,20 @@ The regression is `tests/xauth_handshake_timeout.py`; it accepts explicit old
 and fixed images plus the corrected entrypoint and requires a delay above 30s.
 This does not requalify unrelated protocol/lifecycle scenarios.
 
+Installed standalone CLI: `v0.1.0-rc.12+git.68b20091f975`. The private ARM64
+XAuth image is pinned by digest
+`sha256:f8a578da17a5037d5a699fc40a79a3b1a97e0243e381288f197511419ecd796f`.
+Controller, L2TP and application image IDs remain unchanged. The same VM and
+persistent profile storage were retained. After updating Lima's saved manifest,
+a normal VM restart preserved the new pin; the receipt and running controller
+both selected the corrected image.
+
+One explicitly authorized real connection through `connection ensure`, operation
+status and protected-stdin `submit-mfa` completed successfully. Read-only status
+confirmed `vpn_ready=true`, and authenticated SSH identity checks passed for both
+configured verification targets. The working VPN was left running. Native Mac
+archive/standalone installation smoke checks pass for this CLI release.
+
 ## Fresh managed VM walkthrough — 2026-10-20
 
 Installed CLI: `v0.1.0-rc.11+git.423ebd07a24d`; unchanged rc.7 runtime images.
