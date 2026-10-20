@@ -68,6 +68,11 @@ def setup(params):
     descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(descriptor, "a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        if (root / "upgrade-pending").exists():
+            raise SetupError("upgrade_pending")
+        for transaction in (root / "upgrades").glob("*/transaction.json"):
+            if json.loads(transaction.read_text())["phase"] not in ("committed", "rolled_back"):
+                raise SetupError("upgrade_pending")
         return activate(params, root, state)
 
 

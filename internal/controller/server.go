@@ -183,7 +183,20 @@ func (s *Server) Close() error {
 
 func (s *Server) Serve(ctx context.Context) error {
 	defer s.Close()
-	s.operations.StartReconcile()
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for upgradePending(s.config.StateDir) {
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+		s.operations.StartReconcile()
+	}()
 	s.workers.Add(1)
 	go s.maintainLogs()
 	done := make(chan struct{})
@@ -257,6 +270,9 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 	guard := protocol.Request{JSONRPC: protocol.JSONRPCVersion, ID: json.RawMessage(req.ID()), Method: protocol.Method(req.Method())}
 	if err := d.session.Check(guard); err != nil {
 		return nil, fault(err.(*protocol.RPCError).Code)
+	}
+	if upgradePending(d.config.StateDir) && !allowedDuringUpgrade(guard.Method) {
+		return nil, fault(protocol.CodeBusy)
 	}
 	raw := json.RawMessage(`{}`)
 	_ = req.UnmarshalParams(&raw)

@@ -11,6 +11,7 @@ on:
       # Embedded Python helpers and provisioning inputs.
       - internal/host/bootstrap.py
       - internal/host/proxy.py
+      - internal/host/upgrade.py
       - examples/lima/vpnmodo.yaml
       - examples/lima/registry-release.json
       - scripts/release/install-vm.py
@@ -25,6 +26,7 @@ on:
       # Embedded Python helpers and provisioning inputs.
       - internal/host/bootstrap.py
       - internal/host/proxy.py
+      - internal/host/upgrade.py
       - examples/lima/vpnmodo.yaml
       - examples/lima/registry-release.json
       - scripts/release/install-vm.py
