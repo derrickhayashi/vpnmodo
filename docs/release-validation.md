@@ -2,6 +2,8 @@
 
 ## Optional separate registry auth — 2026-10-20
 
+CLI identity: `v0.1.0-rc.11+git.423ebd07a24d`.
+
 CLI rc.11 keeps setup credentials separate from VPN configuration. Setup accepts
 optional `--registry-auth FILE` with GitHub `username` and `token`. With no
 supplied or saved credentials it prepares empty Docker auth for anonymous pulls;
@@ -15,6 +17,7 @@ the VM/controller; profile creation reads its own VPN file afterwards.
 | Check | Result |
 | --- | --- |
 | Optional auth | Local tests pass for anonymous provisioning/retry, separate private auth input, cached reuse and explicit replacement |
+| Native release artifact | ARM64 standalone/archive hashes match; version/help, installation/replacement and corruption/symlink refusal checks pass |
 | Secret handling | Registry input rejects malformed/duplicate fields and exposed file permissions without disclosing values; both VPN input/RPC tests still pass |
 | Local checks | Full Go race tests, vet, 26 documentation JSON/shell blocks and secret scans pass |
 
