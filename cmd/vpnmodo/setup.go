@@ -24,14 +24,16 @@ import (
 
 func setupCommand(base context.Context, registry string, args []string, out io.Writer) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(out, "Usage: vpnmodo setup [--registry-auth FILE]\nCreates the managed local environment and starts the controller.\nOptional registry auth JSON contains username and token; omit it for public images.")
+		fmt.Fprintln(out, "Usage: vpnmodo setup [--config FILE] [--registry-auth FILE]\nCreates the managed local environment and starts the controller.\nOptional setup config is reserved and currently ignored.\nOptional registry auth JSON contains username and token; omit it for public images.")
 		return nil
 	}
 	flags := flag.NewFlagSet("setup", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	// Reserve the setup-local input until its configuration fields are defined.
+	flags.String("config", "", "reserved setup configuration file (currently ignored)")
 	file := flags.String("registry-auth", "", "")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
-		return errors.New("usage: vpnmodo setup [--registry-auth FILE]")
+		return errors.New("usage: vpnmodo setup [--config FILE] [--registry-auth FILE]")
 	}
 	var auth *registryCredentials
 	if *file != "" {

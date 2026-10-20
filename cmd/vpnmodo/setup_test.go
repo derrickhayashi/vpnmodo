@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -144,13 +146,54 @@ func TestSetupRejectsInvalidReceiptAndCredentials(t *testing.T) {
 
 func TestSetupHelpAndInvalidOptions(t *testing.T) {
 	var output bytes.Buffer
-	if err := run(context.Background(), []string{"setup", "--help"}, &output); err != nil || !strings.Contains(output.String(), "Usage: vpnmodo setup") {
+	if err := run(context.Background(), []string{"setup", "--help"}, &output); err != nil || !strings.Contains(output.String(), "--config FILE") || !strings.Contains(output.String(), "currently ignored") {
 		t.Fatal("setup help unavailable")
 	}
-	for _, args := range [][]string{{"setup", "unexpected"}, {"setup", "--unknown"}} {
+	for _, args := range [][]string{{"setup", "unexpected"}, {"setup", "--unknown"}, {"setup", "--config"}} {
 		if err := run(context.Background(), args, &output); err == nil {
 			t.Fatal("accepted invalid setup arguments")
 		}
+	}
+}
+
+func TestSetupConfigIsIgnored(t *testing.T) {
+	for _, exists := range []bool{false, true} {
+		name := "missing"
+		if exists {
+			name = "invalid-json"
+		}
+		t.Run(name, func(t *testing.T) {
+			registry, _, _ := fakeLima(t)
+			config := filepath.Join(t.TempDir(), "config.json")
+			original := []byte("not JSON\n")
+			if exists {
+				if err := os.WriteFile(config, original, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var output bytes.Buffer
+			err := run(context.Background(), []string{"--config", registry, "setup", "--config", config}, &output)
+			if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+				// The fixture stops at bootstrap; all VM commands use fake binaries.
+				if !errors.Is(err, host.ErrSSH) || !strings.Contains(output.String(), "Starting the controller...") {
+					t.Fatalf("setup did not reach controller activation: %v", err)
+				}
+				state, readErr := host.Read(registry)
+				if readErr != nil || len(state.Hosts) != 1 || state.Hosts[0].Name != "vpn-vm" {
+					t.Fatal("setup config changed the host registry location")
+				}
+			} else if err == nil || err.Error() != "setup requires an Apple Silicon Mac" {
+				t.Fatalf("setup config was not accepted before the platform check: %v", err)
+			}
+			data, readErr := os.ReadFile(config)
+			if exists {
+				if readErr != nil || !bytes.Equal(data, original) {
+					t.Fatal("setup modified its reserved configuration input")
+				}
+			} else if !errors.Is(readErr, os.ErrNotExist) {
+				t.Fatal("setup created its reserved configuration input")
+			}
+		})
 	}
 }
 

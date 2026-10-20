@@ -297,6 +297,7 @@ wrong; known unresolved lifecycle failures are tracked in
 - [Onboarding and profile maintenance](docs/onboarding.md): update settings, rotate credentials and remove profiles.
 - [Known issues and regressions](docs/known-issues.md): symptoms, affected versions and recovery steps.
 - [VPN and SSH proxy internals](docs/internals.md): how the VM, controller and application container carry traffic.
+- [Setup configuration](docs/design/008-setup-configuration.md): optional `setup --config` input, currently ignored.
 - [Release artifacts](docs/releases.md): download, build and upgrade instructions.
 - [Release validation](docs/release-validation.md): tested versions, platforms and limitations.
 - [Local development](docs/development.md): build from source and run tests.
