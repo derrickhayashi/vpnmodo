@@ -107,6 +107,9 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		if err := emit(); err != nil {
 			return err
 		}
+		if code == "profile_reference_unavailable" {
+			return errors.New("VPN profile is not configured; use vpnmodo profile create NAME --file PROFILE.json")
+		}
 		return errAccess
 	}
 	if flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
@@ -163,7 +166,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 			return emit()
 		}
 	}
-	ref, err := host.FindReference(host.ReferencePath(registry), alias)
+	ref, err := managedReference(host.ReferencePath(registry), alias)
 	if err != nil {
 		return fail("profile_reference_unavailable")
 	}

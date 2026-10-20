@@ -29,10 +29,10 @@ func TestServiceConfigureIsPrivateAndRequiresNoVMConnection(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	registry := filepath.Join(dir, "registry", "hosts.json")
-	if err := host.Add(registry, host.Host{Name: "vm", SSH: "192.0.2.250"}); err != nil {
+	if err := host.Add(registry, host.Host{Name: host.ManagedName, SSH: "192.0.2.250"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.AddReference(ctx, host.ReferencePath(registry), host.Reference{Name: "example", Host: "vm", Profile: "example"}); err != nil {
+	if err := host.AddReference(ctx, host.ReferencePath(registry), host.Reference{Name: "example", Host: host.ManagedName, Profile: "example"}); err != nil {
 		t.Fatal(err)
 	}
 	source := filepath.Join(dir, "services.json")

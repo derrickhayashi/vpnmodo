@@ -12,9 +12,9 @@ Build and register/setup the VM as described in the
 JSON profile using the [backend examples](../../examples/profiles/v1/):
 
 ```sh
-/tmp/vpnmodo profile create example --host my-vm --file /private/path/profile.json
+/tmp/vpnmodo profile create example --file /private/path/profile.json
 /tmp/vpnmodo profile list
-/tmp/vpnmodo profile list --host my-vm
+/tmp/vpnmodo profile list
 /tmp/vpnmodo profile inspect example
 ```
 
@@ -38,13 +38,12 @@ succeeds but local registration fails, repair local storage then explicitly
 register the already-created VM profile:
 
 ```sh
-/tmp/vpnmodo profile list --host my-vm
-/tmp/vpnmodo profile register example --host my-vm --profile example-l2tp
+/tmp/vpnmodo profile list
+/tmp/vpnmodo profile register example --profile example-l2tp
 ```
 
 Registration verifies the VM profile through RPC; it never fetches credentials.
-`profile unregister ALIAS` removes a local reference only. `profile list` without
-`--host` lists local registrations; with a host it discovers VM profile summaries.
+`profile unregister ALIAS` removes a local reference only. `profile list` lists profile summaries from the managed VM.
 Inspection returns non-secret settings, revision and credential availability.
 List responses use compact summaries so configuration sizes cannot overflow the
 bounded RPC frame. Results support `--json`; errors use sanitized stderr and a

@@ -1,51 +1,12 @@
 # Onboarding, profile maintenance and adoption
 
-Start with [README installation](../README.md#installation) to install the Mac
-CLI, run `vpnmodo setup` to create a ready local Ubuntu VM, and create your VPN
-profile. Then use [README usage](../README.md#usage) to connect and access private
-services. The platform pair is macOS ARM64 and Ubuntu 24.04 ARM64; each user owns
-their Mac and VM.
+Start with [README installation](../README.md#installation). `vpnmodo setup`
+prepares the single managed local environment. VPN configuration stays in JSON.
+Then use [README usage](../README.md#usage) to connect and access private services.
 
-For an existing VM, use [existing VM and offline installation](offline-installation.md),
-which includes Ansible preparation and loading the release image bundle. The
-bundle contains four Docker images, not a VM disk image. See
-[release packaging](releases.md) for maintainer builds and explicit upgrades.
-
-## Sudo mode
-
-The README's Lima path already uses `--sudo` for its `vpnadmin` account. The
-offline guide defaults to direct access to rootful Docker. For an existing VM
-account authorized to use noninteractive sudo, verify:
-
-```sh
-ssh -o BatchMode=yes vpn-vm 'sudo -n python3 --version && sudo -n docker --host unix:///var/run/docker.sock info --format "{{.OSType}}" && sudo -n docker compose version'
-```
-
-All checks must succeed. When loading the verified images on the VM, run this
-from the extracted bundle directory instead of the ordinary loader command:
-
-```sh
-sudo -n python3 install-vm.py > installed-release.json
-```
-
-On the Mac, register the host with sudo mode **before initial setup**:
-
-```sh
-vpnmodo host add vpn-vm --ssh vpn-vm --sudo
-vpnmodo host setup vpn-vm --release "$HOME/vpnmodo-private/setup/installed-release.json"
-vpnmodo host check vpn-vm
-```
-
-Fixed VM management commands then use noninteractive sudo, including bootstrap,
-the bridge and forwarding. This does not change group membership or sudo policy.
-Bootstrap owns state under root's home in this mode; use the same mode for later
-access and upgrades. Do not enable sudo mode for a pre-existing user-owned
-controller without an explicit state migration. Bootstrap refuses mismatched
-storage mounts.
-
-For a separate SSH configuration, add `--ssh-config /absolute/path/to/config` to
-`host add`. The path must be absolute. Registration creates a workstation
-reference; setup starts the controller and provisions protected VM storage.
+Create a profile with `vpnmodo profile create NAME --file PROFILE.json`. It uses
+the managed VM and prompts for credentials separately.
+VM selection and manual host registration are not part of the CLI.
 
 ## Credential input for automation
 
@@ -56,7 +17,7 @@ protected pipe or an owner-only regular file. For example, if your approved
 secret-management process has already created a mode-0600 file outside Git:
 
 ```sh
-vpnmodo profile create work --host vpn-vm \
+vpnmodo profile create work \
   --file "$HOME/vpnmodo-private/work.json" \
   --credentials-stdin < "$HOME/vpnmodo-private/credentials.json"
 ```
@@ -102,20 +63,6 @@ vpnmodo up work
 Mutations require the managed profile to be inactive. Revisions prevent stale
 updates; do not reuse an old revision after a successful mutation. See
 [profile storage](design/002-profile-storage.md) for lifecycle and disposal rules.
-
-## Adopting an existing deployment
-
-Create the inactive new profile with approved settings and credentials first.
-There is no automatic import of standalone launcher directories. Schedule an
-explicit cutover: stop the selected legacy recovery owner and session before
-starting the managed replacement if parallel login is unsafe. Never let two
-recovery owners manage one session, and do not stop unrelated deployments.
-Verify authenticated private SSH/application access after `vpnmodo up`.
-
-Retaining the previous configuration as an optional fallback is an operator
-choice. Rehearsing legacy rollback is outside the agreed release scope. Loading
-an image bundle does not perform adoption or stop existing VPNs. Earlier real
-ARM64 adoption/cutover results are in the [validation record](release-validation.md).
 
 ## Removal
 

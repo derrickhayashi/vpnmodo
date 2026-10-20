@@ -12,18 +12,16 @@ checks. The [managed XAuth adapter](../../docs/design/006-managed-xauth.md) adds
 secure MFA and mandatory kernel-enforced isolation, with explicit authentication
 after tunnel loss.
 
-For checksum-verified candidate binaries and offline images, use the
+For release binaries and images, use the
 [release guide](../../docs/releases.md) and [onboarding guide](../../docs/onboarding.md).
 The development build below remains available.
 
 ## Prerequisites and build
 
-The target is an existing Ubuntu 24.04 VM with SSH, Python 3, rootful Docker
-Engine and Compose v2 or later. The SSH account must already have Docker access.
-The commands use the VM's `/var/run/docker.sock` explicitly; Docker contexts on
-the workstation/VM do not redirect this management connection. VM creation and
-installing Docker/SSH are outside this skeleton's setup command. Existing Ansible
-deployment tooling remains available for prerequisites and legacy VPN instances.
+`vpnmodo setup` creates the managed Ubuntu 24.04 Lima VM and installs SSH,
+Python 3, rootful Docker Engine and Compose. The controller uses the VM's
+`/var/run/docker.sock` explicitly; workstation Docker contexts do not redirect
+this management connection.
 
 Build the workstation binary with Go 1.27:
 
@@ -31,9 +29,8 @@ Build the workstation binary with Go 1.27:
 go build -trimpath -o /tmp/vpnmodo ./cmd/vpnmodo
 ```
 
-Build the controller image on the VM, or explicitly transfer a compatible built
-image using Docker's normal image tooling. There is no published release image
-yet, and `host setup` does not upload source or image archives:
+For controller development, build the image from source. Normal setup pulls the
+published release images from GHCR:
 
 ```sh
 docker build -t vpnmodo-controller:dev -f containers/controller/Dockerfile .
@@ -56,43 +53,19 @@ PPP (`ppp_generic`, `ppp_async`, `/dev/ppp`).
 xl2tpd can use userspace L2TP when optional kernel L2TP acceleration is absent.
 The adapter never installs modules, creates host devices, builds or pulls images.
 
-## Register, set up and check
+## Managed setup
 
-Use an existing SSH alias with trusted host keys and key-based authentication:
+Users install the standalone CLI and run `vpnmodo setup`. This prepares the one
+managed Lima VM, starts its controller and checks readiness. VPN profiles remain
+JSON and are created with `vpnmodo profile create NAME --file PROFILE.json`;
+they automatically use that environment.
 
-```sh
-/tmp/vpnmodo host add my-vm --ssh vpn-host
-/tmp/vpnmodo host setup my-vm --image vpnmodo-controller:dev
-/tmp/vpnmodo host check my-vm
-/tmp/vpnmodo host check my-vm --json
-```
+Internally, setup uses fixed Python sent over Lima's SSH connection. Parameters
+are JSON stdin. It creates private storage, writes the controller Compose
+manifest and starts the controller. Matching state is reused, while foreign
+containers and mismatched storage are refused. This bootstrap is an internal
+implementation detail, not an alternate host-management API.
 
-`host add` stores only the name, SSH target and optional `--ssh-config` path. It
-does not connect/provision. The private registry is under `os.UserConfigDir()`:
-`Library/Application Support/vpnmodo/hosts.json` on macOS. `--config` before `host`
-selects another absolute private registry path for automation/tests. Secret input
-does not belong in that registry. Registry updates lock and replace atomically.
-
-`host setup` uses fixed Python code sent over SSH; operator inputs are JSON stdin
-and never interpolated into shell syntax. It requires the image to exist on the
-VM or be pullable with that host's existing registry authentication. It creates
-private storage at `~/.local/share/vpnmodo` on the VM, writes a protected resolved
-controller Compose manifest, and starts only project `vpnmodo-controller`.
-It serializes bootstrap updates and refuses foreign containers with the same
-name, a different data mount, symlink storage or public storage permissions.
-
-An existing matching controller is reused or started if stopped. A changed image
-requires `--replace`. Use that explicit option to recreate/repair the controller
-while retaining persistent storage. No VPN or legacy Compose project is stopped:
-
-```sh
-/tmp/vpnmodo host setup my-vm --image vpnmodo-controller:dev --replace
-```
-
-Setup reports created/reused/started/replaced, not end-to-end readiness. Follow it
-with `host check`; the container may need a moment to start. Setup can repair a
-stopped controller without relying on the controller's own API. Its current
-private manifest format is implementation-owned, not a user profile schema.
 
 ## Process and permission model
 

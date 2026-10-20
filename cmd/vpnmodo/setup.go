@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -23,21 +22,15 @@ import (
 )
 
 func setupCommand(base context.Context, registry string, args []string, out io.Writer) error {
-	flags := flag.NewFlagSet("setup", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
-	name := flags.String("name", "vpn-vm", "")
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(out, "Usage: vpnmodo [--config FILE] setup [--name vpn-vm]\nCreates a local Lima VM, provisions release images and starts the controller.")
-			return nil
-		}
-		return errors.New("invalid setup options")
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
+		fmt.Fprintln(out, "Usage: vpnmodo setup\nCreates the managed local environment and starts the controller.")
+		return nil
 	}
-	if flags.NArg() != 0 || (host.Host{Name: *name, SSH: "lima-" + *name}).Validate() != nil {
-		return errors.New("supply a valid Lima VM name with --name")
+	if len(args) != 0 {
+		return errors.New("usage: vpnmodo setup")
 	}
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
-		return errors.New("local setup requires an Apple Silicon Mac; use host add/setup for an existing VM")
+		return errors.New("setup requires an Apple Silicon Mac")
 	}
 	if registry == "" {
 		var err error
@@ -60,7 +53,7 @@ func setupCommand(base context.Context, registry string, args []string, out io.W
 			return err
 		}
 	}
-	h, release, err := provisionLima(ctx, registry, *name, out)
+	h, release, err := provisionLima(ctx, registry, out)
 	if err != nil {
 		return err
 	}
@@ -75,7 +68,7 @@ func setupCommand(base context.Context, registry string, args []string, out io.W
 	if err := waitSetupReady(ctx, h, release.Version); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Ready: %s (%s).\nNext: vpnmodo profile create work --host %s --file PROFILE.json\n", h.Name, release.Version, h.Name)
+	fmt.Fprintln(out, "Environment is ready.\nNext: vpnmodo profile create NAME --file PROFILE.json")
 	return nil
 }
 
@@ -122,7 +115,8 @@ func limaSSHConfig(ctx context.Context, name string) (string, error) {
 }
 
 // provisionLima uses native Lima and SCP; activation reuses host.Setup above.
-func provisionLima(ctx context.Context, registry, name string, out io.Writer) (host.Host, host.InstalledRelease, error) {
+func provisionLima(ctx context.Context, registry string, out io.Writer) (host.Host, host.InstalledRelease, error) {
+	const name = host.ManagedName
 	var empty host.InstalledRelease
 	h := host.Host{Name: name, SSH: "lima-" + name, Sudo: true}
 	if h.Validate() != nil || !filepath.IsAbs(registry) {
@@ -147,13 +141,13 @@ func provisionLima(ctx context.Context, registry, name string, out io.Writer) (h
 	}
 	for _, existing := range registered.Hosts {
 		if existing.Name == name && (existing.SSH != h.SSH || !existing.Sudo || config != "" && existing.SSHConfig != config) {
-			return h, empty, errors.New("host name is already registered with different SSH settings; choose another --name")
+			return h, empty, errors.New("the managed VM has conflicting saved SSH settings; inspect its setup configuration")
 		}
 	}
 	yaml := filepath.Join(dir, "lima.yaml")
 	if config != "" {
 		if _, err := privatefile.Read(yaml, 64*1024); err != nil {
-			return h, empty, errors.New("Lima instance already exists outside this setup; choose another --name or use host add/setup")
+			return h, empty, errors.New("the managed Lima instance was created outside vpnmodo; inspect its setup configuration")
 		}
 	}
 	if err := ensureRegistryAuth(ctx, filepath.Join(dir, "ghcr-config.json"), out); err != nil {
@@ -276,7 +270,7 @@ func waitSetupReady(base context.Context, h host.Host, version string) error {
 		stop()
 		select {
 		case <-ctx.Done():
-			return errors.New("controller is not ready; inspect it with vpnmodo host check")
+			return errors.New("controller is not ready; check the Lima logs and run setup again")
 		case <-time.After(time.Second):
 		}
 	}

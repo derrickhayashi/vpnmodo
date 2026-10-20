@@ -14,6 +14,8 @@ import (
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
 )
 
+const ManagedName = "vpn-vm"
+
 var ErrRegistry = errors.New("invalid or unavailable private host registry")
 var ErrDuplicate = errors.New("host already registered")
 var targetPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,252}$`)

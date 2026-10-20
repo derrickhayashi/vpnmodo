@@ -17,12 +17,12 @@ import (
 
 func operationCommand(base context.Context, registry string, args []string, out io.Writer) error {
 	if len(args) < 3 {
-		return errors.New("usage: vpnmodo connection {ensure|disconnect|status} ALIAS; vpnmodo operation {status|cancel|watch} ID --host HOST")
+		return errors.New("usage: vpnmodo connection {ensure|disconnect|status} ALIAS; vpnmodo operation {status|cancel|watch} ID")
 	}
 	group, command, name := args[0], args[1], args[2]
 	flags := flag.NewFlagSet("operation", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	target := flags.String("host", "", "")
+	target := host.ManagedName
 	machine := flags.Bool("json", false, "")
 	challenge := flags.String("challenge", "", "")
 	codeStdin := flags.Bool("code-stdin", false, "")
@@ -33,14 +33,11 @@ func operationCommand(base context.Context, registry string, args []string, out 
 	var method protocol.Method
 	var params any
 	if group == "connection" {
-		if *target != "" {
-			return errors.New("connection commands use a registered profile alias")
-		}
-		reference, err := host.FindReference(host.ReferencePath(registry), name)
+		reference, err := managedReference(host.ReferencePath(registry), name)
 		if err != nil {
 			return err
 		}
-		*target = reference.Host
+
 		params = protocol.ProfileParams{Profile: reference.Profile}
 		switch command {
 		case "ensure":
@@ -53,8 +50,8 @@ func operationCommand(base context.Context, registry string, args []string, out 
 			return errors.New("unknown connection command")
 		}
 	} else {
-		if !operation.ValidID(name) || *target == "" || *wait {
-			return errors.New("operation ID and --host are required; watch is a separate command")
+		if !operation.ValidID(name) || *wait {
+			return errors.New("a valid operation ID is required; watch is a separate command")
 		}
 		params = protocol.OperationParams{OperationID: name}
 		switch command {
@@ -74,7 +71,7 @@ func operationCommand(base context.Context, registry string, args []string, out 
 	if *wait && method == protocol.ConnectionStatus {
 		return errors.New("--wait requires ensure or disconnect")
 	}
-	h, err := host.Find(registry, *target)
+	h, err := host.Find(registry, target)
 	if err != nil {
 		return err
 	}

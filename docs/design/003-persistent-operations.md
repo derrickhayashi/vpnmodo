@@ -16,9 +16,9 @@ The CLI adds explicit lifecycle commands against an existing registered alias:
 vpnmodo connection ensure example --json
 vpnmodo connection disconnect example --wait --json
 vpnmodo connection status example --json
-vpnmodo operation status op-0123456789abcdef0123456789abcdef --host my-vm --json
-vpnmodo operation watch op-0123456789abcdef0123456789abcdef --host my-vm --json
-vpnmodo operation cancel op-0123456789abcdef0123456789abcdef --host my-vm --json
+vpnmodo operation status op-0123456789abcdef0123456789abcdef --json
+vpnmodo operation watch op-0123456789abcdef0123456789abcdef --json
+vpnmodo operation cancel op-0123456789abcdef0123456789abcdef --json
 ```
 
 L2TP and XAuth ensure/disconnect use real managed adapters in the production

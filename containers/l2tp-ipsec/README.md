@@ -145,7 +145,7 @@ This repository is an Ansible collection providing the role
 `vpn_sidecar.client.vpn_sidecar` from `roles/vpn_sidecar`. Install a pinned
 collection dependency with `ansible-galaxy`, then load the role normally from
 the consumer playbook. Consumers own their inventory, settings, and encrypted
-credentials. See [collection usage and role inputs](../../ansible/README.md).
+credentials. See [backend role source](../../roles/vpn_sidecar/tasks/main.yaml).
 
 ## Container watchdog
 

@@ -37,7 +37,7 @@ def main():
             assert hashlib.sha256(args.binary.read_bytes()).hexdigest() == metadata['binary_sha256']
             assert subprocess.check_output([str(args.binary), 'version']).decode().strip() == metadata['binary_version']
             help_text = subprocess.check_output([str(args.binary), 'setup', '--help']).decode()
-            assert 'setup [--name vpn-vm]' in help_text
+            assert 'Usage: vpnmodo setup' in help_text
 
         prefix = root / 'installation with spaces'
         def install(*options):

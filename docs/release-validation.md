@@ -1,5 +1,24 @@
 # ARM64 release validation
 
+## Single managed VM flow — 2026-10-20
+
+The pending rc.9 CLI removes alternate VM registration and selection. It uses
+only the managed `vpn-vm` and keeps VPN configuration in JSON files. The
+controller and image digests remain the published rc.7 runtime.
+
+| Check | Result |
+| --- | --- |
+| Default VM setup | `vpnmodo setup` succeeds on the workstation's managed Lima VM and reports controller readiness |
+| JSON profile creation | Creating a profile from a private JSON file succeeds on that VM; stored credentials are present |
+| Real VPN connection | Reaches the MFA prompt; after the fresh code is submitted, authentication fails and the client exits with diagnostic 27 |
+| Private access | Not verified because the VPN connection failed |
+| Local checks | Full Go race tests, vet, 77 Python tests and secret scans pass |
+
+The failed connection is not an end-to-end pass. Retained diagnostics do not
+identify the underlying peer/client reason. The older qualification below
+remains historical evidence, not proof that this managed-VM connection works.
+No automatic authentication retry was performed.
+
 ## Single-file setup — 2026-10-20
 
 CLI source: `43e5e02d22fdb428e85aa4da28cc32658df71ec3`.

@@ -1,6 +1,6 @@
 # vpnmodo
 
-Manage VPN connections from your Mac using your own local or remote Ubuntu VM.
+Manage VPN connections from your Mac through one local Ubuntu VM created by vpnmodo.
 The Mac runs the `vpnmodo` CLI. A containerized `vpnmodo-controller` on the VM
 stores profiles and credentials, starts the VPN containers, and monitors them.
 Control traffic uses SSH; there is no HTTP API port to expose.
@@ -17,10 +17,9 @@ Managed profiles support **L2TP/IPsec** with username/password and PSK, and
 **IPsec/XAuth** with username/password, PSK and emailed MFA. XAuth fails closed
 when IPsec state is lost and requires an explicit login with fresh MFA to recover.
 
-The tested platform pair is **macOS ARM64 → Ubuntu 24.04 ARM64**. For a local
-VM on Apple Silicon, Lima creates Ubuntu, sets up SSH and installs the release
-images. Existing local or remote VMs can use Ansible preparation and an offline
-image bundle. Docker Desktop and Go are not needed on the user's Mac.
+The supported path is **Apple Silicon Mac → vpnmodo-managed Lima VM**. Setup
+creates Ubuntu, Docker and the controller. Docker Desktop, Go and
+Ansible are not needed on the Mac.
 
 This is a private release candidate. See the [validation record](docs/release-validation.md)
 for qualification and the unresolved intermittent startup/session observations
@@ -33,7 +32,7 @@ for qualification and the unresolved intermittent startup/session observations
 ## Installation
 
 On an **Apple Silicon Mac**, download one file:
-[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.8/vpnmodo-darwin-arm64).
+[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.9/vpnmodo-darwin-arm64).
 Sign in to GitHub to download this private release.
 
 Install it and create your environment:
@@ -47,27 +46,19 @@ vpnmodo setup
 
 Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` once for new terminals.
 
-Setup installs Lima through Homebrew if needed, creates the Ubuntu VM, installs
-Docker and the release images, starts the controller and checks readiness. If
-Homebrew is missing, setup tells you to install it from [brew.sh](https://brew.sh)
-and run setup again. All provisioning files are embedded in the executable;
-there are no separate setup files to download.
+Setup installs Lima through Homebrew if needed, creates the managed Ubuntu VM,
+installs Docker and the release images, starts the controller and checks readiness.
+Running setup again reuses this same environment. There is no VM selection,
+manual host registration or separate provisioning-file download.
 
-The images are currently private. Setup prompts for your GitHub username and a
-token with `read:packages`; the account needs access to the packages. Credentials
-are saved in a private file for image pulls. No Mac Docker Desktop, Go or Ansible
-installation is needed.
+If Homebrew is missing, install it from [brew.sh](https://brew.sh) and run setup
+again. The images are private, so setup asks for a GitHub username and a token
+with `read:packages`. Your account needs package access.
 
-The default VM and registered host are named `vpn-vm`. Running setup again reuses
-them. Use `vpnmodo setup --name another-vm` to create a separate environment.
-For details, see [Lima setup](docs/lima.md). For an existing VM or offline image
-bundle, use [existing VM installation](docs/offline-installation.md).
+When setup reports ready, create a VPN profile from JSON below. Profiles always
+use the managed VM; no `--host` option is needed.
 
-This CLI release is `v0.1.0-rc.8` and provisions the existing `v0.1.0-rc.7`
-controller images. Release checksums, unsigned macOS binary details and explicit
-upgrade instructions are in [release packaging](docs/releases.md).
-
-### Create a VPN profile
+## VPN configuration
 
 On the **Mac**, create a private directory outside any Git checkout:
 
@@ -123,7 +114,7 @@ Then, on the **Mac**:
 
 ```sh
 chmod 600 "$HOME/vpnmodo-private/work.json"
-vpnmodo profile create work --host vpn-vm \
+vpnmodo profile create work \
   --file "$HOME/vpnmodo-private/work.json"
 vpnmodo profile inspect work
 ```
@@ -136,12 +127,9 @@ references rather than a VPN credential copy. Keep real configuration and
 credentials out of this repository. See [automation and profile maintenance](docs/onboarding.md)
 for protected stdin/file-descriptor input and updates.
 
-If adopting an existing deployment, follow the [cutover notes](docs/onboarding.md#adopting-an-existing-deployment)
-before connecting. Do not run two recovery owners for the same VPN session.
-
 ## Usage
 
-Installation is complete. Use these commands on the **Mac** for everyday access.
+Use your configured profile name in place of `work` below. Run these commands on the **Mac**.
 
 ### Connect and check the VPN
 
@@ -236,10 +224,6 @@ Disconnect without deleting the saved profile or credentials:
 vpnmodo down work
 ```
 
-For a Lima VM, stop it with `limactl stop vpn-vm`. Start it again with
-`limactl start vpn-vm`, then run `vpnmodo up work` to reconnect and restore your
-configured service forwards.
-
 | Command on the Mac | Purpose |
 | --- | --- |
 | `vpnmodo up work` | Ensure the VPN and start configured local service forwards |
@@ -252,8 +236,7 @@ configured service forwards.
 ### Troubleshooting
 
 If VM SSH fails, check VM reachability, its verified host key and your SSH key.
-If `host check` fails, check VM Docker access and controller setup before trying
-a VPN login. If the VPN is healthy but private SSH fails, check destination
+If the environment is not ready, run `vpnmodo setup` again before trying a VPN login. If the VPN is healthy but private SSH fails, check destination
 host-key trust and authentication separately. If `doctor` reports a local port
 conflict, choose an unused port after stopping owned forwards.
 
@@ -267,9 +250,8 @@ wrong; known unresolved lifecycle failures are tracked in
 
 ## Existing launchers, architecture and development
 
-Existing standalone deployments remain supported and are adopted explicitly.
-For their original setup, use the [legacy deployment guide](docs/deployment.md),
-[launcher profiles](docs/profiles.md), [Ansible role](ansible/README.md),
+Backend and legacy implementation references include the [legacy deployment guide](docs/deployment.md),
+[launcher profiles](docs/profiles.md),
 [watchdog](watchdog/README.md) and [legacy service forwards](docs/remote-services.md).
 [Tailscale](containers/tailscale/README.md) is a standalone Compose backend;
 it is not a managed `vpnmodo` profile type.

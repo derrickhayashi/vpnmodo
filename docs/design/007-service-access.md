@@ -170,7 +170,7 @@ return a single report. Stdout contains only these results/events.
 | --- | --- |
 | `vm_ssh_unavailable` | Check VM reachability, known host key and workstation authentication |
 | `vm_python_unavailable` | VM SSH works; restore the VM Python 3 helper prerequisite |
-| `controller_unavailable` | Check/explicitly repair the controller with `host check` / `host setup` |
+| `controller_unavailable` | Repair the managed environment with `vpnmodo setup` |
 | `operation_in_progress` | The report includes the active operation ID; inspect/watch it instead of starting another login |
 | `inspection_unavailable_operation_may_be_active` | Inspect/watch the existing operation before retrying |
 | `vpn_access_unavailable` | Inspect the separate VPN, endpoint and attachment checks; diagnosis never starts login |

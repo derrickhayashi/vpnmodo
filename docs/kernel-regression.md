@@ -80,4 +80,4 @@ this regression. The role never changes the boot kernel or reboots the VM.
 Keep kernel selection and reboot in an explicit VM maintenance procedure, then
 rerun provisioning and verify authenticated destination access and kernel logs.
 See the [deployment guide](deployment.md#running-kernel-requirements) and
-[role reference](../ansible/README.md).
+[backend prerequisites](../roles/vpn_sidecar/tasks/prerequisites.yaml).

@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import socket
 import subprocess
 import sys
@@ -138,25 +139,30 @@ LogLevel VERBOSE
         command(["docker", "create", "--name", legacy, "--label", "com.docker.compose.project=vpn-example", options.image, "version"])
         legacy_created = True
         legacy_before = command(["docker", "inspect", legacy]).stdout
-        cli("host", "add", "example", "--ssh", "test-vm", "--ssh-config", str(ssh_config))
-        bad_config = directory / "untrusted_config"
-        bad_config.write_text(ssh_config.read_text().replace(str(known), str(directory / "unknown_hosts")))
-        cli("host", "add", "untrusted", "--ssh", "test-vm", "--ssh-config", str(bad_config))
-        assert cli("host", "check", "untrusted", required=False).returncode != 0
-        assert command(["docker", "inspect", "vpnmodo-controller"], required=False).returncode != 0
-        print("PASS: unknown SSH host keys are rejected", flush=True)
+        registry.parent.mkdir(mode=0o700)
+        registry.write_text(json.dumps({"schema_version": 1, "hosts": [{"name": "vpn-vm", "ssh": "test-vm", "ssh_config": str(ssh_config), "sudo": False}]}))
+        registry.chmod(0o600)
+        ssh_base = ["ssh", "-F", str(ssh_config), "-T", "-o", "StrictHostKeyChecking=yes", "--", "test-vm"]
+        bridge = ssh_base + ["docker --host unix:///var/run/docker.sock exec -i vpnmodo-controller /usr/local/bin/vpnmodo-controller bridge"]
+
+        def bootstrap(image, replace=False):
+            script = (Path(__file__).resolve().parents[1] / "internal/host/bootstrap.py").read_text()
+            return json.loads(command(ssh_base + ["python3 -c " + shlex.quote(script)], data=json.dumps({"image": image, "replace": replace}).encode()).stdout)
+
         data_root.mkdir(parents=True, mode=0o700)
         (data_root / ".acceptance-owner").write_text(token)
-        result = json.loads(cli("host", "setup", "example", "--image", options.image, "--json").stdout)
+        result = bootstrap(options.image)
         assert result == {"ok": True, "action": "created"}
 
         def ready():
+            from operations_acceptance import rpc
             for _ in range(30):
-                result = cli("host", "check", "example", "--json", required=False)
-                if result.returncode == 0:
-                    status = json.loads(result.stdout)
-                    assert status["docker_ready"] and status["state_ready"] and status["runtime_enabled"]
-                    return
+                try:
+                    status = rpc(bridge, "system.status", {}).get("result", {})
+                    if all(status.get(key) for key in ("docker_ready", "state_ready", "runtime_enabled")):
+                        return
+                except (AssertionError, RuntimeError, subprocess.TimeoutExpired):
+                    pass
                 time.sleep(0.5)
             raise RuntimeError("controller did not become ready over SSH")
 
@@ -202,9 +208,9 @@ LogLevel VERBOSE
             assert all(value.encode() not in output for value in sensitive)
             return json.loads(result.stdout) if result.returncode == 0 else None
 
-        created = safe_result(cli("profile", "create", "example-profile", "--host", "example", "--file", str(profile_file), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
+        created = safe_result(cli("profile", "create", "example-profile", "--file", str(profile_file), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
         assert created["revision"] == 1 and created["credentials_present"]
-        assert cli("profile", "create", "example-profile", "--host", "example", "--file", str(profile_file), "--credentials-stdin", data=b"{}", required=False).returncode != 0
+        assert cli("profile", "create", "example-profile", "--file", str(profile_file), "--credentials-stdin", data=b"{}", required=False).returncode != 0
         profile_name = definition["name"]
         owned_name = "vpnmodo-active-test-" + uuid.uuid4().hex[:12]
         owned_id = command(["docker", "run", "--detach", "--network", "none", "--tmpfs", "/tmp:mode=1777", "--name", owned_name,
@@ -250,8 +256,7 @@ LogLevel VERBOSE
         def prompted_create(alias, cancel=False):
             master, slave = pty.openpty()
             previous = termios.tcgetattr(slave)
-            process = subprocess.Popen([str(options.binary.resolve()), "--config", str(registry), "profile", "create", alias,
-                                        "--host", "example", "--file", str(profile_file), "--json"],
+            process = subprocess.Popen([str(options.binary.resolve()), "--config", str(registry), "profile", "create", alias, "--file", str(profile_file), "--json"],
                                        stdin=slave, stdout=slave, stderr=slave, preexec_fn=controlling_tty)
             transcript = bytearray()
 
@@ -290,12 +295,12 @@ LogLevel VERBOSE
 
         prompted_create("recovery-profile")
         references.write_bytes(saved_references)
-        assert any(item["name"] == interactive["name"] for item in safe_result(cli("profile", "list", "--host", "example", "--json")))
-        safe_result(cli("profile", "register", "recovery-profile", "--host", "example", "--profile", interactive["name"], "--json"))
+        assert any(item["name"] == interactive["name"] for item in safe_result(cli("profile", "list", "--json")))
+        safe_result(cli("profile", "register", "recovery-profile", "--profile", interactive["name"], "--json"))
         interactive["name"] = "cancelled-profile"
         profile_file.write_text(json.dumps(interactive))
         prompted_create("cancelled-profile", cancel=True)
-        assert all(item["name"] != "cancelled-profile" for item in safe_result(cli("profile", "list", "--host", "example", "--json")))
+        assert all(item["name"] != "cancelled-profile" for item in safe_result(cli("profile", "list", "--json")))
         state = data_root / "controller-state"
         for file in (state / "profiles").iterdir():
             assert file.stat().st_mode & 0o777 == 0o600
@@ -321,10 +326,10 @@ LogLevel VERBOSE
         marker = data_root / "controller-state" / "acceptance-marker"
         marker.write_text("synthetic-state")
         command(["docker", "stop", "vpnmodo-controller"])
-        result = json.loads(cli("host", "setup", "example", "--image", options.image, "--json").stdout)
+        result = bootstrap(options.image)
         assert result["action"] == "started"
         ready()
-        result = json.loads(cli("host", "setup", "example", "--image", options.upgrade_image or options.image, "--replace", "--json").stdout)
+        result = bootstrap(options.upgrade_image or options.image, replace=True)
         assert result["action"] == "replaced"
         ready()
         assert marker.read_text() == "synthetic-state"
@@ -340,7 +345,7 @@ LogLevel VERBOSE
         safe_result(cli("profile", "delete", "example-profile", "--revision", "3", "--json"))
         safe_result(cli("profile", "delete", "recovery-profile", "--revision", "1", "--json"))
         assert list((state / "credentials").iterdir()) == []
-        assert safe_result(cli("profile", "list", "--host", "example", "--json")) == []
+        assert safe_result(cli("profile", "list", "--json")) == []
         print("PASS: profile/credential restart persistence and explicit deletion/disposal", flush=True)
         assert command(["docker", "inspect", legacy]).stdout == legacy_before
         print("PASS: stopped-controller repair, explicit recreation, persistent state and legacy isolation", flush=True)

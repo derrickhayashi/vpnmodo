@@ -22,9 +22,9 @@ func profileCommand(base context.Context, registry string, args []string, out io
 		return errProfileOptions
 	}
 	if args[0] == "help" {
-		_, err := io.WriteString(out, `Usage: vpnmodo [--config FILE] profile create ALIAS --host HOST --file PROFILE.json [--credentials-stdin | --credentials-fd N]
-       vpnmodo profile register ALIAS --host HOST --profile NAME
-       vpnmodo profile list [--host HOST]
+		_, err := io.WriteString(out, `Usage: vpnmodo [--config FILE] profile create NAME --file PROFILE.json [--credentials-stdin | --credentials-fd N]
+       vpnmodo profile register ALIAS --profile NAME
+       vpnmodo profile list
        vpnmodo profile inspect ALIAS
        vpnmodo profile update ALIAS --file PROFILE.json --revision N
        vpnmodo profile rotate-credentials ALIAS --revision N [--credentials-stdin | --credentials-fd N]
@@ -46,7 +46,7 @@ All commands accept --json. Credentials use hidden prompts by default.
 	}
 	flags := flag.NewFlagSet("profile", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	target := flags.String("host", "", "")
+	target := host.ManagedName
 	remote := flags.String("profile", "", "")
 	file := flags.String("file", "", "")
 	revision := flags.Uint64("revision", 0, "")
@@ -56,7 +56,7 @@ All commands accept --json. Credentials use hidden prompts by default.
 	if flags.Parse(options) != nil || flags.NArg() != 0 {
 		return errProfileOptions
 	}
-	allowed := map[string]string{"create": " host file credentials-stdin credentials-fd json ", "register": " host profile json ", "list": " host json ", "inspect": " json ", "update": " file revision json ", "rotate-credentials": " revision credentials-stdin credentials-fd json ", "delete": " revision json ", "unregister": " json "}
+	allowed := map[string]string{"create": " file credentials-stdin credentials-fd json ", "register": " profile json ", "list": " json ", "inspect": " json ", "update": " file revision json ", "rotate-credentials": " revision credentials-stdin credentials-fd json ", "delete": " revision json ", "unregister": " json "}
 	rule, ok := allowed[command]
 	if !ok {
 		return errProfileOptions
@@ -92,17 +92,10 @@ All commands accept --json. Credentials use hidden prompts by default.
 			Unregistered string `json:"unregistered"`
 		}{name})
 	}
-	if command == "list" && *target == "" {
-		refs, err := host.References(referencePath)
-		if err != nil {
-			return err
-		}
-		return emit(refs)
-	}
 	var reference host.Reference
 	if command == "create" || command == "register" {
-		reference = host.Reference{Name: name, Host: *target, Profile: *remote}
-		if !profile.ValidName(*target) {
+		reference = host.Reference{Name: name, Host: target, Profile: *remote}
+		if !profile.ValidName(target) {
 			return errProfileOptions
 		}
 		refs, err := host.References(referencePath)
@@ -120,7 +113,9 @@ All commands accept --json. Credentials use hidden prompts by default.
 		if err != nil {
 			return err
 		}
-		*target = reference.Host
+		if reference.Host != host.ManagedName {
+			return errors.New("profile is not configured in this environment; run vpnmodo setup")
+		}
 	}
 	var configuration profile.Profile
 	if command == "create" || command == "update" {
@@ -152,7 +147,7 @@ All commands accept --json. Credentials use hidden prompts by default.
 	if (command == "update" || command == "rotate-credentials" || command == "delete") && *revision == 0 {
 		return errors.New("supply the current --revision from profile inspect")
 	}
-	h, err := host.Find(registry, *target)
+	h, err := host.Find(registry, target)
 	if err != nil {
 		return err
 	}
@@ -220,7 +215,7 @@ All commands accept --json. Credentials use hidden prompts by default.
 	}
 	if command == "create" || command == "register" {
 		if err = host.AddReference(ctx, referencePath, reference); err != nil {
-			return errors.New("VM profile exists; local registration failed; use profile list --host and profile register to recover")
+			return errors.New("VM profile exists; local registration failed; use profile list and profile register to recover")
 		}
 	}
 	return emit(result)

@@ -251,7 +251,7 @@ HTTPServer(('127.0.0.1',28082),H).serve_forever()
                         event=json.loads(line);events.append(event)
                         if event.get('type')=='operation' and event['operation']['state']=='awaiting_mfa' and not submitted:
                             op=event['operation'];submitted=True
-                            self.cli('operation','submit-mfa',op['id'],'--host','example','--challenge',op['challenge']['id'],'--code-stdin','--json',data=b'9876543210')
+                            self.cli('operation','submit-mfa',op['id'],'--challenge',op['challenge']['id'],'--code-stdin','--json',data=b'9876543210')
             for stream in (process.stdout,process.stderr):
                 remaining=stream.read();transcript.extend(remaining)
                 if stream is process.stdout:
