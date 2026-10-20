@@ -29,7 +29,7 @@ func TestRegistryAuthFileValidation(t *testing.T) {
 	if os.Chmod(path, 0644) != nil {
 		t.Fatal("chmod fixture")
 	}
-	if _, err := readRegistryFile(path); err == nil {
-		t.Fatal("read shared registry credentials")
+	if _, err := readRegistryFile(path); err != nil {
+		t.Fatalf("ordinary input permissions rejected: %v", err)
 	}
 }

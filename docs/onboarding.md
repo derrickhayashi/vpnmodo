@@ -13,14 +13,13 @@ VM selection and manual host registration are not part of the CLI.
 
 ## One input file per VPN
 
-Use one owner-only JSON file containing the connection settings and a
+Use one JSON file containing the connection settings and a
 `credentials` object. Both L2TP/IPsec and XAuth use this format. Registry auth
 belongs in a separate optional JSON file containing GitHub `username` and `token`;
 it is never part of the VPN profile. Public images need no auth file. See the complete JSON examples in the
 [README](../README.md#vpn-configuration).
 
 ```sh
-chmod 600 "$HOME/vpnmodo-private/work.json"
 vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
 vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
 vpnmodo up work

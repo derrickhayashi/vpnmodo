@@ -23,9 +23,9 @@ func (f profileFile) configuration() profile.Profile {
 
 func readProfileFile(path string) (profileFile, error) {
 	var result profileFile
-	data, err := privatefile.Read(path, profile.MaxProfileBytes)
+	data, err := privatefile.ReadInput(path, profile.MaxProfileBytes)
 	if err != nil {
-		return result, errors.New("profile file unavailable; use an owner-only regular JSON file (chmod 600)")
+		return result, errors.New("profile file unavailable; use a readable regular JSON file")
 	}
 	defer clear(data)
 	if err := jsonstrict.Decode(data, &result, profile.MaxProfileBytes); err != nil {

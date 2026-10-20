@@ -56,9 +56,7 @@ For **public images**, run `vpnmodo setup` without an auth file. The current
 release images are **private**, so supply a separate registry auth file:
 
 ```sh
-umask 077
 mkdir -p "$HOME/vpnmodo-private"
-chmod 700 "$HOME/vpnmodo-private"
 nano "$HOME/vpnmodo-private/registry-auth.json"
 ```
 
@@ -74,7 +72,6 @@ Save your GitHub package credentials in that file:
 The token needs `read:packages` and access to the private packages. Then run:
 
 ```sh
-chmod 600 "$HOME/vpnmodo-private/registry-auth.json"
 vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
 ```
 
@@ -84,12 +81,10 @@ start a VPN connection. There is no VM selection or separate setup-file download
 
 ## VPN configuration
 
-On the **Mac**, create a private directory outside any Git checkout:
+On the **Mac**, create a directory outside any Git checkout:
 
 ```sh
-umask 077
 mkdir -p "$HOME/vpnmodo-private"
-chmod 700 "$HOME/vpnmodo-private"
 nano "$HOME/vpnmodo-private/work.json"
 ```
 
@@ -148,11 +143,14 @@ supported emailed-code MFA flow.
 Then, on the **Mac**:
 
 ```sh
-chmod 600 "$HOME/vpnmodo-private/work.json"
 vpnmodo profile create work \
   --file "$HOME/vpnmodo-private/work.json"
 vpnmodo profile inspect work
 ```
+
+Input JSON files can use normal file permissions; no permission setup commands
+are required. vpnmodo stores its managed credentials and state with private
+permissions automatically.
 
 This VPN file supplies settings and credentials for profile creation. Keep it
 private and outside Git: it contains plaintext secrets. Setup and profile creation
@@ -242,7 +240,6 @@ The SSH alias must already authenticate with a verified host key. Python 3 on
 that private server is required for endpoint verification. Then:
 
 ```sh
-chmod 600 "$HOME/vpnmodo-private/services.json"
 vpnmodo service configure work --file "$HOME/vpnmodo-private/services.json"
 vpnmodo up work
 vpnmodo doctor work
