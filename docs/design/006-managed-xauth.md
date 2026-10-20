@@ -14,8 +14,10 @@ separately from the standalone launcher script. Generic VICI configuration does
 not provide this project's interactive MFA integration.
 
 The managed state machine accepts one PSK prompt, one password prompt and one PIN
-prompt in that order. It suppresses terminal echo and all client diagnostics.
-It publishes only fixed state values into private tmpfs, never a transcript.
+prompt in that order. It suppresses terminal echo and raw client diagnostics.
+It publishes fixed state values into private tmpfs and allowlisted diagnostic
+codes into a protected, bounded buffer for [VPN logging](../logging.md); it never
+retains a transcript.
 Absolute login deadlines cannot be extended by a stream of diagnostic lines.
 Once a CHILD_SA is established, quiet periods have no login timeout; kernel and
 service checks determine readiness. Unexpected prompts, EOF and timeouts fail.

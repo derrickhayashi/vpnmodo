@@ -45,6 +45,7 @@ const (
 	ProfileDelete         Method = "profile.delete"
 	ConnectionEnsure      Method = "connection.ensure"
 	ConnectionStatus      Method = "connection.status"
+	ConnectionLogs        Method = "connection.logs"
 	ConnectionApplication Method = "connection.application"
 	ConnectionDisconnect  Method = "connection.disconnect"
 	OperationStatus       Method = "operation.status"
@@ -57,7 +58,7 @@ const (
 
 func (m Method) Known() bool {
 	switch m {
-	case Hello, SystemStatus, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionStatus, ConnectionApplication, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
+	case ConnectionLogs, Hello, SystemStatus, BackendList, BackendDescribe, ProfileCreate, ProfileList, ProfileInspect, ProfileUpdate, CredentialRotate, ProfileDelete, ConnectionEnsure, ConnectionStatus, ConnectionApplication, ConnectionDisconnect, OperationStatus, OperationSubscribe, OperationCancel, OperationSubmitMFA, Doctor:
 		return true
 	default:
 		return false

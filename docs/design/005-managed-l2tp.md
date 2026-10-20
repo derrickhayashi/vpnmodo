@@ -89,6 +89,8 @@ in argv, environment, manifests, results or operation records. Application
 containers receive none of these mounts. They run as the VM user with a separate
 read-only local-resolver configuration bind and no capabilities. Docker logging is disabled for managed
 VPN/application containers to avoid persistent backend authentication transcripts.
+[VPN logging](../logging.md) captures fixed lifecycle/health classifications and
+allowlisted backend diagnostic codes separately, without retaining raw output.
 
 `controller-state/deployments/<name>/` contains a protected nonsecret deployment
 record and Compose manifest, plus the private runtime credential bundles. The

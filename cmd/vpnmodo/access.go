@@ -26,6 +26,7 @@ type accessCheck struct {
 	OK    bool   `json:"ok"`
 }
 type accessReport struct {
+	LoggingReady       *bool                 `json:"logging_ready,omitempty"`
 	Connection         *operation.Connection `json:"connection,omitempty"`
 	ControllerVersion  string                `json:"controller_version,omitempty"`
 	ProfileRevision    uint64                `json:"profile_revision,omitempty"`
@@ -72,6 +73,13 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		detailed := command == "doctor" || command == "status"
 		if detailed && r.ControllerVersion != "" {
 			fmt.Fprintf(out, "  controller version: %s\n", r.ControllerVersion)
+		}
+		if detailed && r.LoggingReady != nil {
+			state := "available"
+			if !*r.LoggingReady {
+				state = "unavailable"
+			}
+			fmt.Fprintf(out, "  logging: %s\n", state)
 		}
 		if detailed && r.Connection != nil {
 			fmt.Fprintf(out, "  desired: %s; observed: %s\n", r.Connection.Desired, r.Connection.Observed)
@@ -234,6 +242,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	if err = client.Call(ctx, protocol.SystemStatus, struct{}{}, &system); err != nil {
 		return fail("controller_unavailable")
 	}
+	r.LoggingReady = &system.LoggingReady
 	if !system.StateReady || !system.DockerReady || !system.RuntimeEnabled {
 		r.Checks = append(r.Checks, accessCheck{"controller", "controller_prerequisites_unavailable", false})
 		return fail("controller_prerequisites_unavailable")
@@ -310,6 +319,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	if err != nil {
 		return fail("inspection_unavailable_operation_may_be_active")
 	}
+	r.LoggingReady = &view.Controller.LoggingReady
 	r.Connection = &view.Runtime.Connection
 	r.ProfileRevision = view.Runtime.ProfileRevision
 	r.CredentialsPresent = view.Runtime.CredentialsPresent

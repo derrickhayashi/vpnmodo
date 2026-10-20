@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/creachadair/jrpc2"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/managedvpn"
@@ -29,6 +30,7 @@ const DefaultSocket = "/run/vpnmodo/controller.sock"
 var ErrService = errors.New("controller unavailable; check private runtime and state directories")
 
 type Status struct {
+	LoggingReady   bool                `json:"logging_ready"`
 	Version        string              `json:"version"`
 	API            protocol.APIVersion `json:"api"`
 	StateReady     bool                `json:"state_ready"`
@@ -36,6 +38,7 @@ type Status struct {
 	RuntimeEnabled bool                `json:"runtime_enabled"`
 }
 type Config struct {
+	events                                    *eventlog.Store
 	EnableManagedVPN, EnableXAuth             bool
 	XAuthImage                                string
 	DockerRunner                              managedvpn.Runner
@@ -46,6 +49,7 @@ type Config struct {
 	Recovery                                  lifecycle.RecoveryPolicy
 }
 type Server struct {
+	ctx         context.Context
 	profiles    *profilestore.Store
 	operations  *lifecycle.Manager
 	cancel      context.CancelFunc
@@ -78,6 +82,7 @@ func Listen(config Config) (*Server, error) {
 	name := probe.Name()
 	_ = probe.Close()
 	_ = os.Remove(name)
+	var events *eventlog.Store
 	var operations *lifecycle.Manager
 	profiles, err := profilestore.Open(config.StateDir, func(ctx context.Context, name string) error {
 		if operations != nil {
@@ -118,8 +123,17 @@ func Listen(config Config) (*Server, error) {
 	if err != nil {
 		return nil, ErrService
 	}
+	// Acquire the journal's single-controller lock before opening log files.
+	events, err = eventlog.Open(filepath.Join(config.StateDir, "logs"))
+	if err != nil {
+		events = eventlog.Unavailable()
+	}
+	config.events = events
+	if adapter, ok := config.Adapter.(*managedvpn.Adapter); ok {
+		adapter.SetEventLog(events)
+	}
 	serviceCtx, cancel := context.WithCancel(context.Background())
-	operations, err = lifecycle.Open(serviceCtx, journal, lifecycle.Options{Adapter: config.Adapter, WithProfile: profiles.WithProfile, OperationTimeout: config.OperationTimeout, MFATimeout: config.MFATimeout, CleanupTimeout: 20 * time.Second, Recovery: config.Recovery})
+	operations, err = lifecycle.Open(serviceCtx, journal, lifecycle.Options{Adapter: config.Adapter, WithProfile: profiles.WithProfile, OperationTimeout: config.OperationTimeout, MFATimeout: config.MFATimeout, CleanupTimeout: 20 * time.Second, Recovery: config.Recovery, Events: events})
 	if err != nil {
 		cancel()
 		_ = journal.Close()
@@ -137,7 +151,7 @@ func Listen(config Config) (*Server, error) {
 		_ = operations.Close()
 		return nil, ErrService
 	}
-	return &Server{operations: operations, cancel: cancel, profiles: profiles, config: config, listener: listener, connections: make(map[net.Conn]bool), slots: make(chan struct{}, 32)}, nil
+	return &Server{ctx: serviceCtx, operations: operations, cancel: cancel, profiles: profiles, config: config, listener: listener, connections: make(map[net.Conn]bool), slots: make(chan struct{}, 32)}, nil
 }
 func privateDirectory(path string) error {
 	if err := os.MkdirAll(path, 0700); err != nil {
@@ -170,6 +184,8 @@ func (s *Server) Close() error {
 func (s *Server) Serve(ctx context.Context) error {
 	defer s.Close()
 	s.operations.StartReconcile()
+	s.workers.Add(1)
+	go s.maintainLogs()
 	done := make(chan struct{})
 	go func() {
 		select {
@@ -330,6 +346,20 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 		return result, profileFault(err)
 	case protocol.ConnectionEnsure, protocol.ConnectionDisconnect, protocol.ConnectionStatus, protocol.OperationStatus, protocol.OperationCancel, protocol.OperationSubscribe, protocol.OperationSubmitMFA:
 		return d.lifecycle(ctx, req, raw, guard.Method)
+	case protocol.ConnectionLogs:
+		var q eventlog.Query
+		if jsonstrict.Decode(raw, &q, protocol.MaxMessageBytes) != nil || q.Validate() != nil {
+			return nil, fault(protocol.CodeInvalidParams)
+		}
+		// Read only the local sanitized spool; never initiate authentication.
+		if collector, ok := d.config.Adapter.(interface{ CollectDiagnostics(profile.Profile) }); ok {
+			_ = d.profiles.WithProfile(ctx, q.Profile, func(s profile.Snapshot) error { collector.CollectDiagnostics(s.Profile); return nil })
+		}
+		result, err := d.config.events.Query(q)
+		if err != nil {
+			return nil, fault(protocol.CodePersistence)
+		}
+		return result, nil
 	case protocol.Doctor, protocol.ConnectionApplication:
 		params, err := protocol.DecodeProfileParams(raw)
 		if err != nil {
@@ -351,12 +381,12 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 			Controller Status                `json:"controller"`
 			Runtime    operation.RuntimeView `json:"runtime"`
 		}{
-			Status{Version: d.config.Version, API: protocol.CurrentAPI(), StateReady: d.operations.Ready(), RuntimeEnabled: d.config.Adapter != nil, DockerReady: dockerReady(ctx, d.config.DockerSocket)}, view}, nil
+			Status{LoggingReady: d.config.events != nil && d.config.events.Ready(), Version: d.config.Version, API: protocol.CurrentAPI(), StateReady: d.operations.Ready(), RuntimeEnabled: d.config.Adapter != nil, DockerReady: dockerReady(ctx, d.config.DockerSocket)}, view}, nil
 	case protocol.SystemStatus:
 		if jsonstrict.Decode(raw, &struct{}{}, protocol.MaxMessageBytes) != nil {
 			return nil, fault(protocol.CodeInvalidParams)
 		}
-		return Status{Version: d.config.Version, API: protocol.CurrentAPI(), StateReady: d.operations.Ready(), RuntimeEnabled: d.config.Adapter != nil, DockerReady: dockerReady(ctx, d.config.DockerSocket)}, nil
+		return Status{LoggingReady: d.config.events != nil && d.config.events.Ready(), Version: d.config.Version, API: protocol.CurrentAPI(), StateReady: d.operations.Ready(), RuntimeEnabled: d.config.Adapter != nil, DockerReady: dockerReady(ctx, d.config.DockerSocket)}, nil
 	default:
 		return nil, fault(protocol.CodeMethod)
 	}

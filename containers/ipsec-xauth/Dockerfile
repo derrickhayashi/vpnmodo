@@ -7,7 +7,7 @@ RUN sed -i '/case XAUTH_NEXT_PIN:/i\            case XAUTH_PASSCODE:' src/libcha
 COPY managed-client.patch /build/managed-client.patch
 RUN patch -p1 < /build/managed-client.patch && make -j2 && make install
 FROM alpine:3.22
-RUN apk add --no-cache expect iproute2 iptables dnsmasq netcat-openbsd ca-certificates openssl gmp
+RUN apk add --no-cache expect flock iproute2 iptables dnsmasq netcat-openbsd ca-certificates openssl gmp
 COPY --from=builder /opt/strongswan /opt/strongswan
 COPY --from=builder /etc/strongswan.conf /etc/strongswan.conf
 COPY --from=builder /etc/strongswan.d /etc/strongswan.d
