@@ -96,7 +96,8 @@ input/error handling, bridge EOF, service lifetime, registry updates and secret
 handling. Bootstrap unit tests fake Docker and never touch live resources.
 
 The [local Ubuntu lab](../../tests/local-lab/README.md) uses an existing VM and a
-disposable nested Docker daemon. Hosted Actions remains disabled. It generates
+disposable nested Docker daemon. The Controller SSH acceptance workflow remains
+disabled in GitHub Actions. The lab generates
 ephemeral SSH keys outside the checkout, pins its own server key, rejects unknown
 keys, creates the controller through actual SSH/Compose, checks private mounts and
 permissions, repairs a stopped controller, recreates it with state retained, and

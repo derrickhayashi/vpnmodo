@@ -44,7 +44,8 @@ unchanged by this package split.
   Linux arm64/amd64 on Ubuntu 24.04 LTS with rootful Docker Engine and Compose v2.
   VM creation, Windows and Linux workstation support are outside initial scope.
   These are release targets, not a claim that runtime acceptance has passed.
-- Build with Go 1.27.1; hosted Actions remains disabled. There is no Go runtime requirement for
+- Build with Go 1.27.1. GitHub Actions runs only Go checks and Secret scan;
+  protocol acceptance stays local. There is no Go runtime requirement for
   teammates installing eventual compiled binaries. The controller/SSH stage
   adds runnable executables; see the [controller guide](../../containers/controller/README.md).
 
