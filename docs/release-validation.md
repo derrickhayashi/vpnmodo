@@ -2,6 +2,8 @@
 
 ## One-file configuration — 2026-10-20
 
+CLI identity: `v0.1.0-rc.10+git.7b01d6ffff00`.
+
 CLI rc.10 reads VPN settings and `credentials.username`, `credentials.password`
 and `credentials.psk` from the same owner-only JSON file for both L2TP/IPsec and
 XAuth. `setup --file` can read private GHCR `registry.username` and `registry.token`
@@ -14,6 +16,7 @@ interactive connection step only for XAuth. Runtime image digests are unchanged.
 | Both backend inputs | Local fake-SSH RPC tests pass for create, settings update and credential rotation from one JSON file without interactive input |
 | Secret separation | RPC profile validation, secret-free output/local references, duplicate/invalid input and owner-only file checks pass |
 | Registry input | Noninteractive same-file registry auth and missing-auth errors pass |
+| Native release artifact | Standalone ARM64 executable matches archive metadata/hash; installation, replacement, version/help and corrupt/symlink refusal pass |
 | Local checks | Full Go race tests, vet, 77 Python tests, changed Python syntax, 21 documentation JSON/shell blocks and secret scans pass |
 
 The Python suite used the existing project virtual environment; the first run
