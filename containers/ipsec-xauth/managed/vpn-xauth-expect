@@ -10,6 +10,7 @@ set psk_sent 0
 set password_sent 0
 set otp_sent 0
 set deadline [expr {[clock seconds] + 90}]
+proc diagnostic {code} {catch {exec /usr/local/bin/vpn-diagnostic $code}}
 proc state {value} {
     set f [open /run/vpn/state.new w 0600]
     puts $f $value
@@ -18,6 +19,7 @@ proc state {value} {
 }
 proc shutdown {status} {
     global spawn_id
+    if {$status == 0} {diagnostic stopping} elseif {$status == 31} {diagnostic client_exit}
     state failed
     if {[info exists spawn_id]} {
         catch {exec kill -TERM [exp_pid -i $spawn_id]}
@@ -83,8 +85,14 @@ while {1} {
             set deadline [expr {[clock seconds] + 90}]
         }
         -re {([^\r\n]+)\r?\n} {
+            set line $expect_out(1,string)
+            if {[regexp {peer not responding|giving up after .* retransmits|DPD check timed out} $line]} {diagnostic dpd_timeout}
+            if {[regexp {received DELETE for} $line]} {diagnostic peer_delete}
+            if {[regexp {rekeying.*(failed|timed out)} $line]} {diagnostic rekey_failed}
+            if {[regexp {authentication.*failed|AUTHENTICATION_FAILED} $line]} {diagnostic authentication_failed}
             if {[regexp {CHILD_SA .* established with SPIs} $expect_out(1,string)]} {
                 if {!$password_sent || !$otp_sent} {failure 30}
+                diagnostic established
                 set established 1
                 set stage established
                 state established

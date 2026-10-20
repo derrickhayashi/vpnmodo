@@ -1,0 +1,20 @@
+#!/bin/sh
+# Arguments are fixed codes, never backend text. The pre-created spool files
+# retain their VM-user ownership. Only this backend's single reader writes here.
+set -eu
+case ${1:-} in
+ established|peer_delete|dpd_timeout|rekey_failed|authentication_failed|client_exit|ppp_down|support_process_exit|stopping) ;;
+ *) exit 2;;
+esac
+dir=${VPN_DIAGNOSTIC_DIR:-}
+[ -n "$dir" ] || exit 0
+[ -f "$dir/events" ] && [ -f "$dir/previous" ] || exit 0
+exec 9<>"$dir/lock"
+flock -w 0.1 9 || exit 1
+# Two 64-KiB slots bound diagnostics even while the controller is down.
+if [ "$(wc -c < "$dir/events")" -gt 65000 ]; then
+ cat "$dir/events" > "$dir/previous"
+ : > "$dir/events"
+fi
+id=$(cat /proc/sys/kernel/random/uuid)
+printf '%s %s:0 %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$id" "$1" >> "$dir/events"

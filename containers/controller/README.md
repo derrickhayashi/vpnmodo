@@ -81,7 +81,11 @@ forwards bounded frames to the persistent service's private Unix socket. Closing
 stdin drains replies; closing a bridge leaves the service running. The service
 requires `system.hello` negotiation per connection and exposes `system.status`,
 `backend.list` and `backend.describe`. Profile management methods validate and provision protected VM storage;
-connection/operation methods use a persistent manager with the L2TP adapter. Request/response logging is disabled.
+connection/operation methods use a persistent manager with both managed adapters.
+Request/response logging is disabled. Allowlisted lifecycle and backend events
+are stored separately in private, rotating JSONL files; `connection.logs` exposes
+bounded per-profile queries and status reports `logging_ready`. See
+[VPN logging](../../docs/logging.md).
 
 The service bounds connections, outstanding calls, frame size/depth, idle reads
 and writes. Docker readiness uses the local `GET /_ping` endpoint. Profile mutations also

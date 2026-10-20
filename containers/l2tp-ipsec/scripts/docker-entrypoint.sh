@@ -1,6 +1,28 @@
 #!/bin/sh
 set -eu
 
+if [ "${VPN_RECOVERY_OWNER:-standalone}" = controller ] && [ -n "${VPN_DIAGNOSTIC_DIR:-}" ]; then
+ mkdir -p /run/vpn
+ mkfifo /run/vpn/diagnostic-pipe
+ vpn-diagnostic-filter < /run/vpn/diagnostic-pipe >/dev/null 2>&1 &
+ exec > /run/vpn/diagnostic-pipe 2>&1
+ # charon otherwise logs to syslog, which is absent in this container.
+ cat > /etc/strongswan.d/charon-vpnmodo-logging.conf <<'CONFIG'
+charon {
+ filelog {
+  stdout {
+   default = 1
+   flush_line = yes
+  }
+ }
+ syslog {
+  daemon { default = -1 }
+  auth { default = -1 }
+ }
+}
+CONFIG
+fi
+
 log() {
     printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
 }
@@ -46,6 +68,7 @@ quote_value() {
 
 cleanup() {
     trap - EXIT INT TERM
+    log "VPN stopping"
     rm -f /run/vpn/ready
     if [ -p /var/run/xl2tpd/l2tp-control ]; then
         printf '%s\n' 'd vpn' > /var/run/xl2tpd/l2tp-control 2>/dev/null || true
@@ -186,7 +209,11 @@ conf-file=/run/vpn/dns-servers.conf
 EOF
 
 log "Starting IPsec connection to $VPN_SERVER_IP"
-ipsec start
+if [ "${VPN_RECOVERY_OWNER:-standalone}" = controller ] && [ -n "${VPN_DIAGNOSTIC_DIR:-}" ]; then
+ ipsec start --nofork &
+else
+ ipsec start
+fi
 attempt=0
 until ipsec up l2tp-psk; do
     attempt=$((attempt + 1))

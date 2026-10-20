@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
@@ -45,6 +46,7 @@ type Adapter interface {
 // profile transaction -> manager mutex -> journal transaction, never reversed.
 type WithProfile func(context.Context, string, func(profile.Snapshot) error) error
 type Options struct {
+	Events                                       *eventlog.Store
 	Adapter                                      Adapter
 	WithProfile                                  WithProfile
 	OperationTimeout, MFATimeout, CleanupTimeout time.Duration
@@ -171,6 +173,7 @@ func (m *Manager) commitLocked(next operationstore.State) error {
 	}
 	old := m.state
 	m.state = next
+	m.logChanges(old, next)
 	for id, r := range next.Operations {
 		if before, ok := old.Operations[id]; ok && before.Revision == r.Revision {
 			continue
@@ -393,6 +396,7 @@ func (m *Manager) submit(ctx context.Context, name string, kind operation.Kind, 
 			old.UpdatedAt = now
 			next.Operations[previous] = old
 		}
+		c.Backend = snapshot.Profile.Backend.Type
 		c.Generation++
 		c.Revision++
 		c.ActiveOperation = r.ID

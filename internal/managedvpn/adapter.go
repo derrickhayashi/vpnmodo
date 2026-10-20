@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
@@ -26,6 +27,7 @@ var namespacePattern = regexp.MustCompile(`^net:\[[0-9]+\]$`)
 var containerPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 type Adapter struct {
+	events                          *eventlog.Store
 	root, image, xauth, application string
 	store                           *profilestore.Store
 	docker                          Runner
@@ -83,6 +85,7 @@ type container struct {
 		Status                                 string
 		ExitCode                               int
 		StartedAt                              time.Time
+		FinishedAt                             time.Time
 	}
 }
 
@@ -209,7 +212,11 @@ func (a *Adapter) Access(ctx context.Context, p profile.Profile) (operation.Heal
 	if err != nil {
 		return "", "", err
 	}
+	a.collectDiagnostics(p)
 	c := cs["vpn"]
+	if c.ID != "" && !c.State.Running {
+		a.logContainerExit(p, c)
+	}
 	if c.ID == "" {
 		if d == nil {
 			return operation.HealthStopped, "", nil
@@ -290,6 +297,7 @@ func (a *Adapter) Disconnect(ctx context.Context, p profile.Profile) error {
 				return ErrRuntime
 			}
 		}
+		a.collectDiagnostics(p)
 		if _, err = a.docker.Run(ctx, "rm", c.ID); err != nil {
 			return ErrRuntime
 		}
@@ -365,6 +373,9 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 		}
 		if _, err := privatefile.Write(filepath.Join(a.dir(p), "resolv.conf"), []byte("nameserver 127.0.0.1\noptions ndots:0\n")); err != nil {
 			return ErrRuntime
+		}
+		if err := a.prepareDiagnostics(p); err != nil {
+			return err
 		}
 		image := a.image
 		if p.Backend.Type == profile.XAuth {
@@ -637,6 +648,27 @@ func (a *Adapter) Forget(ctx context.Context, name string) error {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ErrRuntime
 		}
+	}
+	a.collectDiagnostics(d.Profile)
+	diagnosticDir := filepath.Join(root, "diagnostics")
+	if _, err := os.Lstat(diagnosticDir); err == nil {
+		if privatefile.Dir(diagnosticDir) != nil {
+			return ErrRuntime
+		}
+		for _, name := range []string{"events", "previous", "lock"} {
+			path := filepath.Join(diagnosticDir, name)
+			if _, err := privatefile.Read(path, 128*1024); err != nil && !os.IsNotExist(err) {
+				return ErrRuntime
+			}
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return ErrRuntime
+			}
+		}
+		if os.Remove(diagnosticDir) != nil {
+			return ErrRuntime
+		}
+	} else if !os.IsNotExist(err) {
+		return ErrRuntime
 	}
 	for _, filename := range []string{"compose.json", "application.compose.json", "deployment.json", "resolv.conf"} {
 		path := filepath.Join(root, filename)
