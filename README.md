@@ -267,11 +267,17 @@ vpnmodo down work
 | `vpnmodo up work` | Ensure the VPN and start configured local service forwards |
 | `vpnmodo status work` | Inspect current VPN and service state |
 | `vpnmodo doctor work` | Probe VM, controller, VPN and configured services |
+| `vpnmodo logs work --since 24h` | Read persistent connection history and sanitized diagnostics |
 | `vpnmodo service stop work` | Stop owned local forwards, keeping the VPN connected |
 | `vpnmodo down work` | Stop owned forwards and disconnect this VPN; keep its profile/credentials |
 | `vpnmodo profile help` | Show profile creation, update and credential-rotation commands |
 
 ### Troubleshooting
+
+Use `vpnmodo logs work --since 24h` for disconnect/recovery history across both
+VPN backends. See [VPN logging](docs/logging.md) for storage, retention, privacy,
+pagination and diagnostic limitations. Backend diagnostics require rebuilt
+controller/backend images and a new explicit connection.
 
 If VM SSH fails, check VM reachability, its verified host key and your SSH key.
 If the environment is not ready, run `vpnmodo setup` again before trying a VPN login. If the VPN is healthy but private SSH fails, check destination

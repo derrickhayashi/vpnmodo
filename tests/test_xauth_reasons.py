@@ -33,11 +33,14 @@ printf 'PIN: '; IFS= read -r value
                 client += 'sleep 4\n'
             elif outcome == 'established':
                 client += "printf 'CHILD_SA example established with SPIs synthetic\\n'; sleep 4\n"
+            elif outcome == 'diagnostics':
+                client += "printf 'CHILD_SA example established with SPIs synthetic\\npeer not responding: private-peer\\nreceived DELETE for ESP CHILD_SA private-peer\\nrekeying IKE_SA private-name failed\\nauthentication of private-user failed\\nsynthetic-password secret ignored\\n'\nexit 1\n"
+            (binary / 'vpn-diagnostic').write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "' + str(root / 'events') + '"\n')
             (binary / 'charon-cmd').write_text(client)
             for file in binary.iterdir():
                 file.chmod(0o700)
             source = Path(__file__).resolve().parents[1] / 'containers/ipsec-xauth/managed/vpn-xauth-expect'
-            script = source.read_text().replace('/run/vpn', str(root / 'run/vpn')).replace('/run/secrets', str(root / 'secrets'))
+            script = source.read_text().replace('/run/vpn', str(root / 'run/vpn')).replace('/run/secrets', str(root / 'secrets')).replace('/usr/local/bin/vpn-diagnostic', str(binary / 'vpn-diagnostic'))
             if outcome == 'timeout':
                 # Shorten only the post-submission deadline. Shortening startup
                 # too can expire before the synthetic MFA prompt is reached.
@@ -70,6 +73,9 @@ printf 'PIN: '; IFS= read -r value
                     process.terminate()
                 stdout, stderr = process.communicate(timeout=8)
                 self.assertEqual(process.returncode, expected)
+                if outcome == 'diagnostics':
+                    self.assertEqual((root / 'events').read_text().splitlines(),
+                                     ['established', 'dpd_timeout', 'peer_delete', 'rekey_failed', 'authentication_failed', 'client_exit'])
                 for value in (b'123456', b'synthetic-psk', b'synthetic-password'):
                     self.assertNotIn(value, stdout + stderr)
             finally:
@@ -88,3 +94,6 @@ printf 'PIN: '; IFS= read -r value
 
     def test_established_tunnel_survives_idle_until_explicit_shutdown(self):
         self.replay('established', 0)
+
+    def test_diagnostic_lines_never_persist_raw_output(self):
+        self.replay('diagnostics', 31)

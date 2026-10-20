@@ -1,0 +1,15 @@
+#!/bin/sh
+while IFS= read -r line; do
+ case "$line" in
+  *"peer not responding"*|*"giving up after"*"retransmits"*|*"DPD check timed out"*) code=dpd_timeout;;
+  *"received DELETE for"*) code=peer_delete;;
+  *"rekeying"*"failed"*|*"rekeying"*"timed out"*) code=rekey_failed;;
+  *"authentication"*"failed"*|*"AUTHENTICATION_FAILED"*) code=authentication_failed;;
+  *"VPN stopping"*) code=stopping;;
+  *"VPN is ready;"*) code=established;;
+  *"ppp0 is no longer up;"*) code=ppp_down;;
+  *"A VPN support process exited;"*) code=support_process_exit;;
+  *) continue;;
+ esac
+ vpn-diagnostic "$code" || true
+done

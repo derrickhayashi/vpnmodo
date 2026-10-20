@@ -73,18 +73,22 @@ const (
 )
 
 type Connection struct {
-	Profile         string    `json:"profile"`
-	Generation      uint64    `json:"generation"`
-	Revision        uint64    `json:"revision"`
-	Desired         Intent    `json:"desired"`
-	Observed        Observed  `json:"observed"`
-	RecoveryEnabled bool      `json:"recovery_enabled"`
-	Recovery        *Recovery `json:"recovery,omitempty"`
-	ActiveOperation string    `json:"active_operation,omitempty"`
-	LastOperation   string    `json:"last_operation,omitempty"`
+	Backend         profile.BackendType `json:"backend,omitempty"`
+	Profile         string              `json:"profile"`
+	Generation      uint64              `json:"generation"`
+	Revision        uint64              `json:"revision"`
+	Desired         Intent              `json:"desired"`
+	Observed        Observed            `json:"observed"`
+	RecoveryEnabled bool                `json:"recovery_enabled"`
+	Recovery        *Recovery           `json:"recovery,omitempty"`
+	ActiveOperation string              `json:"active_operation,omitempty"`
+	LastOperation   string              `json:"last_operation,omitempty"`
 }
 
 func (c Connection) Validate() error {
+	if c.Backend != "" && c.Backend != profile.L2TP && c.Backend != profile.XAuth {
+		return ErrOperation
+	}
 	if c.Recovery != nil && c.Recovery.Validate() != nil {
 		return ErrOperation
 	}
