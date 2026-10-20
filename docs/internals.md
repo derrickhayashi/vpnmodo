@@ -127,7 +127,9 @@ After the handshake, it asks for the profile's application container:
 }
 ```
 
-The controller inspects current runtime state. It returns a container ID only
+The controller compares the saved deployment with Docker labels, profile
+revision and image IDs. It checks that the application is running in the VPN
+container's network namespace. It returns a container ID only
 when the profile is intended to be connected, the managed deployment and
 application are healthy, the VPN tunnel checks pass, and the configured private
 health endpoint is reachable. An active connection operation can make the
