@@ -6,6 +6,34 @@ release binaries and container images are not republished. Results apply to
 the recorded source, not automatically to newly rebuilt artifacts. For symptoms, affected versions and recovery steps,
 see [known issues and regressions](known-issues.md).
 
+## Public rc.13 rebuild — 2026-10-20
+
+Release source: `f3ad66821a1e98ea8556d026879822268d94e06c`.
+CLI and controller identity: `v0.1.0-rc.13+git.f3ad66821a1e`.
+
+The ARM64 images were rebuilt from production Dockerfiles in an isolated native
+Linux daemon. The macOS CLI embeds their published immutable registry digests
+through `--runtime-manifest`; its source revision matches the controller.
+
+| Check | Result |
+| --- | --- |
+| Source checks | Full Go race tests and vet; all 88 Python tests pass |
+| Image audit | All 27 layers and 5,092 regular files scanned; no unresolved private identifiers, credentials or keys |
+| L2TP onboarding | Real synthetic IKEv1/IPsec, L2TP/PPP, private TCP and managed two-hop services pass |
+| XAuth onboarding | Synthetic aggressive PSK/XAUTH_PASSCODE, structured MFA, private TCP/DNS and 256 KiB each way pass |
+| Controller recreation | Both backends retain the established session and services; explicit disconnect and credential disposal pass |
+| macOS artifacts | Native ARM64 archive/standalone installation, version/help, explicit replacement and corrupt/symlink refusal pass |
+
+The image scanner's six embedded GnuTLS keys exactly match public
+[upstream cryptographic self-test vectors](https://github.com/gnutls/gnutls/blob/3.8.3/lib/crypto-selftests-pk.c).
+The audit classified only that verified library content as a public test fixture.
+
+These onboarding subsets use production policy and synthetic peers. They do not
+repeat the full historical rekey, failure/recovery or packet-filter matrix below.
+Controller recreation uses the same release image; it does not qualify a
+cross-version runtime upgrade. Intel CLI binaries are cross-built without native
+qualification. Existing gateways and live deployments were not changed.
+
 ## XAuth delayed-MFA handshake timeout — 2026-10-20
 
 Qualified CLI: `v0.1.0-rc.12+git.68b20091f975`.
@@ -38,9 +66,8 @@ protocol or lifecycle scenarios.
 
 The ARM64 XAuth image is pinned to
 `sha256:f8a578da17a5037d5a699fc40a79a3b1a97e0243e381288f197511419ecd796f`.
-Controller, L2TP and application images retain the rc.7 identities. See the
-[registry manifest](../examples/lima/registry-release.json); its bundle version
-remains rc.7. VM restart checks confirm that the saved manifest and controller
+Controller, L2TP and application images retain the rc.7 identities. That historical bundle remained rc.7. The current
+[registry manifest](../examples/lima/registry-release.json) selects the rc.13 rebuild. VM restart checks confirm that the saved manifest and controller
 select the corrected image. Native Mac archive/standalone installation smoke
 checks pass. Separate functional acceptance confirmed structured MFA completion,
 VPN readiness and authenticated destination SSH access.

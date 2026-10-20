@@ -121,7 +121,7 @@ On the native Linux builder, log Docker into `ghcr.io` with package write access
 then use the existing VM build command with `--publish`:
 
 ```sh
-python3 scripts/build-release.py vm --version v0.1.0-rc.7 --publish \
+python3 scripts/build-release.py vm --version v0.1.0-rc.13 --publish \
   --output /absolute/private/release/linux-arm64
 ```
 
@@ -136,8 +136,9 @@ packages, grant intended users read access. Making this repository public does
 not make its packages public.
 
 The CLI embeds the Lima YAML, image installer and default registry manifest.
-When selecting a new runtime release, update `examples/lima/registry-release.json`
-from the published manifest before building the standalone CLI. Provisioning
+Pass the published manifest to the CLI builder with `--runtime-manifest`, using
+the same source revision and release version as the image build. Afterwards,
+update `examples/lima/registry-release.json` for source builds. Provisioning
 emits a receipt consumed internally by setup.
 
 ## Installation and upgrades
