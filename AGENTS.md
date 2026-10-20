@@ -11,8 +11,8 @@ documentation suitable for public distribution, regardless of repository visibil
 - Run `scripts/check-secrets` before pushing. Review diffs for customer data as
   well: secret scanners cannot reliably detect customer-specific information.
 - Keep the original public repository read-only. Do not push or publish there
-  without an explicit request. A future public PR must use reviewed patches on
-  a branch based on the original repository; do not merge the independent history.
+  without an explicit request. Contributions there must use reviewed patches on a
+  branch based on its history. Publish this project only to derrickhayashi/vpnmodo.
 - GitHub Actions is enabled only for Go checks and Secret scan. Keep other
   workflows disabled unless the user authorizes them. Do not provision paid
   test infrastructure or expand CI beyond the authorized checks.

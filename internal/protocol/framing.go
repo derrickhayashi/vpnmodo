@@ -8,7 +8,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
 )
 
 var ErrFrame = errors.New("invalid or oversized RPC frame")

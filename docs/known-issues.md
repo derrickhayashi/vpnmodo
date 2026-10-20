@@ -31,7 +31,7 @@ Replace the example operation ID with the one returned by your connection
 attempt. If the attempt failed, start a new explicit `vpnmodo up work` when ready
 and use the new code for that attempt. Do not reuse an old code. Other causes of
 post-MFA exits remain under investigation in
-[issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
+[XAuth session observations](#xauth-session-state-loss).
 
 ## XAuth session state loss
 
@@ -55,14 +55,14 @@ To start a new login after confirming that the previous operation has ended, run
 `vpnmodo up work` and supply the fresh MFA code. Report recurring failures with the
 CLI version and sanitized status/doctor results, omitting credentials, MFA codes
 and private destination details. Follow
-[issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23) for progress.
+[XAuth session observations](#xauth-session-state-loss) for progress.
 
 ## Intermittent L2TP startup exit in the test lab
 
 A cold isolated-lab run observed an L2TP container exit with status 2 during manual
 replacement while the controller was paused. Later full runs passed without
 changing startup, recovery or stop timeouts. The original cause is unconfirmed;
-see [issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
+see [the release validation record](release-validation.md#known-limitations).
 
 This observation does not establish a general L2TP deployment failure. When
 investigating a repeated startup failure, first distinguish a container startup

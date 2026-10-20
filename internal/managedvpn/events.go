@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/eventlog"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 )
 
 func (a *Adapter) SetEventLog(events *eventlog.Store) { a.events = events }

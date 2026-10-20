@@ -7,8 +7,8 @@ import (
 	"io"
 
 	"github.com/creachadair/jrpc2"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 var ErrRemote = errors.New("controller request failed; check SSH authentication, host keys and Docker access")

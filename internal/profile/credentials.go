@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
+	"github.com/derrickhayashi/vpnmodo/internal/secret"
 )
 
 var ErrCredentials = errors.New("invalid credential input")

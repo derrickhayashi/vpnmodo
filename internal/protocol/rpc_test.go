@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/secret"
 )
 
 func assertRPC(t *testing.T, err error, code ErrorCode) {

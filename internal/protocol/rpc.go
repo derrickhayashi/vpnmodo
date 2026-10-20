@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 )
 
 const JSONRPCVersion = "2.0"

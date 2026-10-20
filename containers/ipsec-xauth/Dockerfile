@@ -18,4 +18,4 @@ ENTRYPOINT ["charon-cmd"]
 
 ARG VERSION=dev
 ARG REVISION=unknown
-LABEL org.opencontainers.image.version=$VERSION org.opencontainers.image.revision=$REVISION
+LABEL org.opencontainers.image.source="https://github.com/derrickhayashi/vpnmodo" org.opencontainers.image.version=$VERSION org.opencontainers.image.revision=$REVISION

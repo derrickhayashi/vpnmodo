@@ -3,9 +3,9 @@ package main
 import (
 	"errors"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 )
 
 // The input file includes secrets; the controller profile and local reference do not.

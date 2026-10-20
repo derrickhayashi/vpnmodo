@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
 )
 
 func TestAccessFailuresHaveStableJSONAndNoNetworkMutation(t *testing.T) {

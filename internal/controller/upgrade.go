@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/operationstore"
+	"github.com/derrickhayashi/vpnmodo/internal/profilestore"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 func upgradePending(root string) bool {

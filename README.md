@@ -22,9 +22,7 @@ creates Ubuntu, Docker and the controller. Docker Desktop, Go and
 Ansible are not needed on the Mac.
 
 This is a prerelease. See the [validation record](docs/release-validation.md)
-for qualification and the unresolved intermittent startup/session observations
-[#19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19) and
-[#23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
+for qualification and [known issues](docs/known-issues.md) for startup/session observations.
 
 - [Installation](#installation): install the CLI, prepare the VM and create a profile once.
 - [Usage](#usage): connect, access private services and disconnect.
@@ -32,10 +30,8 @@ for qualification and the unresolved intermittent startup/session observations
 ## Installation
 
 On an **Apple Silicon Mac**, download one file:
-[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.12/vpnmodo-darwin-arm64).
-If the repository or release has restricted access, sign in to GitHub with an
-account that has access. Repository visibility and container package access are
-managed separately.
+[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpnmodo/releases/download/v0.1.0-rc.13/vpnmodo-darwin-arm64).
+The source and release downloads are public.
 
 Install it:
 
@@ -52,32 +48,17 @@ Setup creates the managed Ubuntu VM, installs Docker and the release images,
 starts the controller and checks readiness. It installs Lima through Homebrew
 if needed; install [Homebrew](https://brew.sh) first if it is missing.
 
-For **public images**, run `vpnmodo setup` without an auth file. The current
-release images are **private**, so supply a separate registry auth file:
+Prepare the VM with the public release images:
 
 ```sh
-mkdir -p "$HOME/vpnmodo-private"
-nano "$HOME/vpnmodo-private/registry-auth.json"
+vpnmodo setup
 ```
 
-Save your GitHub package credentials in that file:
-
-```json
-{
-  "username": "YOUR_GITHUB_USERNAME",
-  "token": "YOUR_GITHUB_TOKEN"
-}
-```
-
-The token needs `read:packages` and access to the private packages. Then run:
-
-```sh
-vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
-```
-
-This file is optional for public registries. Repeated setup reuses the same VM
-and previously saved registry access. Setup does not read VPN configuration or
-start a VPN connection. There is no VM selection or separate setup-file download.
+Repeated setup reuses the same VM. Setup does not read VPN configuration or start
+a VPN connection. There is no VM selection or separate setup-file download.
+If you use a private registry configuration instead, supply a separate optional
+`--registry-auth FILE` containing its GitHub `username` and `token`; keep that file
+outside Git. Registry credentials are not part of a VPN profile.
 
 ## VPN configuration
 

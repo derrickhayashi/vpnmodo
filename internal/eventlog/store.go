@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 )
 
 var ErrStorage = errors.New("VPN event logging unavailable")

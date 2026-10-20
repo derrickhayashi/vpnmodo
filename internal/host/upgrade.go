@@ -10,8 +10,8 @@ import (
 	"os/exec"
 	"strings"
 
-	assets "github.com/derrickhayashi/vpn-sidecars-next"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	assets "github.com/derrickhayashi/vpnmodo"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
 )
 
 //go:embed upgrade.py

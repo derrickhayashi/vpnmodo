@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/credentialinput"
+	"github.com/derrickhayashi/vpnmodo/internal/credentialinput"
 	"io"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/rpcio"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/rpcio"
 )
 
 func operationCommand(base context.Context, registry string, args []string, out io.Writer) error {

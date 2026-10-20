@@ -5,9 +5,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/secret"
 )
 
 // RecoveryAdapter opts a backend into monitoring. Check is read-only and must

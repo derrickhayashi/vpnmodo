@@ -3,8 +3,8 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/profilestore"
 	"io"
 	"net"
 	"net/http"

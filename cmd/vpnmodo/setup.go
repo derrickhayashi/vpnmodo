@@ -14,12 +14,12 @@ import (
 	"runtime"
 	"time"
 
-	assets "github.com/derrickhayashi/vpn-sidecars-next"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/controller"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/credentialinput"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	assets "github.com/derrickhayashi/vpnmodo"
+	"github.com/derrickhayashi/vpnmodo/internal/controller"
+	"github.com/derrickhayashi/vpnmodo/internal/credentialinput"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 func setupCommand(base context.Context, registry string, args []string, out io.Writer) error {

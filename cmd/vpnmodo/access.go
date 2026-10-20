@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/access"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/controller"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/access"
+	"github.com/derrickhayashi/vpnmodo/internal/controller"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 type accessCheck struct {

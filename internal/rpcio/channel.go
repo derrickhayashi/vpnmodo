@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 type Channel struct {

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
+	"github.com/derrickhayashi/vpnmodo/internal/secret"
 )
 
 // RegistryConfig encodes supplied registry credentials without prompting.

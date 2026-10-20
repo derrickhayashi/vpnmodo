@@ -5,7 +5,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
 )
 
 var localImageID = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)

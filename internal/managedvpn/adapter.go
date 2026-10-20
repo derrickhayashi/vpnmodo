@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/lifecycle"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profilestore"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
+	"github.com/derrickhayashi/vpnmodo/internal/eventlog"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/lifecycle"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/profilestore"
+	"github.com/derrickhayashi/vpnmodo/internal/secret"
 )
 
 var imagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._/:@-]{0,254}$`)

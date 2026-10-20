@@ -1,7 +1,9 @@
 # ARM64 release validation
 
-This record lists completed checks by release and platform. Results apply to
-the recorded revisions. For symptoms, affected versions and recovery steps,
+This record lists completed checks by release and platform. Historical source
+references identify tree-equivalent commits in the rewritten repository; old
+release binaries and container images are not republished. Results apply to
+the recorded source, not automatically to newly rebuilt artifacts. For symptoms, affected versions and recovery steps,
 see [known issues and regressions](known-issues.md).
 
 ## XAuth delayed-MFA handshake timeout — 2026-10-20
@@ -47,10 +49,10 @@ VPN readiness and authenticated destination SSH access.
 
 | Release and source | Completed checks | Limits at that release |
 | --- | --- | --- |
-| rc.11, `423ebd07a24d` | Optional separate registry-auth input, anonymous provisioner/retry tests, saved-auth reuse/replacement, strict credential input, native ARM64 artifact installation and full Go race/vet checks | Anonymous pulls were tested locally through provisioner fixtures; no real anonymous registry pull was performed. Runtime images remained rc.7. |
-| rc.10, `7b01d6ffff00` | One-file VPN settings/credentials for both backends; create/update/rotation RPC tests; owner-only files and secret-free output; native ARM64 artifact checks; 77 Python tests and Go race/vet checks | Historical same-file registry input was replaced by rc.11's separate `--registry-auth`. This input-only release did not rerun protocol acceptance. |
-| rc.9, `ed242079fbd6` | Single managed `vpn-vm`, JSON profile creation, controller readiness, native artifact/setup checks, 77 Python tests and Go race/vet checks | A connection attempt exited after MFA with diagnostic 27; private access was not verified in that check. This was not an end-to-end pass. |
-| rc.8, `43e5e02d22fd` | Fresh Lima setup, Docker/kernel preparation, controller readiness, cold restart/retry, missing-image and registry-auth recovery, native ARM64 artifacts, 83 Python tests and Go race/vet checks | Lima was already installed; automatic Homebrew installation and native Intel execution were not exercised. VPN authentication was not repeated for this CLI change. |
+| rc.11, `0a6f183bf1cf` | Optional separate registry-auth input, anonymous provisioner/retry tests, saved-auth reuse/replacement, strict credential input, native ARM64 artifact installation and full Go race/vet checks | Anonymous pulls were tested locally through provisioner fixtures; no real anonymous registry pull was performed. Runtime images remained rc.7. |
+| rc.10, `96efe3350ede` | One-file VPN settings/credentials for both backends; create/update/rotation RPC tests; owner-only files and secret-free output; native ARM64 artifact checks; 77 Python tests and Go race/vet checks | Historical same-file registry input was replaced by rc.11's separate `--registry-auth`. This input-only release did not rerun protocol acceptance. |
+| rc.9, `b0040e7df805` | Single managed `vpn-vm`, JSON profile creation, controller readiness, native artifact/setup checks, 77 Python tests and Go race/vet checks | A connection attempt exited after MFA with diagnostic 27; private access was not verified in that check. This was not an end-to-end pass. |
+| rc.8, `6328d9b9af16` | Fresh Lima setup, Docker/kernel preparation, controller readiness, cold restart/retry, missing-image and registry-auth recovery, native ARM64 artifacts, 83 Python tests and Go race/vet checks | Lima was already installed; automatic Homebrew installation and native Intel execution were not exercised. VPN authentication was not repeated for this CLI change. |
 
 A fresh rc.11 managed-VM walkthrough also verified VM creation and noninteractive
 JSON profile import. Authentication results depended on the interaction path;
@@ -70,7 +72,7 @@ older releases.
 
 ## Earlier rc.6 protocol qualification — 2026-10-19
 
-Validated source: `990dc2fe7caec4e1b68cf2b54788b996937e66c5`.
+Validated source: `4e1376ac5b31d4330041e5b61d0ad20c63bb8428`.
 Candidate identity: `v0.1.0-rc.6+git.990dc2fe7cae`.
 Subsequent documentation commits record these results without changing runtime
 code. The complete isolated protocol/recovery/packet suite and a fresh ARM64
@@ -125,12 +127,12 @@ complete committed-source rerun exits 0.
 
 The delayed-MFA timeout above explains a reproducible cause of diagnostic 27.
 Other post-MFA exits and disappearance of established kernel IPsec state are
-tracked in [issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
+tracked in [known XAuth issues](known-issues.md#xauth-session-state-loss).
 These checks do not establish long-term session stability or resolve unrelated
 lifecycle observations.
 
 An intermittent synthetic L2TP startup exit during manual replacement remains
-tracked in [issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
+tracked in [known L2TP issues](known-issues.md#intermittent-l2tp-startup-exit-in-the-test-lab).
 Its original cause was not confirmed by later successful full-suite runs.
 
 The published protocol results use synthetic fixtures and do not

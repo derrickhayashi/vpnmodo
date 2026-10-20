@@ -9,9 +9,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/eventlog"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 func logQuery(args []string, now time.Time) (eventlog.Query, bool, error) {

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
 )
 
 // This fixed, nonsecret file is readable by the workload UID through its bind

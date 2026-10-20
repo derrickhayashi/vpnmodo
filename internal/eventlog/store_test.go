@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 )
 
 func example() Event {

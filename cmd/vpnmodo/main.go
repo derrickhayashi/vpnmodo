@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
 )
 
 var version = "dev"

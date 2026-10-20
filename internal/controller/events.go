@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 	"time"
 )
 

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/eventlog"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 func TestLogRetrievalOverAuthenticatedRPC(t *testing.T) {

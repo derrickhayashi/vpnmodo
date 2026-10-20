@@ -11,8 +11,8 @@ images need no auth file:
 vpnmodo setup
 ```
 
-The current release images are private GHCR packages. For those, supply an
-owner-only JSON file containing GitHub `username` and `token`:
+For a private registry configuration, supply an owner-only JSON file containing
+GitHub `username` and `token`:
 
 ```sh
 vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"

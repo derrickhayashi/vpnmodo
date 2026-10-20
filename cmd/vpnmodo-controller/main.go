@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/controller"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/rpcio"
+	"github.com/derrickhayashi/vpnmodo/internal/controller"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/rpcio"
 )
 
 var version = "dev"

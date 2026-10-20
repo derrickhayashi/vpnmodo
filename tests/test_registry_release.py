@@ -21,7 +21,7 @@ def module(name, path):
 loader = module('registry_loader', ROOT / 'scripts/release/install-vm.py')
 builder = module('registry_builder', ROOT / 'scripts/build-release.py')
 ROLES = ('controller', 'l2tp', 'xauth', 'application')
-PREFIX = 'ghcr.io/derrickhayashi/vpn-sidecars-next/'
+PREFIX = 'ghcr.io/derrickhayashi/vpnmodo/'
 
 
 class RegistryTests(unittest.TestCase):
@@ -95,6 +95,22 @@ class RegistryTests(unittest.TestCase):
         self.actual_version = 'wrong-version'
         with self.assertRaisesRegex(loader.InstallError, 'controller version'):
             self.install()
+
+    def test_cli_runtime_input_requires_same_revision_and_immutable_repository_images(self):
+        metadata = {'version': 'v0.1.0-rc.7', 'revision': '0123456789ab' + '0' * 28}
+        self.path.write_text(json.dumps(self.release))
+        self.assertEqual(json.loads(builder.runtime_input(self.path, metadata)), self.release)
+        changes = [
+            ('binary_version', 'v0.1.0-rc.7+git.' + 'f' * 12),
+            ('version', 'v0.1.0-rc.8'), ('arch', 'amd64'),
+            ('images', dict(self.refs, xauth=PREFIX + 'xauth:latest')),
+            ('images', dict(self.refs, xauth='ghcr.io/another/repository/xauth@sha256:' + 'a' * 64)),
+        ]
+        for key, value in changes:
+            with self.subTest(field=key, value=value):
+                self.path.write_text(json.dumps(dict(self.release, **{key: value})))
+                with self.assertRaises(RuntimeError):
+                    builder.runtime_input(self.path, metadata)
 
     def test_publisher_records_registry_digests_not_builder_image_ids(self):
         self.path.write_text(json.dumps(dict(self.release, images={

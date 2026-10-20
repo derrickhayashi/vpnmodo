@@ -12,9 +12,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/rpcio"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/rpcio"
 )
 
 const bridgeCommand = "docker --host unix:///var/run/docker.sock exec -i vpnmodo-controller /usr/local/bin/vpnmodo-controller bridge"

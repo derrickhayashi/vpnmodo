@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/eventlog"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/eventlog"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
 )
 
 func TestLifecycleEventsPersistAndLogFailureAllowsDisconnect(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 func combinedProfile(t *testing.T, backend string) (string, map[string]any) {

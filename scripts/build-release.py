@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Build private release artifacts; optionally publish VM images to private GHCR."""
+"""Build release artifacts; optionally publish VM images to GHCR."""
 import argparse
+import base64
 import gzip
 import hashlib
 import importlib.util
@@ -109,15 +110,37 @@ def source_snapshot(root, temporary, version):
     return source, metadata
 
 
-def cli(source, output, metadata, temporary):
+def runtime_input(path, metadata):
+    raw = path.read_bytes()
+    if len(raw) > 16384:
+        raise RuntimeError('runtime manifest exceeds size limit')
+    data = json.loads(raw)
+    identity = metadata['version'] + '+git.' + metadata['revision'][:12]
+    if (data.get('schema_version') != 1 or data.get('version') != metadata['version']
+            or data.get('binary_version') != identity or data.get('os') != 'linux'
+            or data.get('arch') != 'arm64' or set(data.get('images', {})) != {'controller', 'l2tp', 'xauth', 'application'}):
+        raise RuntimeError('runtime manifest must match the release version and source revision')
+    for role, ref in data['images'].items():
+        if not isinstance(ref, str) or not re.fullmatch(r'ghcr\.io/derrickhayashi/vpnmodo/' + role + r'@sha256:[0-9a-f]{64}', ref):
+            raise RuntimeError('runtime manifest must use immutable vpnmodo image references')
+    return raw
+
+
+def cli(source, output, metadata, temporary, runtime_manifest=None):
     version = metadata['version']
     identity = version + '+git.' + metadata['revision'][:12]
+    flags = '-s -w -X main.version=' + identity
+    if runtime_manifest is not None:
+        raw = runtime_input(runtime_manifest, metadata)
+        flags += ' -X github.com/derrickhayashi/vpnmodo.registryReleaseBase64=' + base64.b64encode(raw).decode()
+        shutil.copyfile(runtime_manifest, output / 'registry-release.json')
+        metadata = dict(metadata, runtime_manifest_sha256=hashlib.sha256(raw).hexdigest())
     env = dict(os.environ, CGO_ENABLED='0', GOOS='darwin')
     for arch in ('arm64', 'amd64'):
         stage = temporary / ('cli-' + arch)
         stage.mkdir()
         env['GOARCH'] = arch
-        subprocess.run(['go', 'build', '-trimpath', '-buildvcs=false', '-ldflags', '-s -w -X main.version=' + identity,
+        subprocess.run(['go', 'build', '-trimpath', '-buildvcs=false', '-ldflags', flags,
                         '-o', str(stage / 'vpnmodo'), './cmd/vpnmodo'], cwd=source, env=env, check=True)
         manifest = dict(metadata, os='darwin', arch=arch, binary_version=identity, binary_sha256=digest(stage / 'vpnmodo'))
         write_json(stage / 'release.json', manifest)
@@ -186,7 +209,7 @@ def vm(source, output, metadata, temporary):
 
 def publish(manifest, output):
     data = json.loads(manifest.read_text())
-    prefix = 'ghcr.io/derrickhayashi/vpn-sidecars-next/'
+    prefix = 'ghcr.io/derrickhayashi/vpnmodo/'
     refs = {}
     for role in sorted(data['images']):
         repository = prefix + role
@@ -206,9 +229,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('kind', choices=('cli', 'vm'))
     parser.add_argument('--version', required=True)
-    parser.add_argument('--publish', action='store_true', help='publish VM images to private GHCR (requires Docker login)')
+    parser.add_argument('--publish', action='store_true', help='publish VM images to GHCR (requires Docker login)')
+    parser.add_argument('--runtime-manifest', type=Path, help='embed immutable images built from this same source revision (CLI only)')
     parser.add_argument('--output', type=Path, required=True, help='new directory outside the source checkout')
     args = parser.parse_args()
+    if args.runtime_manifest and args.kind != 'cli':
+        parser.error('--runtime-manifest applies only to CLI builds')
     if args.publish and args.kind != 'vm':
         parser.error('--publish applies only to VM image builds')
     if not VERSION.fullmatch(args.version):
@@ -221,7 +247,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix='vpnmodo-release-') as directory:
             source, metadata = source_snapshot(root, Path(directory), args.version)
             output.mkdir(parents=True)
-            kind = globals()[args.kind](source, output, metadata, Path(directory))
+            kind = cli(source, output, metadata, Path(directory), args.runtime_manifest) if args.kind == 'cli' else vm(source, output, metadata, Path(directory))
             if args.publish:
                 publish(Path(directory) / 'vm/release.json', output)
                 shutil.copyfile(source / 'scripts/release/install-vm.py', output / 'install-vm.py')

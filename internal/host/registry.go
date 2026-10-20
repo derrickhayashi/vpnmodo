@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"syscall"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 )
 
 const ManagedName = "vpn-vm"

@@ -1,7 +1,7 @@
 package operationstore
 
 import (
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
 	"os"
 	"path/filepath"
 	"reflect"

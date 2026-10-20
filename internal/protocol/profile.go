@@ -3,8 +3,8 @@ package protocol
 import (
 	"encoding/json"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
 )
 
 type ProfileCreateParams struct {

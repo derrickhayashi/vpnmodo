@@ -8,10 +8,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/credentialinput"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/profile"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/credentialinput"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/profile"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 var errProfileOptions = errors.New("usage: vpnmodo profile {create|register|list|inspect|update|rotate-credentials|delete|unregister}; see profile help")

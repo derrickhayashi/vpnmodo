@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operation"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/operationstore"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/rpcio"
+	"github.com/derrickhayashi/vpnmodo/internal/operation"
+	"github.com/derrickhayashi/vpnmodo/internal/operationstore"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/rpcio"
 )
 
 func TestUpgradeBarrierRefusesMutationsOverRPC(t *testing.T) {

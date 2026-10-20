@@ -236,7 +236,7 @@ def install_registry(manifest):
     if not isinstance(data.get('binary_version'), str) or not data['binary_version']:
         raise InstallError('missing registry release version')
     for role, ref in images.items():
-        if not isinstance(ref, str) or not re.fullmatch(r'ghcr\.io/derrickhayashi/vpn-sidecars-next/' + role + r'@sha256:[0-9a-f]{64}', ref):
+        if not isinstance(ref, str) or not re.fullmatch(r'ghcr\.io/derrickhayashi/vpnmodo/' + role + r'@sha256:[0-9a-f]{64}', ref):
             raise InstallError('registry images must use published GHCR digests')
     info = json.loads(docker('info', '--format', DOCKER_JSON_FORMAT))
     arch = {'aarch64': 'arm64', 'x86_64': 'amd64', 'arm64': 'arm64', 'amd64': 'amd64'}.get(info.get('Architecture'))

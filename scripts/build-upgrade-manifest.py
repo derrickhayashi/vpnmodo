@@ -28,7 +28,7 @@ def build(cli_dir, runtime_file):
     if runtime['schema_version'] != 1 or runtime['os'] != 'linux' or runtime['arch'] != 'arm64' or set(runtime['images']) != {'controller', 'l2tp', 'xauth', 'application'}:
         raise ValueError('incompatible runtime release')
     for role, image in runtime['images'].items():
-        if not re.fullmatch(r'ghcr\.io/derrickhayashi/vpn-sidecars-next/' + role + r'@sha256:[0-9a-f]{64}', image):
+        if not re.fullmatch(r'ghcr\.io/derrickhayashi/vpnmodo/' + role + r'@sha256:[0-9a-f]{64}', image):
             raise ValueError('runtime images must be immutable published digests')
     return dict(schema_version=1, version=version, cli_version=cli['binary_version'], api_major=1, state_schema=1,
                 cli=dict(asset=name, sha256=digest, size=binary.stat().st_size), runtime=runtime)

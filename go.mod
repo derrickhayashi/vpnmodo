@@ -1,4 +1,4 @@
-module github.com/derrickhayashi/vpn-sidecars-next
+module github.com/derrickhayashi/vpnmodo
 
 go 1.27.0
 

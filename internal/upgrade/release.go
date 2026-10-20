@@ -16,14 +16,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
 )
 
 var ErrRelease = errors.New("upgrade release unavailable or invalid; check the version, release assets and repository access")
 var tagPattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$`)
 var digestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
-const Repository = "derrickhayashi/vpn-sidecars-next"
+const Repository = "derrickhayashi/vpnmodo"
 const MaxBinary = 64 * 1024 * 1024
 
 type Runtime struct {

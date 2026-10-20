@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
 )
 
 func managedReference(path, name string) (host.Reference, error) {

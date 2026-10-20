@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
 )
 
 func destination(ctx context.Context, s Service) (host.ProxyRequest, error) {

@@ -8,8 +8,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/privatefile"
 )
 
 func TestTransactionResumeAndRollback(t *testing.T) {

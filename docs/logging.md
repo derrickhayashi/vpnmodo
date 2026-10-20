@@ -97,7 +97,6 @@ tests replay backend diagnostics and verify that only fixed codes survive.
 These tests do not establish live gateway diagnostic coverage or replace Linux
 protocol acceptance with rebuilt backend images.
 
-Tracking: [issue #33](https://github.com/derrickhayashi/vpn-sidecars-next/issues/33).
 
 The optional image smoke test uses local test images and disables container
 networking:

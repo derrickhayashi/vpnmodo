@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/jsonstrict"
+	"github.com/derrickhayashi/vpnmodo/internal/jsonstrict"
 )
 
 const (

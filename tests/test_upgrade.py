@@ -150,7 +150,7 @@ class UpgradeManifestTests(unittest.TestCase):
             root = Path(directory)
             data = b'synthetic CLI'
             (root / 'vpnmodo-darwin-arm64').write_bytes(data)
-            runtime = dict(schema_version=1, version='v1.2.3', binary_version='v1.2.3+git.0123456789ab', os='linux', arch='arm64', images={role: 'ghcr.io/derrickhayashi/vpn-sidecars-next/' + role + '@sha256:' + 'a' * 64 for role in ('controller', 'l2tp', 'xauth', 'application')})
+            runtime = dict(schema_version=1, version='v1.2.3', binary_version='v1.2.3+git.0123456789ab', os='linux', arch='arm64', images={role: 'ghcr.io/derrickhayashi/vpnmodo/' + role + '@sha256:' + 'a' * 64 for role in ('controller', 'l2tp', 'xauth', 'application')})
             path = root / 'runtime.json'
             path.write_text(json.dumps(runtime))
             cli = dict(version=runtime['version'], binary_version=runtime['binary_version'], binary_sha256=hashlib.sha256(data).hexdigest(), os='darwin', arch='arm64')

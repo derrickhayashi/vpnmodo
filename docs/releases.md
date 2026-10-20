@@ -4,14 +4,13 @@ ARM64 candidate qualification is recorded in the
 [validation record](release-validation.md). Builds stay local by default;
 `vm --publish` uploads release images to GHCR. The standalone CLI is distributed
 through GitHub prereleases; there is no Homebrew tap. Repository visibility and
-GHCR package access are separate settings. The current runtime images require
-package access. Build CLI artifacts on the workstation and container images on
+GHCR package access are separate settings. Public runtime images can be pulled without registry credentials. Build CLI artifacts on the workstation and container images on
 a native Linux builder.
 
 ## Single-file CLI download
 
-The current standalone CLI release is `v0.1.0-rc.12`. Download `vpnmodo-darwin-arm64`
-from the [rc.12 release](https://github.com/derrickhayashi/vpn-sidecars-next/releases/tag/v0.1.0-rc.12),
+The current standalone CLI release is `v0.1.0-rc.13`. Download `vpnmodo-darwin-arm64`
+from the [rc.13 release](https://github.com/derrickhayashi/vpnmodo/releases/tag/v0.1.0-rc.13),
 install it and run `vpnmodo setup`. Sign in with an authorized GitHub account if
 release access is restricted. For private images supply the optional
 `--registry-auth FILE` described in [installation](../README.md#installation).
@@ -20,18 +19,27 @@ vpnmodo. Setup prepares the controller. VPN settings remain in JSON profiles, wh
 automatically use the managed VM. There is no host selection, external VM setup
 or manual provisioning-file transfer.
 
-The executable includes the Lima YAML, VM installer and registry manifest. It
-uses the rc.7 controller, L2TP and application images with the corrected XAuth
-image qualified for rc.12. The embedded
-[registry manifest](../examples/lima/registry-release.json) pins all four images
-by digest; its bundle version remains rc.7. CLI and runtime identities are
-recorded separately. The [validation record](release-validation.md) identifies
-the tested XAuth correction.
+The executable includes Lima YAML, the VM installer and a digest-pinned registry
+manifest. The release builder embeds the published runtime manifest through
+`--runtime-manifest FILE`, so the CLI and controller can use images built from the
+same committed source revision. `registry-release.json` is distributed alongside
+the binaries and included in their checksums. The
+[validation record](release-validation.md) distinguishes historical qualification
+from checks performed for the current release.
 
 `SHA256SUMS-cli` covers the executable. macOS binaries are unsigned and not
 notarized; follow your team's approved software policy. No installer changes
 Gatekeeper settings. Existing source and image archives remain maintainer build
 artifacts, rather than another supported user installation flow.
+
+## Matching CLI and runtime builds
+
+Build and publish the ARM64 VM images first from a clean committed revision.
+Pass the returned `registry-release.json` to the CLI build from that same revision
+and version using `--runtime-manifest`. The builder refuses mismatched identities,
+mutable image tags or another repository's images. This avoids changing source
+between the runtime build and CLI build. The source archive and separately
+published runtime manifest provide the inputs needed to reproduce the CLI build.
 
 ## Artifacts and trust
 
@@ -76,7 +84,8 @@ source carries a hashed committed-file inventory: changed source files are
 refused, and extra files added to an extracted source directory are never copied.
 
 ```sh
-python3 scripts/build-release.py cli --version v0.1.0-rc.1 \
+python3 scripts/build-release.py cli --version v0.1.0-rc.13 \
+  --runtime-manifest /absolute/private/build/linux-arm64/registry-release.json \
   --output /absolute/private/build/cli
 cd /absolute/private/build/cli
 shasum -a 256 -c SHA256SUMS-cli
@@ -117,7 +126,7 @@ python3 scripts/build-release.py vm --version v0.1.0-rc.7 --publish \
 ```
 
 This builds the same four images and offline bundle, then pushes
-`ghcr.io/derrickhayashi/vpn-sidecars-next/ROLE:VERSION-arm64` for `controller`,
+`ghcr.io/derrickhayashi/vpnmodo/ROLE:VERSION-arm64` for `controller`,
 `l2tp`, `xauth` and `application`. `registry-release.json` records the returned
 registry digests. Docker can push a single-platform manifest whose digest
 differs from a local index; use the push result, not local `RepoDigests` or

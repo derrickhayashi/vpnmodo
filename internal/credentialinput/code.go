@@ -7,7 +7,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
+	"github.com/derrickhayashi/vpnmodo/internal/secret"
 	"golang.org/x/term"
 )
 

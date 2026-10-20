@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/access"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
-	"github.com/derrickhayashi/vpn-sidecars-next/internal/protocol"
+	"github.com/derrickhayashi/vpnmodo/internal/access"
+	"github.com/derrickhayashi/vpnmodo/internal/host"
+	"github.com/derrickhayashi/vpnmodo/internal/protocol"
 )
 
 // A stable SSH ProxyCommand resolves the currently healthy application each time.
