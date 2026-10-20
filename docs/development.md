@@ -42,9 +42,11 @@ output. It does not reliably detect customer names or deployment information.
 Use synthetic test data and keep VPN credential files, inventories and runtime
 captures outside the checkout.
 
-GitHub Actions runs Go checks and Secret scan. Release container images are built
-on a native Linux Docker builder and published to GHCR; protocol tests run in the
-local Linux lab.
+Go checks run when Go source, module/workspace files, embedded Python/Lima assets,
+or the Go workflow changes. Documentation-only changes skip Go compilation and
+tests. Secret scan runs on every push and pull request, including documentation
+changes. Release container images are built on a native Linux Docker builder and
+published to GHCR; protocol tests run in the local Linux lab.
 
 ## Run protocol tests on Linux
 
