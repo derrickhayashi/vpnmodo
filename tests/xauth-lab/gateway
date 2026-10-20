@@ -8,6 +8,8 @@ ip address add 198.51.100.1/32 dev lo
 cat > /etc/strongswan.conf <<'CONFIG'
 charon {
   load_modular = yes
+  # Let the client timeout regression isolate its own handshake deadline.
+  half_open_timeout = 300
   i_dont_care_about_security_and_use_aggressive_mode_psk = yes
   plugins {
     include strongswan.d/charon/*.conf
