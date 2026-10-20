@@ -1,10 +1,9 @@
 # Controller recovery policy
 
-The first PR for issue #6 supplied the recovery coordinator and standalone
-watchdog refusal rule. The [managed L2TP adapter](005-managed-l2tp.md) now supplies
-Docker/Compose lifecycle, per-profile credential mounts, ownership checks and Linux
-VPN acceptance. Production L2TP connection handlers are enabled; XAuth remains
-unavailable. The synthetic acceptance adapter is compiled only into Go tests.
+The controller monitors managed profiles and applies backend-specific recovery.
+[L2TP](005-managed-l2tp.md) can reconnect automatically within a bounded retry
+budget. [XAuth](006-managed-xauth.md) can repair a detached application container,
+but tunnel loss requires a new explicit login and fresh MFA.
 
 ## Health and recovery decisions
 
@@ -13,8 +12,7 @@ interface. Its read-only `Check` returns a closed health classification; raw
 backend output never becomes journal data. `CanRecover` remains the backend's
 unattended-authentication policy. Connection status gains optional `recovery`
 metadata: health, check time, consecutive attempt count and `not_before` timestamp.
-Older journal records without that field still load. These are additions to the
-unreleased v1 model, with no new public RPC method or creation wizard.
+Older journal records without that field still load.
 
 | Health | Controller action |
 | --- | --- |
@@ -38,7 +36,7 @@ Probe failures do not cause reconnects.
 
 Recovery and namespace repair use journaled `connection.recover` operations,
 sharing the same gate, cancellation and stale-worker checks as explicit requests.
-There is no public recover command in this stage. The attempt counter and next
+There is no separate public recover command. The attempt counter and next
 permitted attempt time commit before any external mutation. Defaults permit three
 consecutive attempts, with delays of five, ten and twenty minutes, capped at
 30 minutes. An initial successful ensure and each successful repair also start a
@@ -71,15 +69,15 @@ blocked until explicit ensure.
 
 ## Recovery ownership boundary
 
-Every adapter method must independently verify the managed project/profile labels
-and reject competing recovery owners. The [L2TP adapter](005-managed-l2tp.md) supplies concrete Docker enforcement. Creating a managed profile does not adopt any legacy containers.
+Every adapter action verifies managed project/profile labels and rejects competing
+recovery owners. Creating a managed profile does not adopt legacy containers.
 
 The current standalone watchdog checks `io.vpnmodo.managed-by` on its selected VPN
 before any health-driven recovery or namespace repair. The value `vpnmodo` causes
 a stable controller-owned report and no mutations. Older installed watchdog images
-do not acquire this guard automatically. Explicit adoption must stop the old
-recovery owner before controller management is enabled; migration and rollback
-remain release-stage acceptance. Existing standalone behavior remains available.
+do not acquire this guard automatically. Before switching an existing deployment
+to controller management, stop its old recovery owner to avoid competing
+reconnects. Existing standalone behavior remains available.
 
 ## Validation and scope
 

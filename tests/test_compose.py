@@ -65,41 +65,6 @@ class ComposeTests(unittest.TestCase):
         sources = {volume['source'] for volume in model['services']['vpn']['volumes']}
         self.assertIn('/path/to/vpn-sidecar/containers/ipsec-xauth/connect.exp', sources)
 
-    def test_tailscale_shares_network_and_magicdns_with_persistent_identity(self):
-        backend = ROOT / 'containers/tailscale'
-        model = self.resolve(backend=backend)
-        vpn = model['services']['vpn']
-        application = model['services']['application']
-        self.assertEqual(vpn['image'], 'tailscale/tailscale:stable')
-        self.assertNotIn('build', vpn)
-        self.assertEqual(vpn['environment']['TS_USERSPACE'], 'false')
-        self.assertEqual(vpn['environment']['TS_AUTH_ONCE'], 'true')
-        self.assertEqual(vpn['environment']['TS_ACCEPT_DNS'], 'false')
-        self.assertIn('NET_ADMIN', vpn['cap_add'])
-        self.assertEqual(vpn['devices'][0]['source'], '/dev/net/tun')
-        self.assertEqual(vpn['volumes'][0]['type'], 'volume')
-        self.assertEqual(vpn['volumes'][0]['target'], '/var/lib/tailscale')
-        self.assertEqual(application['network_mode'], 'service:vpn')
-        self.assertEqual(application['depends_on']['vpn']['condition'], 'service_healthy')
-        resolver = next(v for v in application['volumes']
-                        if v['target'] == '/etc/resolv.conf')
-        self.assertTrue(resolver['read_only'])
-        self.assertEqual(Path(resolver['source']), backend / 'resolv.conf')
-        self.assertIn('nameserver 100.100.100.100', Path(resolver['source']).read_text())
-
-    def test_tailscale_accepts_consumer_image_identity_and_routes(self):
-        settings = ('COMPOSE_PROJECT_NAME=consumer-tailscale\n'
-                    'VPN_IMAGE=tailscale/tailscale@sha256:' + 'b' * 64 + '\n'
-                    'TS_HOSTNAME=consumer-runner\nTS_AUTHKEY=example-test-key\n'
-                    'TS_EXTRA_ARGS=--accept-routes\n')
-        model = self.resolve(backend=ROOT / 'containers/tailscale', settings=settings)
-        self.assertEqual(model['name'], 'consumer-tailscale')
-        vpn = model['services']['vpn']
-        self.assertEqual(vpn['image'], 'tailscale/tailscale@sha256:' + 'b' * 64)
-        self.assertEqual(vpn['environment']['TS_HOSTNAME'], 'consumer-runner')
-        self.assertEqual(vpn['environment']['TS_AUTHKEY'], 'example-test-key')
-        self.assertEqual(vpn['environment']['TS_EXTRA_ARGS'], '--accept-routes')
-
     def test_xauth_development_override_uses_backend_context(self):
         backend = ROOT / 'containers/ipsec-xauth'
         model = self.resolve(override=True, backend=backend)

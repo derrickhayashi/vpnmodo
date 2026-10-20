@@ -1,6 +1,7 @@
 # Persistent operations and lifecycle coordination
 
-Issue #5 supplies a service-owned operation manager and a protected bbolt journal.
+The controller owns connection operations and stores their state in a protected
+bbolt journal.
 The managed [L2TP](005-managed-l2tp.md) and [XAuth](006-managed-xauth.md) adapters
 run in the production controller. Synthetic
 adapters exist only in Go tests and a separate acceptance image built from a Go
@@ -107,9 +108,10 @@ this is not a secret store or a secure-erasure mechanism.
 
 Default operation timeout is three minutes, MFA challenge timeout 90 seconds,
 and cleanup timeout five seconds. Cleanup can finish after the operation deadline.
-Adapters must honor cancellation, bound subprocesses, make disconnect idempotent,
-return only classified outcomes and keep `CanRecover` a pure policy check. Backend
-packet protection and protocol-specific deadlines remain backend-stage work.
+Cancellation and cleanup are bounded. Repeated disconnects are idempotent, and
+failures use fixed classifications rather than raw backend output.
+[Packet enforcement](006-managed-xauth.md#packet-enforcement) operates independently
+of these controller timeouts.
 
 ## MFA and restart rules
 
@@ -117,9 +119,9 @@ Only an explicit ensure may issue one challenge. Submission validates operation,
 challenge, expiry and numeric code shape, then commits consumption before handing
 the value to the worker's ephemeral bounded channel. Replay/second prompts are
 rejected. MFA values never enter the journal, argv, environment, results or logs.
-Expiry/authentication failure ends the attempt. Workstation connection-time MFA
-prompt orchestration is completed with XAuth integration; this stage tests the
-versioned submit API directly.
+Expiry/authentication failure ends the attempt. Interactive connection/watch commands use a hidden terminal prompt; JSON watchers
+report the challenge without prompting. See the
+[MFA guide](006-managed-xauth.md#authentication-boundary) for code submission.
 
 On restart, nonterminal operations become failed/interrupted and lose their
 challenge. Saved connected intent is observed and verified without starting a
@@ -148,9 +150,7 @@ cover reconnect, ordered snapshots/notifications and disabled production backend
 
 The [local Ubuntu lab](../../tests/local-lab/README.md) first validates the
 production controller, then builds a separate synthetic test-binary image in a
-binary-only Docker context. The Controller SSH acceptance workflow remains
-disabled in GitHub Actions. The lab
-verifies operations after the initiating SSH exits, concurrent callers, CLI watch,
+binary-only Docker context. It verifies operations after the initiating SSH exits, concurrent callers, CLI watch,
 MFA submission/replay, cancellation, controller restart, established-session reuse,
 interrupted MFA without retry, persisted disconnect intent and secret-free journal
 bytes. That synthetic suite never logs into a VPN or changes a customer

@@ -1,8 +1,9 @@
 # Managed L2TP/IPsec runtime
 
-Issue #6 now connects the persistent lifecycle/recovery coordinator to a real
-L2TP adapter. Production `vpnmodo-controller serve` enables this backend. The [managed XAuth adapter](006-managed-xauth.md) adds separate MFA and mandatory
-packet isolation in issue #7. Service forwards remain issue #8.
+The production controller manages L2TP/IPsec containers, checks tunnel health
+and applies bounded recovery. [XAuth](006-managed-xauth.md) uses a separate
+authentication and packet-enforcement path. Both backends support
+[workstation service forwards](007-service-access.md).
 
 ## Runtime and images
 
@@ -16,13 +17,13 @@ Docker context/environment constructs commands. Compose gets an explicit project
 manifest, project directory and empty environment file. JSON manifest strings
 escape Compose dollar interpolation.
 
-The VM operator explicitly installs images before connecting. Development defaults
+`vpnmodo setup` installs the release images before connecting. Development defaults
 are `vpnmodo-l2tp:dev` and `alpine:3.22` for the application namespace. Routine
 connect/recovery uses `--pull never`; it never builds, pulls, provisions the VM or
-changes unrelated deployments. The application currently supplies a namespace and
-local VPN DNS resolver configuration; named workstation forwards come in #8.
-Private [candidate bundles](../releases.md) supply offline image pinning/checksums
-and explicit controller upgrades; the final adoption/platform gate remains #9. Manual
+changes unrelated deployments. The application supplies a namespace and local
+VPN DNS resolver configuration for proxied traffic and service forwards.
+[Release bundles](../releases.md) supply offline image pinning/checksums and
+explicit controller upgrades. Manual
 controller deployments may set `VPNMODO_L2TP_IMAGE` and
 `VPNMODO_APPLICATION_IMAGE`; image references are operator configuration and are
 not accepted through profile JSON. Development controller builds retain those defaults. Release controller images
@@ -109,8 +110,7 @@ for the separately required XAuth fail-closed acceptance matrix.
 
 Go tests exercise full managed creation/reuse/disposal, manifest isolation,
 Compose interpolation, cancellation, health classification and ownership
-conflicts across every adapter action. Existing standalone regression tests remain
-required. The [local Linux lab](../../tests/local-lab/README.md) runs a synthetic
+conflicts across every adapter action. The [local Linux lab](../../tests/local-lab/README.md) runs a synthetic
 strongSwan L2TP gateway, actual
 IPsec/PPP and private TCP checks through verified SSH, then tests endpoint outage,
 namespace replacement, recovery, failure quiescence, intentional stop, controller
@@ -121,4 +121,5 @@ in the Go test binary;
 production profiles/flags cannot enable synthetic adapters or shorten policy.
 The gateway uses fixed synthetic credentials and documentation addresses only.
 This demonstrates laboratory interoperability, not customer gateway certification
-or XAuth packet isolation. Release/adoption matrix testing remains #9.
+or XAuth packet isolation. See [release validation](../release-validation.md) for
+the tested platforms and remaining limitations.

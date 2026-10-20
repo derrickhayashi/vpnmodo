@@ -1,7 +1,7 @@
 # Development boundary
 
-This is private development of the reusable VPN sidecar project. Private
-visibility is an additional safeguard, not permission to store customer data.
+This repository contains the reusable VPN sidecar project. Keep source and
+documentation suitable for public distribution, regardless of repository visibility.
 
 - Keep real profiles, credentials, MFA codes, addresses, hostnames, customer
   names, service mappings, inventories, logs, packet captures and runtime state
@@ -12,7 +12,7 @@ visibility is an additional safeguard, not permission to store customer data.
   well: secret scanners cannot reliably detect customer-specific information.
 - Keep the original public repository read-only. Do not push or publish there
   without an explicit request. A future public PR must use reviewed patches on
-  a branch based on the original repository; never merge this private history.
+  a branch based on the original repository; do not merge the independent history.
 - GitHub Actions is enabled only for Go checks and Secret scan. Keep other
   workflows disabled unless the user authorizes them. Do not provision paid
   test infrastructure or expand CI beyond the authorized checks.
@@ -22,7 +22,7 @@ visibility is an additional safeguard, not permission to store customer data.
   treat missing hosted CI or protocol results as passing tests.
 - New product/CLI name: `vpnmodo`; controller executable/image/service:
   `vpnmodo-controller`. Keep existing legacy launcher commands operational.
-- Workstation and VM each belong to one user. The planned control layer uses Go
+- Workstation and VM each belong to one user. The control layer uses Go
   and JSON-RPC over SSH; existing backend behavior remains the migration base.
 
-See `docs/development.md` for provenance and local safeguards.
+See `docs/development.md` for local build and test commands.

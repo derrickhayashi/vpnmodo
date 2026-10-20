@@ -1,54 +1,61 @@
-# Private development
+# Build from source and run tests
 
-This independent private repository starts with a reviewed source snapshot from
-`https://github.com/derrickhayashi/vpn-sidecars` at commit
-`c47c2f0`, plus the existing uncommitted generic architecture documentation and
-its README link. Optional DNS examples use documentation-only addresses.
-Original Git history, ignored files and customer deployments were not imported.
+For normal installation, use the [prebuilt CLI](../README.md#installation).
+Building from source requires Go 1.27.1. Python tests use `uv` to provide their
+Ansible, Jinja2 and YAML dependencies. Gitleaks is used for secret scanning.
 
-## Local checks
+## Build the CLI
 
-Install Gitleaks (on macOS, `brew install gitleaks`), then enable the local hook:
+From the repository root:
 
 ```sh
-git config core.hooksPath .githooks
+go build -trimpath -o /tmp/vpnmodo ./cmd/vpnmodo
+/tmp/vpnmodo version
+/tmp/vpnmodo help
+```
+
+For container builds and controller prerequisites, see the
+[controller guide](../containers/controller/README.md). For packaged binaries,
+source archives and image bundles, see [release artifacts](releases.md).
+
+## Run local checks
+
+```sh
+go test -race ./...
+go vet ./...
+uv run --no-project --with pyyaml --with jinja2 --with ansible-core python -m unittest discover -s tests -v
 scripts/check-secrets
 ```
 
-The hook rejects pushes if Gitleaks is missing or finds secrets. It checks all
-local Git history and the working tree with redacted output. Git hooks are local
-configuration and must be enabled in every clone. GitHub Actions also runs
-Secret scan, but the local scan and manual review must run before each push.
-Hooks can be bypassed, and scanners do not reliably identify customer data.
-Review every diff and keep real configuration outside this checkout.
+Compose checks require Docker Compose. Protocol acceptance runs separately on
+Linux; it cannot be inferred from the unit-test results.
 
-## CI and local builds
+`scripts/check-secrets` requires Gitleaks on your PATH. To run it automatically
+before pushes from this checkout, enable the supplied Git hook:
 
-GitHub Actions is enabled for **Go checks** and **Secret scan** only. Other
-workflows, including Controller SSH acceptance and the older Go contracts
-entry, remain disabled. Do not expand hosted CI or provision paid test
-infrastructure without user authorization.
+```sh
+git config core.hooksPath .githooks
+```
 
-Release container images are built locally on an existing native Linux Docker
-builder and pushed to GHCR. No GitLab build pipeline is planned. Users pull the
-prepared images during setup; they do not build them. See the
-[release guide](releases.md) for build and publishing commands.
+The scanner checks reachable Git history and the working tree with redacted
+output. It does not reliably detect customer names or deployment information.
+Use synthetic test data and keep VPN credential files, inventories and runtime
+captures outside the checkout.
 
-Go checks and secret scans can also run on the workstation. Protocol acceptance
-requires an existing authorized Linux environment with Docker and the required
-kernel features; record the checks actually run and any validation still pending.
-Passing Go checks and Secret scan does not establish protocol acceptance.
+Go checks run when Go source, module/workspace files, embedded Python/Lima assets,
+or the Go workflow changes. Documentation-only changes skip Go compilation and
+tests. Secret scan runs on every push and pull request, including documentation
+changes. Release container images are built on a native Linux Docker builder and
+published to GHCR; protocol tests run in the local Linux lab.
 
-For a shared Ubuntu VM, use the [isolated local lab](../tests/local-lab/README.md).
-It runs the existing acceptance suites in a disposable container with its own
-Docker daemon, without mounting the VM's Docker socket or host networking.
-Prepare only committed sources and synthetic fixtures; keep SSH identities,
-host addresses and runtime state outside the checkout.
+## Run protocol tests on Linux
 
-## Public contribution
+The [isolated Ubuntu lab](../tests/local-lab/README.md) provides commands to build,
+transfer and run the acceptance bundle on an Ubuntu 24.04 VM. Its disposable
+container has a separate Docker daemon and uses synthetic gateways, credentials
+and service endpoints. The VM still supplies the kernel and must support
+IPsec/XFRM and PPP.
 
-The `upstream` remote refers to the original public project and has pushing
-disabled locally. `origin` is the private development repository. To contribute
-later, start a branch from the original public project's history, transfer only
-reviewed patches, and scan the candidate branch before publishing. Do not merge
-the independent private history into the public project.
+The lab covers controller operations, L2TP, XAuth, packet enforcement, service
+forwarding and PMTU behavior. See [release validation](release-validation.md)
+for recorded results and [known issues](known-issues.md) for unresolved failures.
