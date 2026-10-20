@@ -1,94 +1,44 @@
-# Create a ready-to-use local VM with Lima
+# Lima environment
 
-Lima creates Ubuntu 24.04 ARM64 on Apple Silicon, prepares Docker and IPsec/PPP,
-and pulls the published vpnmodo release images. Use Lima's generated SSH config
-directly. The Ansible role remains the preparation option for existing VMs.
+`vpnmodo setup` prepares the single managed Lima VM `vpn-vm`. On an Apple Silicon
+Mac it installs Lima if needed, creates or starts Ubuntu, installs Docker, pulls
+the release images and starts the controller. It returns after readiness checks.
 
-## Prepare the release inputs
-
-Install Lima 2.2.1 or later with `brew install lima`. Obtain `lima.yaml`,
-`install-vm.py` and `registry-release.json` from the same published release and
-place them in a private directory outside Git:
+Registry authentication is optional and separate from VPN configuration. Public
+images need no auth file:
 
 ```sh
-setup_dir="$HOME/vpnmodo-private/setup"
-mkdir -p "$setup_dir"
-chmod 700 "$setup_dir"
+vpnmodo setup
 ```
 
-From the current source checkout, the pinned release inputs are also available
-without building anything:
+The current release images are private GHCR packages. For those, supply an
+owner-only JSON file containing GitHub `username` and `token`:
 
 ```sh
-cp examples/lima/vpnmodo.yaml "$setup_dir/lima.yaml"
-cp examples/lima/registry-release.json scripts/release/install-vm.py "$setup_dir/"
+vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
 ```
 
-The images are private GHCR packages under `derrickhayashi/vpn-sidecars-next`.
-Your GitHub account needs package read access. Create the adjacent
-`ghcr-config.json`, replacing `GITHUB_USERNAME` with your GitHub username. Enter
-a token with `read:packages` at the hidden prompt:
+The token needs `read:packages` and package access. See the complete
+[installation instructions](../README.md#installation). There are no registry
+credential prompts. Without a supplied file, setup reuses saved auth if available
+or prepares anonymous image pulls. Private pulls still require valid access.
+
+Setup does not read VPN profiles. Create one from its separate JSON file:
 
 ```sh
-python3 - "$setup_dir/ghcr-config.json" GITHUB_USERNAME <<'PY'
-import base64, getpass, json, os, sys
-os.umask(0o077)
-credential = sys.argv[2] + ':' + getpass.getpass('GHCR read token: ')
-auth = base64.b64encode(credential.encode()).decode()
-with open(sys.argv[1], 'w') as output:
-    json.dump({'auths': {'ghcr.io': {'auth': auth}}}, output)
-os.chmod(sys.argv[1], 0o600)
-PY
+vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
+vpnmodo up work
 ```
 
-Keep this credential file private. Lima copies it into root's Docker config
-with mode 0600; the token does not belong in the YAML. No Mac Docker daemon or
-Docker Desktop is required.
+The VPN JSON contains settings and username/password/PSK for either supported
+backend. Only XAuth connection MFA is prompted interactively.
 
-Edit CPU, memory or disk in `lima.yaml` before creating the VM. Its default
-account is `vpnadmin` with passwordless sudo, so use vpnmodo's sudo mode.
-Host folders and automatic service forwarding are disabled.
+Lima manages SSH keys, the guest user, connection details and the generated SSH
+configuration. No fixed VM IP, host registration or manual forwarding setup is
+needed. Repeated setup reuses this environment and existing profiles. Correct a
+registry login by editing its separate auth JSON and rerunning the same setup
+command with `--registry-auth`.
 
-## Create and activate
-
-```sh
-limactl start --tty=false --name vpn-vm "$setup_dir/lima.yaml"
-scp -F "$HOME/.lima/vpn-vm/ssh.config" \
-  lima-vpn-vm:/var/lib/vpnmodo/installed-release.json "$setup_dir/installed-release.json"
-vpnmodo host add vpn-vm --ssh lima-vpn-vm \
-  --ssh-config "$HOME/.lima/vpn-vm/ssh.config" --sudo
-vpnmodo host setup vpn-vm --release "$setup_dir/installed-release.json"
-vpnmodo host check vpn-vm
-```
-
-Provisioning pulls the controller, L2TP, XAuth and application images using
-their published digests. It verifies their architecture and controller version
-and writes the existing installation receipt. `host setup` uses that receipt to
-start the controller with the correct destination-local image IDs. No image
-build, bundle transfer or manual image loading is needed on the user's VM.
-
-The environment is ready for profile creation, credential entry and connection.
-Existing vpnmodo proxy and service commands use the registered SSH settings.
-No fixed VM IP or additional Lima forwarding rule is needed.
-
-## SSH and restart
-
-```sh
-ssh -F "$HOME/.lima/vpn-vm/ssh.config" lima-vpn-vm
-limactl stop vpn-vm
-limactl start vpn-vm
-```
-
-For a custom `LIMA_HOME`, use the absolute config path printed by
-`limactl list --format '{{.SSHConfigFile}}' vpn-vm`. To use `ssh lima-vpn-vm`
-directly, include `~/.lima/*/ssh.config` in your Mac's SSH config.
-
-Cached digest-pinned images are reused on subsequent boots. The controller's
-Docker restart policy brings it back after a VM restart; reconnect workstation
-service forwards afterward. Editing the original YAML does not modify an
-existing instance. Release upgrades remain explicit through
-[the upgrade workflow](releases.md#installation-and-upgrades).
-
-See [Lima SSH](https://lima-vm.io/docs/usage/ssh/),
-[VZ support](https://lima-vm.io/docs/config/vmtype/vz/), and
-[private GHCR authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+Private setup files are cached under
+`~/Library/Application Support/vpnmodo/setup/vpn-vm/` on macOS. Keep registry auth
+and VPN input files protected outside Git. See [usage](../README.md#usage).

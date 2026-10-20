@@ -17,10 +17,10 @@ func TestProfileCommandRejectsSecretsAndInvalidSettingsBeforeSSH(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{
-		{"profile", "create", "example", "--host", "example-vm", "--file", file},
-		{"profile", "create", "example", "--host", "example-vm", "--password", "synthetic-sensitive"},
+		{"profile", "create", "example", "--file", file},
+		{"profile", "create", "example", "--password", "synthetic-sensitive"},
 		{"profile", "rotate-credentials", "example", "--revision", "0"},
-		{"profile", "create", "../bad", "--host", "example-vm"},
+		{"profile", "create", "../bad"},
 		{"profile", "inspect", "example", "--credentials-stdin"},
 	} {
 		var out bytes.Buffer

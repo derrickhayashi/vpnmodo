@@ -55,34 +55,42 @@ func Read(ctx context.Context, stdin bool, descriptor string) (profile.Credentia
 	return prompt(ctx)
 }
 func prompt(ctx context.Context) (profile.Credentials, error) {
-	terminal, err := os.OpenFile("/dev/tty", os.O_RDWR|syscall.O_NONBLOCK, 0)
+	values, err := promptSecrets(ctx, []string{"Username", "Password", "Pre-shared key"})
 	if err != nil {
-		return profile.Credentials{}, ErrInput
-	}
-	defer terminal.Close()
-	fd := int(terminal.Fd())
-	state, err := term.MakeRaw(fd)
-	if err != nil {
-		return profile.Credentials{}, ErrInput
-	}
-	defer term.Restore(fd, state)
-	reader := term.NewTerminal(terminalIO{ctx: ctx, file: terminal, fd: fd}, "")
-	values := make([]secret.Value, 3)
-	for i, label := range []string{"Username", "Password", "Pre-shared key"} {
-		if ctx.Err() != nil {
-			return profile.Credentials{}, ErrInput
-		}
-		value, err := reader.ReadPassword(label + ": ")
-		if err != nil {
-			return profile.Credentials{}, ErrInput
-		}
-		values[i] = secret.New(value)
+		return profile.Credentials{}, err
 	}
 	c := profile.Credentials{Username: values[0], Password: values[1], PSK: values[2]}
 	if c.Validate() != nil {
 		return profile.Credentials{}, ErrInput
 	}
 	return c, nil
+}
+
+func promptSecrets(ctx context.Context, labels []string) ([]secret.Value, error) {
+	terminal, err := os.OpenFile("/dev/tty", os.O_RDWR|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, ErrInput
+	}
+	defer terminal.Close()
+	fd := int(terminal.Fd())
+	state, err := term.MakeRaw(fd)
+	if err != nil {
+		return nil, ErrInput
+	}
+	defer term.Restore(fd, state)
+	reader := term.NewTerminal(terminalIO{ctx: ctx, file: terminal, fd: fd}, "")
+	values := make([]secret.Value, len(labels))
+	for i, label := range labels {
+		if ctx.Err() != nil {
+			return nil, ErrInput
+		}
+		value, err := reader.ReadPassword(label + ": ")
+		if err != nil {
+			return nil, ErrInput
+		}
+		values[i] = secret.New(value)
+	}
+	return values, nil
 }
 
 func protected(file *os.File) bool {

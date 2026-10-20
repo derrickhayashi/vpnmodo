@@ -17,7 +17,7 @@ def last_json(result):
 def wait_status(cli, operation_id, state):
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
-        snapshot = last_json(cli("operation", "status", operation_id, "--host", "example", "--json"))
+        snapshot = last_json(cli("operation", "status", operation_id, "--json"))
         if snapshot["state"] == state:
             return snapshot
         time.sleep(0.05)
@@ -56,14 +56,15 @@ def begin(cli, bridge, cli_command, directory, state_root):
     snapshot = last_json(cli("profile", "inspect", "example-profile", "--json"))
     profile_file = directory / "operation-profile.json"
     profile_file.write_text(json.dumps(snapshot["profile"]))
+    profile_file.chmod(0o600)
     refused = cli("profile", "update", "example-profile", "--file", str(profile_file), "--revision", "3", required=False)
     assert refused.returncode != 0 and b"disconnect" in refused.stderr
     credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
 
     def create(alias, name):
         definition = {"schema_version": 1, "name": name, "backend": {"type": "ipsec-xauth", "config": {"server": "192.0.2.1"}}, "health": {"host": "192.0.2.10", "port": 22}}
-        profile_file.write_text(json.dumps(definition))
-        last_json(cli("profile", "create", alias, "--host", "example", "--file", str(profile_file), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
+        profile_file.write_text(json.dumps(dict(definition, credentials=credentials)))
+        last_json(cli("profile", "create", alias, "--file", str(profile_file), "--json"))
 
     create("mfa-profile", "interactive-mfa")
     pending = last_json(cli("connection", "ensure", "mfa-profile", "--json"))
@@ -72,7 +73,7 @@ def begin(cli, bridge, cli_command, directory, state_root):
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         joined = list(pool.map(lambda _: last_json(cli("connection", "ensure", "mfa-profile", "--json"))["id"], range(8)))
     assert set(joined) == {pending["id"]}
-    watched = subprocess.Popen([*cli_command, "operation", "watch", pending["id"], "--host", "example", "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    watched = subprocess.Popen([*cli_command, "operation", "watch", pending["id"], "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         if not select.select([watched.stdout], [], [], 10)[0]:
             raise RuntimeError("operation watch did not subscribe")
@@ -91,7 +92,7 @@ def begin(cli, bridge, cli_command, directory, state_root):
     last_json(cli("connection", "disconnect", "mfa-profile", "--wait", "--json"))
     cancelled = last_json(cli("connection", "ensure", "mfa-profile", "--json"))
     wait_status(cli, cancelled["id"], "awaiting_mfa")
-    assert last_json(cli("operation", "cancel", cancelled["id"], "--host", "example", "--json"))["state"] == "cancelled"
+    assert last_json(cli("operation", "cancel", cancelled["id"], "--json"))["state"] == "cancelled"
     last_json(cli("connection", "disconnect", "mfa-profile", "--wait", "--json"))
     create("pending-profile", "pending-mfa")
     interrupted = last_json(cli("connection", "ensure", "pending-profile", "--json"))

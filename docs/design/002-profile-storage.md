@@ -9,23 +9,21 @@ an existing deployment.
 
 Build and register/setup the VM as described in the
 [controller guide](../../containers/controller/README.md), then create an explicit
-JSON profile using the [backend examples](../../examples/profiles/v1/):
+combined JSON file using the [README examples](../../README.md#vpn-configuration):
 
 ```sh
-/tmp/vpnmodo profile create example --host my-vm --file /private/path/profile.json
+/tmp/vpnmodo profile create example --file /private/path/profile.json
 /tmp/vpnmodo profile list
-/tmp/vpnmodo profile list --host my-vm
 /tmp/vpnmodo profile inspect example
 ```
 
-There is no wizard. Creation prompts only for username, password and PSK, with
-all three hidden. Cancellation restores terminal settings and sends no partial
-credential request. With automation, `--credentials-stdin` reads one bounded JSON
-object until EOF; `--credentials-fd N` reads an inherited descriptor numbered at
-least 3. The object has exactly `username`, `password` and `psk` string fields.
-Neither option accepts a terminal with echo. Regular credential input files must
-be owned by the current user and private; pipes are supported. Do not place
-credentials in argv, environment variables, profile JSON or shell history.
+The CLI input file includes connection settings plus `credentials.username`,
+`credentials.password` and `credentials.psk` for both supported backends. It must
+be an owner-only regular file. Missing or invalid credentials fail without a
+prompt. The CLI separates settings and credentials before RPC; profile records,
+inspection output and local references do not contain credential values. Explicit
+protected stdin/file-descriptor input remains available for automation. Never
+put secrets in argv, environment variables, shell history or diagnostics.
 
 The VM profile name comes from the profile file. The positional name is a local
 alias. Workstation references contain only alias, registered host name and VM
@@ -38,13 +36,12 @@ succeeds but local registration fails, repair local storage then explicitly
 register the already-created VM profile:
 
 ```sh
-/tmp/vpnmodo profile list --host my-vm
-/tmp/vpnmodo profile register example --host my-vm --profile example-l2tp
+/tmp/vpnmodo profile list
+/tmp/vpnmodo profile register example --profile example-l2tp
 ```
 
 Registration verifies the VM profile through RPC; it never fetches credentials.
-`profile unregister ALIAS` removes a local reference only. `profile list` without
-`--host` lists local registrations; with a host it discovers VM profile summaries.
+`profile unregister ALIAS` removes a local reference only. `profile list` lists profile summaries from the managed VM.
 Inspection returns non-secret settings, revision and credential availability.
 List responses use compact summaries so configuration sizes cannot overflow the
 bounded RPC frame. Results support `--json`; errors use sanitized stderr and a
@@ -56,7 +53,7 @@ Use the current revision returned by inspection, for example:
 
 ```sh
 /tmp/vpnmodo profile update example --file /private/path/profile.json --revision 1
-/tmp/vpnmodo profile rotate-credentials example --revision 2
+/tmp/vpnmodo profile rotate-credentials example --file /private/path/profile.json --revision 2
 /tmp/vpnmodo profile delete example --revision 3
 ```
 
@@ -125,7 +122,8 @@ provides hidden terminal input and restoration.
 Go tests inject failed profile commits before/after publication, failed credential
 rotation, concurrent stale updates across independent store instances, unsafe
 paths/permissions, cancellation and RPC result redaction. The isolated Ubuntu SSH
-acceptance additionally exercises real CLI creation, descriptor rotation, active
-and stale update refusal, hidden prompts/Ctrl-C, registration recovery, controller
-recreation, persisted credentials and explicit deletion. These tests use synthetic
+acceptance entrypoint covers noninteractive combined-file CLI creation and
+rotation, active and stale update refusal, local rebinding, controller recreation,
+persisted credentials and explicit deletion. This entrypoint has been adapted
+for the input-file change; its protocol suite was not rerun for this CLI change. These tests use synthetic
 values and do not establish VPN protocol interoperability or packet isolation.

@@ -14,6 +14,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', required=True, type=Path)
+    parser.add_argument('--binary', type=Path, help='matching standalone executable')
     args = parser.parse_args()
     if platform.system() != 'Darwin':
         parser.error('run on native macOS')
@@ -32,6 +33,12 @@ def main():
         metadata = json.loads((package / 'release.json').read_text())
         arch = {'x86_64': 'amd64', 'arm64': 'arm64'}[platform.machine()]
         assert metadata['os'] == 'darwin' and metadata['arch'] == arch
+        if args.binary:
+            assert hashlib.sha256(args.binary.read_bytes()).hexdigest() == metadata['binary_sha256']
+            assert subprocess.check_output([str(args.binary), 'version']).decode().strip() == metadata['binary_version']
+            help_text = subprocess.check_output([str(args.binary), 'setup', '--help']).decode()
+            assert 'Usage: vpnmodo setup' in help_text
+
         prefix = root / 'installation with spaces'
         def install(*options):
             return subprocess.run(['sh', str(package / 'install.sh'), '--prefix', str(prefix), *options], capture_output=True)

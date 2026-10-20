@@ -95,7 +95,7 @@ health endpoint. The package directory is on the **controller** and must contain
 the pinned commit. The runtime and credential directories are on the **VM**.
 Keep the collection and package revision pins aligned. Profile/Compose names
 must be unique on the Docker host. Override DNS and IKE/ESP proposals when your
-gateway requires them; see the [role input reference](../ansible/README.md).
+gateway requires them; see the [backend prerequisites](../roles/vpn_sidecar/tasks/prerequisites.yaml).
 
 Create the vault with an interactive editor:
 
@@ -141,7 +141,7 @@ uv run ansible-playbook -i inventory/vpn/hosts.yaml playbooks/deploy-vpn.yaml --
 Add `--ask-become-pass` if the VM's sudo policy requires a password. The role
 waits for VPN health before starting the watchdog. Enable the optional
 `vpn_sidecar_verify_connection` SSH check described in the
-[role reference](../ansible/README.md), or independently verify authenticated
+[backend role](../roles/vpn_sidecar/tasks/main.yaml), or independently verify authenticated
 access to the intended private destination. Repeat the playbook unchanged and
 check that it reuses the existing containers. Updates and credential rotations
 use this same playbook with reviewed pins/settings and the encrypted vault.
@@ -423,6 +423,6 @@ repeat destination verification. Keep the source and runtime paths stable:
 the watchdog mounts them at the same absolute paths used by Docker on the VM.
 
 For automated provisioning, use the
-[Ansible collection role](../ansible/README.md) described above. XAuth login
+[backend role source](../roles/vpn_sidecar/tasks/main.yaml) described above. XAuth login
 remains interactive after provisioning. The bundled [agent skill](../.agents/skills/ensure-vpn/SKILL.md)
 covers connection and recovery after deployment.

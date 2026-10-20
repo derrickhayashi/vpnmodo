@@ -1,72 +1,39 @@
-# Onboarding, profile maintenance and adoption
+# Onboarding and profile maintenance
 
-Start with [README installation](../README.md#installation) to install the Mac
-CLI, create and provision a local Ubuntu VM with Lima, and create your VPN
-profile. Then use [README usage](../README.md#usage) to connect and access private
-services. The platform pair is macOS ARM64 and Ubuntu 24.04 ARM64; each user owns
-their Mac and VM.
+Start with [README installation](../README.md#installation).
+`vpnmodo setup` prepares the single managed local environment. Registry auth,
+when needed, uses a separate optional `--registry-auth FILE`. VPN configuration
+stays in its own JSON file.
+Then use [README usage](../README.md#usage) to connect and access private services.
 
-For an existing VM, use [existing VM and offline installation](offline-installation.md),
-which includes Ansible preparation and loading the release image bundle. The
-bundle contains four Docker images, not a VM disk image. See
-[release packaging](releases.md) for maintainer builds and explicit upgrades.
+Create a profile with `vpnmodo profile create NAME --file PROFILE.json`. It uses
+the managed VM and reads `credentials.username`, `credentials.password` and
+`credentials.psk` from that same file for both supported VPN types.
+VM selection and manual host registration are not part of the CLI.
 
-## Sudo mode
+## One input file per VPN
 
-The README's Lima path already uses `--sudo` for its `vpnadmin` account. The
-offline guide defaults to direct access to rootful Docker. For an existing VM
-account authorized to use noninteractive sudo, verify:
-
-```sh
-ssh -o BatchMode=yes vpn-vm 'sudo -n python3 --version && sudo -n docker --host unix:///var/run/docker.sock info --format "{{.OSType}}" && sudo -n docker compose version'
-```
-
-All checks must succeed. When loading the verified images on the VM, run this
-from the extracted bundle directory instead of the ordinary loader command:
+Use one owner-only JSON file containing the connection settings and a
+`credentials` object. Both L2TP/IPsec and XAuth use this format. Registry auth
+belongs in a separate optional JSON file containing GitHub `username` and `token`;
+it is never part of the VPN profile. Public images need no auth file. See the complete JSON examples in the
+[README](../README.md#vpn-configuration).
 
 ```sh
-sudo -n python3 install-vm.py > installed-release.json
+chmod 600 "$HOME/vpnmodo-private/work.json"
+vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
+vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
+vpnmodo up work
 ```
 
-On the Mac, register the host with sudo mode **before initial setup**:
+Setup and profile creation do not prompt for credentials. Missing or invalid
+input returns an error. XAuth connection is the only interactive prompt: enter
+the fresh MFA code when requested. L2TP uses the supplied saved credentials.
 
-```sh
-vpnmodo host add vpn-vm --ssh vpn-vm --sudo
-vpnmodo host setup vpn-vm --release "$HOME/vpnmodo-private/setup/installed-release.json"
-vpnmodo host check vpn-vm
-```
-
-Fixed VM management commands then use noninteractive sudo, including bootstrap,
-the bridge and forwarding. This does not change group membership or sudo policy.
-Bootstrap owns state under root's home in this mode; use the same mode for later
-access and upgrades. Do not enable sudo mode for a pre-existing user-owned
-controller without an explicit state migration. Bootstrap refuses mismatched
-storage mounts.
-
-For a separate SSH configuration, add `--ssh-config /absolute/path/to/config` to
-`host add`. The path must be absolute. Registration creates a workstation
-reference; setup starts the controller and provisions protected VM storage.
-
-## Credential input for automation
-
-Interactive `profile create` and `profile rotate-credentials` use hidden prompts.
-Automated callers can use `--credentials-stdin` or `--credentials-fd N`. The input
-is a JSON object with `username`, `password` and `psk` fields, supplied through a
-protected pipe or an owner-only regular file. For example, if your approved
-secret-management process has already created a mode-0600 file outside Git:
-
-```sh
-vpnmodo profile create work --host vpn-vm \
-  --file "$HOME/vpnmodo-private/work.json" \
-  --credentials-stdin < "$HOME/vpnmodo-private/credentials.json"
-```
-
-This file is an additional credential copy that you must manage under your
-team's policy. Prefer hidden prompts for manual use. Never put secrets in shell
-arguments, environment variables, profile JSON, issues or logs. The VM vault is
-plaintext protected by filesystem permissions and is readable by VM/Docker
-administrators; SSH encrypts transport. The Mac registry does not retain a VPN
-credential copy.
+The JSON is a plaintext credential backup; keep it outside Git and protect it.
+The controller stores secrets in its separate protected VM vault, omits them
+from profile inspection/output, and receives them over encrypted SSH. Never put
+secrets in shell arguments, environment variables, issues or logs.
 
 `--json` operation watching does not prompt for MFA. Deliver the current code
 through protected stdin for the matching operation/challenge using
@@ -91,31 +58,18 @@ vpnmodo profile update work --file "$HOME/vpnmodo-private/work.json" --revision 
 vpnmodo profile inspect work
 ```
 
-To rotate credentials, inspect again and pass the **current** revision. The
-command prompts for the new values; connect explicitly afterwards:
+Profile update changes connection settings only. To change credentials, edit the
+same JSON, inspect again and pass the **current** revision to the explicit
+rotation command. It reads the file without prompting; connect afterwards:
 
 ```sh
-vpnmodo profile rotate-credentials work --revision N
+vpnmodo profile rotate-credentials work --file "$HOME/vpnmodo-private/work.json" --revision N
 vpnmodo up work
 ```
 
 Mutations require the managed profile to be inactive. Revisions prevent stale
 updates; do not reuse an old revision after a successful mutation. See
 [profile storage](design/002-profile-storage.md) for lifecycle and disposal rules.
-
-## Adopting an existing deployment
-
-Create the inactive new profile with approved settings and credentials first.
-There is no automatic import of standalone launcher directories. Schedule an
-explicit cutover: stop the selected legacy recovery owner and session before
-starting the managed replacement if parallel login is unsafe. Never let two
-recovery owners manage one session, and do not stop unrelated deployments.
-Verify authenticated private SSH/application access after `vpnmodo up`.
-
-Retaining the previous configuration as an optional fallback is an operator
-choice. Rehearsing legacy rollback is outside the agreed release scope. Loading
-an image bundle does not perform adoption or stop existing VPNs. Earlier real
-ARM64 adoption/cutover results are in the [validation record](release-validation.md).
 
 ## Removal
 

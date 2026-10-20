@@ -34,7 +34,7 @@ XAUTH_PASSCODE compatibility patch.
 The lifecycle manager owns operation/challenge IDs and expiry. `connection ensure
 --wait` and `operation watch` use a hidden controlling-terminal prompt. JSON
 watchers report challenges without prompting. Automation can use `operation
-submit-mfa ID --host HOST --challenge ID --code-stdin` with a pipe or protected
+submit-mfa ID --challenge ID --code-stdin` with a pipe or protected
 file. Codes are never command arguments. An invalid, expired, cancelled or already
 consumed challenge is refused before backend delivery.
 

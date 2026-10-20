@@ -1,4 +1,167 @@
-# Private ARM64 candidate validation — 2026-10-19
+# ARM64 release validation
+
+## XAuth delayed-MFA handshake timeout — 2026-10-20
+
+The managed XAuth entrypoint now sets `charon-cmd.half_open_timeout = 300`,
+matching the existing legacy launcher. Its omission left the aggressive-mode
+IKE handshake on strongSwan's 30-second default, shorter than the controller's
+90-second MFA challenge. The controller deadline is unchanged.
+
+The focused real-protocol regression uses the synthetic XAuth/RADIUS gateway
+on the existing managed VM, without its controller, profiles or credentials.
+The gateway has the same 300-second responder timeout in every trial.
+
+| Trial | Result |
+| --- | --- |
+| Shipped rc.7 image, immediate synthetic MFA | Tunnel establishment, enforcement checks and TCP echo pass |
+| Same image, MFA delayed 40 seconds | Reproduces exit 27 before CHILD_SA establishment |
+| Same image, only corrected entrypoint mounted, same 40-second delay | Tunnel establishment, enforcement checks and TCP echo pass |
+| Rebuilt fixed image, same 40-second delay | Tunnel establishment, enforcement checks and TCP echo pass |
+
+The one-setting control confirms the client handshake timer causes this delayed
+MFA failure. A diagnostic 27 here does not mean the supplied code was incorrect.
+The release image's file contents and permissions match the tested rebuild;
+only build timestamps/version labels differ. Synthetic containers and network
+were removed, and existing containers retained their running/start states.
+Existing XAuth reason tests and managed runtime/lifecycle Go tests also pass.
+The regression is `tests/xauth_handshake_timeout.py`; it accepts explicit old
+and fixed images plus the corrected entrypoint and requires a delay above 30s.
+This does not requalify unrelated protocol/lifecycle scenarios.
+
+Installed standalone CLI: `v0.1.0-rc.12+git.68b20091f975`. The private ARM64
+XAuth image is pinned by digest
+`sha256:f8a578da17a5037d5a699fc40a79a3b1a97e0243e381288f197511419ecd796f`.
+Controller, L2TP and application image IDs remain unchanged. The same VM and
+persistent profile storage were retained. After updating Lima's saved manifest,
+a normal VM restart preserved the new pin; the receipt and running controller
+both selected the corrected image.
+
+One explicitly authorized real connection through `connection ensure`, operation
+status and protected-stdin `submit-mfa` completed successfully. Read-only status
+confirmed `vpn_ready=true`, and authenticated SSH identity checks passed for both
+configured verification targets. The working VPN was left running. Native Mac
+archive/standalone installation smoke checks pass for this CLI release.
+
+## Fresh managed VM walkthrough — 2026-10-20
+
+Installed CLI: `v0.1.0-rc.11+git.423ebd07a24d`; unchanged rc.7 runtime images.
+The single managed VM was deleted and recreated with the released setup command
+and a separate private registry-auth file. The VPN input and verified credential
+backup remained protected on the Mac throughout the reset.
+
+| Check | Result |
+| --- | --- |
+| Fresh VM setup | Released CLI creates the managed VM and returns after controller readiness |
+| VPN JSON import | Profile creation with closed stdin succeeds using settings and credentials from one VPN file; no credential prompts |
+| Agent-driven login | Reaches MFA, then exits before tunnel establishment with diagnostic 27; controller reports backend unavailable |
+| Direct-terminal login | User runs the same installed CLI against the same VM/profile and completes MFA successfully |
+| Private access | Subsequent read-only checks confirm healthy VPN, private TCP endpoint and application; authenticated SSH identity checks pass for both configured verification targets |
+
+At that checkpoint, the working connection was reused for verification and left
+running. A later explicitly requested structured-MFA comparison disconnected it
+and reproduced the failure despite accepting the code before challenge expiry.
+The delayed-MFA regression above identifies the missing client handshake timeout.
+The fresh walkthrough demonstrates functional access through the Lima setup; it
+does not resolve unrelated intermittent lifecycle observations.
+
+## Optional separate registry auth — 2026-10-20
+
+CLI identity: `v0.1.0-rc.11+git.423ebd07a24d`.
+
+CLI rc.11 keeps setup credentials separate from VPN configuration. Setup accepts
+optional `--registry-auth FILE` with GitHub `username` and `token`. With no
+supplied or saved credentials it prepares empty Docker auth for anonymous pulls;
+retries accept this anonymous configuration. Saved private access can be reused,
+and a supplied auth file replaces it. No credential prompts are added.
+
+Each VPN JSON contains only connection settings and its username/password/PSK
+credentials, using the same format for both backends. Setup still prepares only
+the VM/controller; profile creation reads its own VPN file afterwards.
+
+| Check | Result |
+| --- | --- |
+| Optional auth | Local tests pass for anonymous provisioning/retry, separate private auth input, cached reuse and explicit replacement |
+| Native release artifact | ARM64 standalone/archive hashes match; version/help, installation/replacement and corruption/symlink refusal checks pass |
+| Secret handling | Registry input rejects malformed/duplicate fields and exposed file permissions without disclosing values; both VPN input/RPC tests still pass |
+| Local checks | Full Go race tests, vet, 26 documentation JSON/shell blocks and secret scans pass |
+
+These are local input/provisioner tests. The release images remain private;
+no real anonymous pull, VM reset or new VPN authentication was performed. The
+previous post-MFA failure remains unresolved. Runtime image digests are unchanged.
+
+## One-file configuration — 2026-10-20
+
+CLI identity: `v0.1.0-rc.10+git.7b01d6ffff00`.
+
+CLI rc.10 reads VPN settings and `credentials.username`, `credentials.password`
+and `credentials.psk` from the same owner-only JSON file for both L2TP/IPsec and
+XAuth. `setup --file` can read private GHCR `registry.username` and `registry.token`
+from that file. Missing input fails without credential prompts. Settings remain
+separate from credentials in the controller RPC and storage; MFA remains an
+interactive connection step only for XAuth. Runtime image digests are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Both backend inputs | Local fake-SSH RPC tests pass for create, settings update and credential rotation from one JSON file without interactive input |
+| Secret separation | RPC profile validation, secret-free output/local references, duplicate/invalid input and owner-only file checks pass |
+| Registry input | Noninteractive same-file registry auth and missing-auth errors pass |
+| Native release artifact | Standalone ARM64 executable matches archive metadata/hash; installation, replacement, version/help and corrupt/symlink refusal pass |
+| Local checks | Full Go race tests, vet, 77 Python tests, changed Python syntax, 21 documentation JSON/shell blocks and secret scans pass |
+
+The Python suite used the existing project virtual environment; the first run
+with system Python lacked its Ansible/Jinja dependencies. No VM reset, new real
+VPN authentication, protocol acceptance run or MFA email was performed for this
+input-only change. The failed real connection below remains unresolved.
+
+## Single managed VM flow — 2026-10-20
+
+CLI identity: `v0.1.0-rc.9+git.ed242079fbd6`.
+
+The rc.9 CLI removes alternate VM registration and selection. It uses
+only the managed `vpn-vm` and keeps VPN configuration in JSON files. The
+controller and image digests remain the published rc.7 runtime.
+
+| Check | Result |
+| --- | --- |
+| Default VM setup | `vpnmodo setup` succeeds on the workstation's managed Lima VM and reports controller readiness |
+| JSON profile creation | Creating a profile from a private JSON file succeeds on that VM; stored credentials are present |
+| Real VPN connection | Reaches the MFA prompt; after the fresh code is submitted, authentication fails and the client exits with diagnostic 27 |
+| Private access | Not verified because the VPN connection failed |
+| Release artifact | Standalone ARM64 binary matches the archive, passes native installation checks and completes setup on the managed VM |
+| Local checks | Full Go race tests, vet, 77 Python tests and secret scans pass |
+
+The failed connection is not an end-to-end pass. Retained diagnostics do not
+identify the underlying peer/client reason. The older qualification below
+remains historical evidence, not proof that this managed-VM connection works.
+No automatic authentication retry was performed.
+
+## Single-file setup — 2026-10-20
+
+CLI source: `43e5e02d22fdb428e85aa4da28cc32658df71ec3`.
+CLI identity: `v0.1.0-rc.8+git.43e5e02d22fd`.
+Embedded runtime: `v0.1.0-rc.7+git.4696f8c7ec50`, using the previously published
+private GHCR image digests. This workstation-only release does not rebuild the
+controller images. Subsequent documentation commits record these results.
+
+| Check | Result |
+| --- | --- |
+| Fresh local setup | One CLI executable creates an isolated Lima Ubuntu ARM64 VM, provisions Docker/kernel support, pulls private images, registers SSH and starts the controller |
+| Readiness | Setup returns only after controller storage, Docker and runtime report ready; version matches the installed release |
+| Restart/retry | Cold VM restart and repeated setup preserve the controller container ID and a single host registration |
+| Missing image/auth refresh | Removed the application image and guest registry auth; repeated setup refreshes auth from the protected local file and pulls the private image |
+| Credential handling | Root Docker auth remains mode 0600; supplied token and its base64 encoding are absent from Lima VM logs |
+| Exact release artifacts | Native ARM64 standalone binary matches archive metadata/hash, reports the recorded version, exposes setup help and completes setup against the test VM; archive installation/replacement/corruption checks pass |
+| Local checks | Full Go race tests, vet, 83 Python tests, focused setup recovery tests, documentation links/shell syntax and secret scans pass |
+
+The private image credentials were supplied through a protected test file;
+hidden prompting uses the existing terminal-input implementation. Lima was
+already available in the isolated test; automatic Homebrew installation was not
+exercised. Actual VPN authentication and private destination access were not
+repeated for this CLI change. Intel native qualification remains outside scope.
+All VMs used local resources; GitHub Actions remains disabled.
+
+## Earlier rc.6 protocol qualification — 2026-10-19
+
 
 Validated source: `990dc2fe7caec4e1b68cf2b54788b996937e66c5`.
 Candidate identity: `v0.1.0-rc.6+git.990dc2fe7cae`.
@@ -6,8 +169,8 @@ Subsequent documentation commits record these results without changing runtime c
 
 Both agreed validation gates pass: the complete isolated protocol/recovery/packet
 suite, and a fresh ARM64 release bundle built from the production Dockerfiles.
-The candidate remains private. No registry, GitHub release or public artifact was
-published. GitHub Actions remains disabled; all work used the existing Mac and VM.
+That rc.6 qualification run kept the candidate private and did not publish a
+registry image, GitHub release or public artifact. GitHub Actions remains disabled; all work used the existing Mac and VM.
 
 ## Qualified scope and results
 

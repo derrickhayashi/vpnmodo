@@ -83,14 +83,16 @@ controller must call the same semantic validators. An absent or empty proposal
 list selects legacy defaults. Effective configuration returns private copies so
 one caller cannot change another profile's defaults.
 
-All credentials, including usernames, are separate secret input. Initial backends
+The CLI JSON file includes a `credentials` object; the controller treats those
+values, including usernames, as separate secret input. Initial backends
 both need username/password/PSK. `profile.create` carries a non-secret profile and
 credential input, but only the profile and a protected credential reference are
 persisted in their respective stores. Credential values are non-empty, at most
 4096 UTF-8 bytes each, and exclude NUL/CR/LF for compatibility with legacy
 line-based backend credential files. The encoded create payload must also fit the
-64 KiB limit. Credentials travel via hidden prompts or protected stdin/file
-descriptors, never flags/environment variables. No guided creation wizard.
+64 KiB limit. The CLI reads the owner-only JSON file without prompts and sends credentials
+through the separate RPC credential field, never flags/environment variables.
+MFA is prompted only during an XAuth connection.
 
 The `secret.Value` type redacts fmt formatting and refuses normal JSON encoding.
 Only explicit transport/protected-vault encoders release secret strings to bytes; secret checks

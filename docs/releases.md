@@ -3,18 +3,35 @@
 Issue #9 supplies an offline distribution path. ARM64 candidate qualification
 passes as recorded in the [validation record](release-validation.md). These are
 private release candidates. Builds stay local by default; `vm --publish` uploads
-release images to private GHCR. No Homebrew tap or GitHub release is created. GitHub Actions stays disabled. Build and test on the
+release images to private GHCR. The standalone CLI is distributed through a private GitHub prerelease; there is no Homebrew tap. GitHub Actions stays disabled. Build and test on the
 workstation and authorized local VM.
+
+## Single-file CLI download
+
+The current standalone CLI release is `v0.1.0-rc.11`. Download `vpnmodo-darwin-arm64`
+from the authenticated private release page, install it and run `vpnmodo setup`. For private images supply the optional
+`--registry-auth FILE` described in [installation](../README.md#installation).
+The supported environment is one Apple Silicon Mac with one Lima VM managed by
+vpnmodo. Setup prepares the controller. VPN settings remain in JSON profiles, which
+automatically use the managed VM. There is no host selection, external VM setup
+or manual provisioning-file transfer.
+
+The executable includes the Lima YAML, VM installer and registry manifest. It
+provisions the existing verified `v0.1.0-rc.7+git.4696f8c7ec50` runtime images;
+CLI and runtime versions are recorded separately. This CLI change does not
+require rebuilding those images.
+
+`SHA256SUMS-cli` covers the executable. macOS binaries are unsigned and not
+notarized; follow your team's approved software policy. No installer changes
+Gatekeeper settings. Existing source and image archives remain maintainer build
+artifacts, rather than another supported user installation flow.
 
 ## Artifacts and trust
 
-The bundle contains Docker images that run inside an existing Ubuntu VM: the
-controller, L2TP backend, XAuth backend and application helper. Each teammate
-provides their own local or remote VM. These artifacts do not contain an Ubuntu
-or UTM VM disk image and do not create a VM. The optional [Lima template](lima.md)
-creates a local VM separately; it is available in the source checkout, not the
-CLI or image bundle. Published VM builds also provide `lima.yaml`,
-`install-vm.py` and `registry-release.json` for automatic Lima image provisioning.
+The supported user artifact is the standalone executable. It embeds the
+[Lima provisioning inputs](lima.md) and pulls the controller, L2TP, XAuth and
+application images into the managed VM. Container/source archives are retained
+as maintainer build artifacts.
 
 A release has macOS arm64/amd64 CLI archives, a committed source archive, and a
 separate Linux arm64 or amd64 container image bundle. Each artifact group has SHA-256 sums.
@@ -38,7 +55,7 @@ Loading does not activate a controller or change an existing VPN deployment.
 Docker's classic and containerd image stores can assign different local IDs to
 the same exported image. Save the loader's JSON output as `installed-release.json`:
 it records the verified destination-local immutable IDs for all four images.
-`host setup --release` applies those exact IDs, including backend defaults.
+The embedded setup code applies those exact IDs, including backend defaults.
 Do not substitute mutable `:latest`/`:dev` references. Keep the old receipt and
 images for explicit rollback. Source identity and artifact hashes are pinned;
 byte-identical image rebuilds are not promised.
@@ -102,42 +119,21 @@ differs from a local index; use the push result, not local `RepoDigests` or
 image IDs. Keep the packages private
 and grant intended users package read access.
 
-Distribute `lima.yaml`, `install-vm.py` and `registry-release.json` together.
-When selecting a new default Lima release, update the source example
-`examples/lima/registry-release.json` from the generated manifest.
-Users supply their own private GHCR read credentials as described in
-[Lima setup](lima.md). Provisioning emits the same receipt consumed by
-`vpnmodo host setup --release`. No hosted CI is used for publication.
+The CLI embeds the Lima YAML, image installer and default registry manifest.
+When selecting a new runtime release, update `examples/lima/registry-release.json`
+from the published manifest before building the standalone CLI. Provisioning
+emits a receipt consumed internally by setup. No hosted CI is used for publication.
 
 ## Installation and upgrades
 
-Follow [teammate onboarding](onboarding.md) for verification, installation and
-explicit VM activation. CLI installation is atomic and refuses an existing
-executable unless `--replace` is provided. Keep the old verified CLI archive to
-restore a previous version using the same explicit replacement path. The
-installer changes only `<prefix>/bin/vpnmodo` and creates no shell startup edits.
+Follow [README installation](../README.md#installation). To replace the standalone
+CLI, install the new executable at the same path and check `vpnmodo version`.
+Replacing the CLI does not disconnect a VM-owned VPN connection.
 
-Load the new container image bundle first, record the old controller image ID, then run:
-
-```sh
-vpnmodo host setup personal-vm --release /absolute/private/installed-release.json --replace
-vpnmodo host check personal-vm --json
-vpnmodo status example
-```
-
-Choose a maintenance window with no login/MFA operation in progress. Established
-VPN sessions and persistent state remain in place when replacing the controller.
-New sessions use the release's pinned backend defaults; existing sessions retain
-the image identities in their deployment records. Do not prune old images while
-such sessions or rollback plans still need them. An interrupted login requires
-an explicit new attempt and fresh XAuth MFA.
-
-For controller rollback, repeat `host setup --release <old-receipt.json> --replace`, then
-verify status and private service access. This applies to compatible schema/API
-versions. Do not run an older binary against a newer incompatible state schema;
-a future schema-changing release needs its own migration/backup instructions.
-Never automatically replace credential/journal files with an older backup while
-sessions are active. CLI rollback does not disconnect a VPN.
+Setup reuses matching images and the controller; it does not silently replace a
+different running controller release. Runtime upgrades require a release-specific
+migration procedure. Do not delete controller storage containing saved profiles
+and credentials as an upgrade shortcut.
 
 ## Validation scope
 

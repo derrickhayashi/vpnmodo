@@ -87,9 +87,10 @@ def begin(cli, directory, state_root, services_only=False):
         assert b":28080" in listening, "synthetic gateway TCP listener unavailable"
         definition = {"schema_version": 1, "name": NAME, "backend": {"type": "l2tp-ipsec", "config": {"server": "192.0.2.1", "dns": ["198.51.100.1"], "ike_proposals": ["aes256-sha256-modp2048!"], "esp_proposals": ["aes256-sha256!"]}}, "health": {"host": "198.51.100.1", "port": 28080}}
         source = directory / "l2tp-profile.json"
-        source.write_text(json.dumps(definition))
         credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
-        last_json(cli("profile", "create", NAME, "--host", "example", "--file", str(source), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
+        source.write_text(json.dumps(dict(definition, credentials=credentials)))
+        source.chmod(0o600)
+        last_json(cli("profile", "create", NAME, "--file", str(source), "--json"))
         lab.profile_created = True
         ready = last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
         assert ready["state"] == "succeeded"
@@ -177,7 +178,7 @@ def begin(cli, directory, state_root, services_only=False):
         lab.control("service-stop")
         command(["docker", "exec", recovered, "ipsec", "down", "l2tp-psk"])
         failed = lab.wait(lambda c: "last_operation" in c and "active_operation" not in c and c.get("recovery", {}).get("attempts", 0) > 0, timeout=150)
-        record = last_json(cli("operation", "status", failed["last_operation"], "--host", "example", "--json"))
+        record = last_json(cli("operation", "status", failed["last_operation"], "--json"))
         assert record["kind"] == "connection.recover" and record["state"] == "failed"
         assert "application" not in lab.ids()
         last_json(cli("connection", "disconnect", NAME, "--wait", "--json"))

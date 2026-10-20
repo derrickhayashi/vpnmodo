@@ -50,7 +50,7 @@ class Lab:
     def wait_operation(self, op, state, timeout=100):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            snap = last_json(self.cli("operation", "status", op, "--host", "example", "--json"))
+            snap = last_json(self.cli("operation", "status", op, "--json"))
             if snap["state"] == state:
                 return snap
             if snap["state"] in ("failed", "cancelled", "succeeded"):
@@ -67,7 +67,7 @@ class Lab:
         if interactive:
             self.prompt_code(snap)
         else:
-            self.cli("operation", "submit-mfa", snap["id"], "--host", "example", "--challenge", snap["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
+            self.cli("operation", "submit-mfa", snap["id"], "--challenge", snap["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
         self.wait_operation(snap["id"], "succeeded")
         return snap
 
@@ -81,7 +81,7 @@ class Lab:
         def controlling_tty():
             os.setsid()
             fcntl.ioctl(0, termios.TIOCSCTTY, 0)
-        process = subprocess.Popen([*self.cli_args, "operation", "watch", snapshot["id"], "--host", "example"], stdin=slave, stdout=slave, stderr=slave, preexec_fn=controlling_tty)
+        process = subprocess.Popen([*self.cli_args, "operation", "watch", snapshot["id"]], stdin=slave, stdout=slave, stderr=slave, preexec_fn=controlling_tty)
         transcript = bytearray()
         submitted = False
         try:
@@ -265,9 +265,10 @@ for port in (500,4500):
         lab.created.remove(guard)
         definition = {"schema_version": 1, "name": NAME, "backend": {"type": "ipsec-xauth", "config": {"server": "192.0.2.1", "dns": ["198.51.100.1"], "ike_proposals": ["aes256-sha256-modp2048"], "esp_proposals": ["aes256-sha256"]}}, "health": {"host": "198.51.100.1", "port": 28080}}
         source = directory / "xauth-profile.json"
-        source.write_text(json.dumps(definition))
         credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
-        cli("profile", "create", NAME, "--host", "example", "--file", str(source), "--credentials-stdin", "--json", data=json.dumps(credentials).encode())
+        source.write_text(json.dumps(dict(definition, credentials=credentials)))
+        source.chmod(0o600)
+        cli("profile", "create", NAME, "--file", str(source), "--json")
         lab.profile_created = True
         challenge = lab.ensure_challenge()
         assert "application" not in lab.ids(), "application attached before authentication"
@@ -281,7 +282,7 @@ for port in (500,4500):
             command(["docker", "exec", cid, "vpn-enforce"])
         lab.capture("waiting-mfa", lab.probes)
         command(["docker", "exec", cid, "vpn-enforce", "check"])
-        cli("operation", "submit-mfa", challenge["id"], "--host", "example", "--challenge", challenge["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
+        cli("operation", "submit-mfa", challenge["id"], "--challenge", challenge["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
         lab.wait_operation(challenge["id"], "succeeded")
         ids = lab.ids()
         cid = ids["vpn"]["Id"]
@@ -383,18 +384,18 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
         lab.disconnect()
         snap = lab.ensure_challenge()
         lab.capture("recreated-before-authentication", lab.probes)
-        cli("operation", "cancel", snap["id"], "--host", "example", "--json")
+        cli("operation", "cancel", snap["id"], "--json")
         lab.wait_operation(snap["id"], "cancelled")
         lab.disconnect()
         # Expiry and invalid codes are bounded without another login/challenge.
         expired = lab.ensure_challenge()
         lab.wait_operation(expired["id"], "failed", timeout=60)
-        stale = cli("operation", "submit-mfa", expired["id"], "--host", "example", "--challenge", expired["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210", required=False)
+        stale = cli("operation", "submit-mfa", expired["id"], "--challenge", expired["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210", required=False)
         assert stale.returncode != 0
         assert not lab.ids()
         lab.disconnect()
         bad = lab.ensure_challenge()
-        cli("operation", "submit-mfa", bad["id"], "--host", "example", "--challenge", bad["challenge"]["id"], "--code-stdin", "--json", data=b"111111")
+        cli("operation", "submit-mfa", bad["id"], "--challenge", bad["challenge"]["id"], "--code-stdin", "--json", data=b"111111")
         lab.wait_operation(bad["id"], "failed")
         assert not lab.ids()
         lab.disconnect()
@@ -404,7 +405,7 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
         command(["docker", "exec", lab.gateway, "sed", "-i", "/passcode = Synthetic code/a\\          nextpin = Repeated synthetic code", "/etc/strongswan.conf"])
         command(["docker", "exec", lab.gateway, "swanctl", "--reload-settings"])
         repeated = lab.ensure_challenge()
-        cli("operation", "submit-mfa", repeated["id"], "--host", "example", "--challenge", repeated["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
+        cli("operation", "submit-mfa", repeated["id"], "--challenge", repeated["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
         lab.wait_operation(repeated["id"], "failed")
         assert not lab.ids()
         command(["docker", "exec", lab.gateway, "sed", "-i", "/nextpin = Repeated synthetic code/d", "/etc/strongswan.conf"])
@@ -424,8 +425,11 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
         # namespace to simulate a crash that Docker should restart automatically.
         command(["sudo", "-n", "kill", "-KILL", str(controller["State"]["Pid"])])
         for _ in range(60):
-            if cli("host", "check", "example", "--json", required=False).returncode == 0:
-                break
+            try:
+                if lab.rpc("system.status", {}).get("result", {}).get("state_ready"):
+                    break
+            except (AssertionError, RuntimeError, subprocess.TimeoutExpired):
+                pass
             time.sleep(0.3)
         else:
             raise RuntimeError("owned controller did not restart automatically after process crash")

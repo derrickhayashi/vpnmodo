@@ -30,7 +30,7 @@ func streamCommand(ctx context.Context, registry string, args []string, input io
 			return err
 		}
 	}
-	ref, err := host.FindReference(host.ReferencePath(registry), args[1])
+	ref, err := managedReference(host.ReferencePath(registry), args[1])
 	if err != nil {
 		return err
 	}

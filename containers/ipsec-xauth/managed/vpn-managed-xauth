@@ -18,6 +18,8 @@ fi
 cat > /run/vpn/strongswan.conf <<'CONFIG'
 include /etc/strongswan.conf
 charon-cmd {
+    # Allow time for interactive MFA before the half-open IKE SA is removed.
+    half_open_timeout = 300
     port = 500
     port_nat_t = 4500
 }

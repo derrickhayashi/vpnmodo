@@ -126,6 +126,8 @@ def cli(source, output, metadata, temporary):
         (stage / 'install.sh').write_text(template)
         (stage / 'README.txt').write_text('See docs/releases.md and docs/onboarding.md in the source bundle.\nVerify the archive using the independently obtained SHA256SUMS-cli file before extracting.\nRun: sh install.sh --prefix "$HOME/.local"\n')
         archive(stage, output / ('vpnmodo-' + version + '-darwin-' + arch + '.tar.gz'), metadata['source_epoch'])
+        shutil.copyfile(stage / 'vpnmodo', output / ('vpnmodo-darwin-' + arch))
+        (output / ('vpnmodo-darwin-' + arch)).chmod(0o755)
     archive(source, output / ('vpnmodo-' + version + '-source.tar.gz'), metadata['source_epoch'])
     return 'cli'
 
