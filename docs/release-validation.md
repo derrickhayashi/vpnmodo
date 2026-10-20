@@ -2,7 +2,9 @@
 
 ## Single managed VM flow — 2026-10-20
 
-The pending rc.9 CLI removes alternate VM registration and selection. It uses
+CLI identity: `v0.1.0-rc.9+git.ed242079fbd6`.
+
+The rc.9 CLI removes alternate VM registration and selection. It uses
 only the managed `vpn-vm` and keeps VPN configuration in JSON files. The
 controller and image digests remain the published rc.7 runtime.
 
@@ -12,6 +14,7 @@ controller and image digests remain the published rc.7 runtime.
 | JSON profile creation | Creating a profile from a private JSON file succeeds on that VM; stored credentials are present |
 | Real VPN connection | Reaches the MFA prompt; after the fresh code is submitted, authentication fails and the client exits with diagnostic 27 |
 | Private access | Not verified because the VPN connection failed |
+| Release artifact | Standalone ARM64 binary matches the archive, passes native installation checks and completes setup on the managed VM |
 | Local checks | Full Go race tests, vet, 77 Python tests and secret scans pass |
 
 The failed connection is not an end-to-end pass. Retained diagnostics do not
