@@ -1,5 +1,13 @@
 # vpnmodo
 
+Ever needed to connect to multiple sites over VPN at the same time, while staying
+connected to your corporate VPN? Then **vpnmodo is for you**.
+
+Keep each site's VPN in its own isolated container inside a local VM, and reach
+private services through SSH or local forwards. Site VPN routes and DNS stay
+separate from your Mac's networking, so you can work across sites without
+switching your computer's VPN connection.
+
 Manage VPN connections from your Mac through one local Ubuntu VM created by vpnmodo.
 The Mac runs the `vpnmodo` CLI. A containerized `vpnmodo-controller` on the VM
 stores profiles and credentials, starts the VPN containers, and monitors them.
@@ -14,8 +22,7 @@ Mac: vpnmodo CLI / OpenSSH
 ```
 
 Managed profiles support **L2TP/IPsec** with username/password and PSK, and
-**IPsec/XAuth** with username/password, PSK and emailed MFA. XAuth fails closed
-when IPsec state is lost and requires an explicit login with fresh MFA to recover.
+**IPsec/XAuth** with username/password, PSK and emailed MFA.
 
 The supported path is **Apple Silicon Mac → vpnmodo-managed Lima VM**. Setup
 creates Ubuntu, Docker and the controller. Docker Desktop, Go and
