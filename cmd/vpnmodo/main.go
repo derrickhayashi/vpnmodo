@@ -28,7 +28,7 @@ func run(base context.Context, args []string, output io.Writer) error {
 		return proxyCommand(base, args)
 	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(output, "Usage: vpnmodo setup\n       vpnmodo {up|down|status|doctor} PROFILE\n       vpnmodo profile help\n       vpnmodo service {configure|start|stop|status} PROFILE\n       vpnmodo operation {status|cancel|watch|submit-mfa} ID\n       vpnmodo proxy PROFILE HOST PORT\n       vpnmodo version")
+		fmt.Fprintln(output, "Usage: vpnmodo setup [--file PROFILE.json]\n       vpnmodo {up|down|status|doctor} PROFILE\n       vpnmodo profile help\n       vpnmodo service {configure|start|stop|status} PROFILE\n       vpnmodo operation {status|cancel|watch|submit-mfa} ID\n       vpnmodo proxy PROFILE HOST PORT\n       vpnmodo version")
 		return nil
 	}
 	root := flag.NewFlagSet("vpnmodo", flag.ContinueOnError)

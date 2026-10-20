@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -23,11 +24,22 @@ import (
 
 func setupCommand(base context.Context, registry string, args []string, out io.Writer) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "help") {
-		fmt.Fprintln(out, "Usage: vpnmodo setup\nCreates the managed local environment and starts the controller.")
+		fmt.Fprintln(out, "Usage: vpnmodo setup [--file PROFILE.json]\nCreates the managed local environment and starts the controller.")
 		return nil
 	}
-	if len(args) != 0 {
-		return errors.New("usage: vpnmodo setup")
+	flags := flag.NewFlagSet("setup", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	file := flags.String("file", "", "")
+	if flags.Parse(args) != nil || flags.NArg() != 0 {
+		return errors.New("usage: vpnmodo setup [--file PROFILE.json]")
+	}
+	var auth *registryCredentials
+	if *file != "" {
+		input, err := readProfileFile(*file)
+		if err != nil {
+			return err
+		}
+		auth = input.Registry
 	}
 	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
 		return errors.New("setup requires an Apple Silicon Mac")
@@ -53,7 +65,7 @@ func setupCommand(base context.Context, registry string, args []string, out io.W
 			return err
 		}
 	}
-	h, release, err := provisionLima(ctx, registry, out)
+	h, release, err := provisionLima(ctx, registry, auth, out)
 	if err != nil {
 		return err
 	}
@@ -115,7 +127,7 @@ func limaSSHConfig(ctx context.Context, name string) (string, error) {
 }
 
 // provisionLima uses native Lima and SCP; activation reuses host.Setup above.
-func provisionLima(ctx context.Context, registry string, out io.Writer) (host.Host, host.InstalledRelease, error) {
+func provisionLima(ctx context.Context, registry string, auth *registryCredentials, out io.Writer) (host.Host, host.InstalledRelease, error) {
 	const name = host.ManagedName
 	var empty host.InstalledRelease
 	h := host.Host{Name: name, SSH: "lima-" + name, Sudo: true}
@@ -150,7 +162,7 @@ func provisionLima(ctx context.Context, registry string, out io.Writer) (host.Ho
 			return h, empty, errors.New("the managed Lima instance was created outside vpnmodo; inspect its setup configuration")
 		}
 	}
-	if err := ensureRegistryAuth(ctx, filepath.Join(dir, "ghcr-config.json"), out); err != nil {
+	if err := ensureRegistryAuth(filepath.Join(dir, "ghcr-config.json"), auth); err != nil {
 		return h, empty, err
 	}
 	if config == "" {
@@ -226,30 +238,33 @@ func setupSSH(ctx context.Context, h host.Host, command string, input []byte) er
 	return nil
 }
 
-func ensureRegistryAuth(ctx context.Context, path string, out io.Writer) error {
+func ensureRegistryAuth(path string, supplied *registryCredentials) error {
+	if supplied != nil {
+		data, err := credentialinput.RegistryConfig(supplied.Username, supplied.Token)
+		if err != nil {
+			return errors.New("invalid registry credentials in JSON")
+		}
+		defer clear(data)
+		_, err = privatefile.Write(path, data)
+		return err
+	}
 	data, err := privatefile.Read(path, 16*1024)
 	if err == nil {
+		defer clear(data)
 		var config struct {
 			Auths map[string]struct {
 				Auth string `json:"auth"`
 			} `json:"auths"`
 		}
 		if json.Unmarshal(data, &config) != nil || config.Auths["ghcr.io"].Auth == "" {
-			return errors.New("invalid saved GHCR credentials; remove ghcr-config.json from the setup directory and retry")
+			return errors.New("invalid saved GHCR credentials; supply registry access with setup --file FILE")
 		}
 		return nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	fmt.Fprintln(out, "Release images are private. Enter a GitHub account with package access and a token with read:packages.")
-	data, err = credentialinput.ReadRegistry(ctx)
-	if err != nil {
-		return errors.New("GHCR credentials are required; run setup in an interactive terminal")
-	}
-	defer clear(data)
-	_, err = privatefile.Write(path, data)
-	return err
+	return errors.New("private release images need registry access; include registry.username and registry.token in JSON and run vpnmodo setup --file FILE")
 }
 
 func waitSetupReady(base context.Context, h host.Host, version string) error {

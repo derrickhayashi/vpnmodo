@@ -1,5 +1,26 @@
 # ARM64 release validation
 
+## One-file configuration — 2026-10-20
+
+CLI rc.10 reads VPN settings and `credentials.username`, `credentials.password`
+and `credentials.psk` from the same owner-only JSON file for both L2TP/IPsec and
+XAuth. `setup --file` can read private GHCR `registry.username` and `registry.token`
+from that file. Missing input fails without credential prompts. Settings remain
+separate from credentials in the controller RPC and storage; MFA remains an
+interactive connection step only for XAuth. Runtime image digests are unchanged.
+
+| Check | Result |
+| --- | --- |
+| Both backend inputs | Local fake-SSH RPC tests pass for create, settings update and credential rotation from one JSON file without interactive input |
+| Secret separation | RPC profile validation, secret-free output/local references, duplicate/invalid input and owner-only file checks pass |
+| Registry input | Noninteractive same-file registry auth and missing-auth errors pass |
+| Local checks | Full Go race tests, vet, 77 Python tests, changed Python syntax, 21 documentation JSON/shell blocks and secret scans pass |
+
+The Python suite used the existing project virtual environment; the first run
+with system Python lacked its Ansible/Jinja dependencies. No VM reset, new real
+VPN authentication, protocol acceptance run or MFA email was performed for this
+input-only change. The failed real connection below remains unresolved.
+
 ## Single managed VM flow — 2026-10-20
 
 CLI identity: `v0.1.0-rc.9+git.ed242079fbd6`.

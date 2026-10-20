@@ -265,9 +265,10 @@ for port in (500,4500):
         lab.created.remove(guard)
         definition = {"schema_version": 1, "name": NAME, "backend": {"type": "ipsec-xauth", "config": {"server": "192.0.2.1", "dns": ["198.51.100.1"], "ike_proposals": ["aes256-sha256-modp2048"], "esp_proposals": ["aes256-sha256"]}}, "health": {"host": "198.51.100.1", "port": 28080}}
         source = directory / "xauth-profile.json"
-        source.write_text(json.dumps(definition))
         credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
-        cli("profile", "create", NAME, "--file", str(source), "--credentials-stdin", "--json", data=json.dumps(credentials).encode())
+        source.write_text(json.dumps(dict(definition, credentials=credentials)))
+        source.chmod(0o600)
+        cli("profile", "create", NAME, "--file", str(source), "--json")
         lab.profile_created = True
         challenge = lab.ensure_challenge()
         assert "application" not in lab.ids(), "application attached before authentication"

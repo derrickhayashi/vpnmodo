@@ -1,33 +1,37 @@
-# Onboarding, profile maintenance and adoption
+# Onboarding and profile maintenance
 
-Start with [README installation](../README.md#installation). `vpnmodo setup`
-prepares the single managed local environment. VPN configuration stays in JSON.
+Start with [README installation](../README.md#installation).
+`vpnmodo setup --file PROFILE.json` prepares the single managed local environment. VPN configuration stays in JSON.
 Then use [README usage](../README.md#usage) to connect and access private services.
 
 Create a profile with `vpnmodo profile create NAME --file PROFILE.json`. It uses
-the managed VM and prompts for credentials separately.
+the managed VM and reads `credentials.username`, `credentials.password` and
+`credentials.psk` from that same file for both supported VPN types.
 VM selection and manual host registration are not part of the CLI.
 
-## Credential input for automation
+## One input file
 
-Interactive `profile create` and `profile rotate-credentials` use hidden prompts.
-Automated callers can use `--credentials-stdin` or `--credentials-fd N`. The input
-is a JSON object with `username`, `password` and `psk` fields, supplied through a
-protected pipe or an owner-only regular file. For example, if your approved
-secret-management process has already created a mode-0600 file outside Git:
+Use one owner-only JSON file containing the connection settings and a
+`credentials` object. For private image setup, include a `registry` object with
+GitHub `username` and `token`; existing saved registry access can also be reused.
+Both L2TP/IPsec and XAuth use this format. See the complete JSON examples in the
+[README](../README.md#vpn-configuration).
 
 ```sh
-vpnmodo profile create work \
-  --file "$HOME/vpnmodo-private/work.json" \
-  --credentials-stdin < "$HOME/vpnmodo-private/credentials.json"
+chmod 600 "$HOME/vpnmodo-private/work.json"
+vpnmodo setup --file "$HOME/vpnmodo-private/work.json"
+vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
+vpnmodo up work
 ```
 
-This file is an additional credential copy that you must manage under your
-team's policy. Prefer hidden prompts for manual use. Never put secrets in shell
-arguments, environment variables, profile JSON, issues or logs. The VM vault is
-plaintext protected by filesystem permissions and is readable by VM/Docker
-administrators; SSH encrypts transport. The Mac registry does not retain a VPN
-credential copy.
+Setup and profile creation do not prompt for credentials. Missing or invalid
+input returns an error. XAuth connection is the only interactive prompt: enter
+the fresh MFA code when requested. L2TP uses the supplied saved credentials.
+
+The JSON is a plaintext credential backup; keep it outside Git and protect it.
+The controller stores secrets in its separate protected VM vault, omits them
+from profile inspection/output, and receives them over encrypted SSH. Never put
+secrets in shell arguments, environment variables, issues or logs.
 
 `--json` operation watching does not prompt for MFA. Deliver the current code
 through protected stdin for the matching operation/challenge using
@@ -52,11 +56,12 @@ vpnmodo profile update work --file "$HOME/vpnmodo-private/work.json" --revision 
 vpnmodo profile inspect work
 ```
 
-To rotate credentials, inspect again and pass the **current** revision. The
-command prompts for the new values; connect explicitly afterwards:
+Profile update changes connection settings only. To change credentials, edit the
+same JSON, inspect again and pass the **current** revision to the explicit
+rotation command. It reads the file without prompting; connect afterwards:
 
 ```sh
-vpnmodo profile rotate-credentials work --revision N
+vpnmodo profile rotate-credentials work --file "$HOME/vpnmodo-private/work.json" --revision N
 vpnmodo up work
 ```
 

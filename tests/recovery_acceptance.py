@@ -31,7 +31,11 @@ def create(cli, directory, name):
     source = directory / "recovery-profile.json"
     source.write_text(json.dumps({"schema_version": 1, "name": name, "backend": {"type": "l2tp-ipsec", "config": {"server": "vpn.example.com"}}, "health": {"host": "192.0.2.10", "port": 22}}))
     credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
-    last_json(cli("profile", "create", name, "--file", str(source), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
+    definition = json.loads(source.read_text())
+    definition["credentials"] = credentials
+    source.write_text(json.dumps(definition))
+    source.chmod(0o600)
+    last_json(cli("profile", "create", name, "--file", str(source), "--json"))
     last_json(cli("connection", "ensure", name, "--wait", "--json"))
 
 

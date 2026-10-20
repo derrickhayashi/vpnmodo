@@ -87,9 +87,10 @@ def begin(cli, directory, state_root, services_only=False):
         assert b":28080" in listening, "synthetic gateway TCP listener unavailable"
         definition = {"schema_version": 1, "name": NAME, "backend": {"type": "l2tp-ipsec", "config": {"server": "192.0.2.1", "dns": ["198.51.100.1"], "ike_proposals": ["aes256-sha256-modp2048!"], "esp_proposals": ["aes256-sha256!"]}}, "health": {"host": "198.51.100.1", "port": 28080}}
         source = directory / "l2tp-profile.json"
-        source.write_text(json.dumps(definition))
         credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
-        last_json(cli("profile", "create", NAME, "--file", str(source), "--credentials-stdin", "--json", data=json.dumps(credentials).encode()))
+        source.write_text(json.dumps(dict(definition, credentials=credentials)))
+        source.chmod(0o600)
+        last_json(cli("profile", "create", NAME, "--file", str(source), "--json"))
         lab.profile_created = True
         ready = last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
         assert ready["state"] == "succeeded"

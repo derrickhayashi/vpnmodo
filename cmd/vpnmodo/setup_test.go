@@ -12,6 +12,7 @@ import (
 	assets "github.com/derrickhayashi/vpn-sidecars-next"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/host"
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/privatefile"
+	"github.com/derrickhayashi/vpn-sidecars-next/internal/secret"
 )
 
 func fakeLima(t *testing.T) (registry, dir, log string) {
@@ -66,7 +67,7 @@ esac
 func TestSetupProvisionAndRetry(t *testing.T) {
 	registry, dir, log := fakeLima(t)
 	var output bytes.Buffer
-	first, receipt, err := provisionLima(context.Background(), registry, &output)
+	first, receipt, err := provisionLima(context.Background(), registry, nil, &output)
 	if err != nil || receipt.Version != "synthetic-release" || !first.Sudo || first.SSHConfig != os.Getenv("LIMA_TEST_SSH_CONFIG") {
 		t.Fatalf("provision failed: %v", err)
 	}
@@ -77,7 +78,7 @@ func TestSetupProvisionAndRetry(t *testing.T) {
 			t.Fatalf("missing or changed embedded asset: %s", name)
 		}
 	}
-	second, _, err := provisionLima(context.Background(), registry, &output)
+	second, _, err := provisionLima(context.Background(), registry, nil, &output)
 	if err != nil || second != first {
 		t.Fatalf("retry did not reuse host: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestSetupRefusesUnrelatedVM(t *testing.T) {
 	if err := os.WriteFile(os.Getenv("LIMA_TEST_STATE"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := provisionLima(context.Background(), registry, &bytes.Buffer{}); err == nil {
+	if _, _, err := provisionLima(context.Background(), registry, nil, &bytes.Buffer{}); err == nil {
 		t.Fatal("adopted unrelated Lima instance")
 	}
 	if _, err := os.Stat(log); !os.IsNotExist(err) {
@@ -112,7 +113,7 @@ func TestSetupRefusesConflictingHost(t *testing.T) {
 	if err := host.Add(registry, host.Host{Name: "vpn-vm", SSH: "other.example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := provisionLima(context.Background(), registry, &bytes.Buffer{}); err == nil {
+	if _, _, err := provisionLima(context.Background(), registry, nil, &bytes.Buffer{}); err == nil {
 		t.Fatal("overwrote existing host")
 	}
 	if _, err := os.Stat(log); !os.IsNotExist(err) {
@@ -125,7 +126,7 @@ func TestSetupRejectsInvalidReceiptAndCredentials(t *testing.T) {
 	if err := os.WriteFile(os.Getenv("LIMA_TEST_RECEIPT"), []byte(`{"ok":true}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := provisionLima(context.Background(), registry, &bytes.Buffer{}); err == nil {
+	if _, _, err := provisionLima(context.Background(), registry, nil, &bytes.Buffer{}); err == nil {
 		t.Fatal("accepted invalid installation receipt")
 	}
 	registered, _ := host.Read(registry)
@@ -136,7 +137,7 @@ func TestSetupRejectsInvalidReceiptAndCredentials(t *testing.T) {
 	if err := os.Chmod(path, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := ensureRegistryAuth(context.Background(), path, &bytes.Buffer{}); err == nil {
+	if err := ensureRegistryAuth(path, nil); err == nil {
 		t.Fatal("accepted exposed credential file")
 	}
 }
@@ -155,17 +156,39 @@ func TestSetupHelpAndInvalidOptions(t *testing.T) {
 
 func TestSetupRepairsRunningInstanceAfterBootFailure(t *testing.T) {
 	registry, dir, _ := fakeLima(t)
-	if _, _, err := provisionLima(context.Background(), registry, &bytes.Buffer{}); err != nil {
+	if _, _, err := provisionLima(context.Background(), registry, nil, &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("LIMA_TEST_FAIL_START", "yes")
-	if _, _, err := provisionLima(context.Background(), registry, &bytes.Buffer{}); err != nil {
+	if _, _, err := provisionLima(context.Background(), registry, nil, &bytes.Buffer{}); err != nil {
 		t.Fatalf("did not repair setup-owned running instance: %v", err)
 	}
 	if err := os.Remove(filepath.Join(dir, "lima.yaml")); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := provisionLima(context.Background(), registry, &bytes.Buffer{}); err == nil {
+	if _, _, err := provisionLima(context.Background(), registry, nil, &bytes.Buffer{}); err == nil {
 		t.Fatal("attempted repair of an unrelated instance")
+	}
+}
+
+func TestSetupRegistryFromSameJSONWithoutPrompt(t *testing.T) {
+	file, _ := combinedProfile(t, "l2tp-ipsec")
+	input, err := readProfileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "auth.json")
+	if err := ensureRegistryAuth(path, input.Registry); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := privatefile.Read(path, 16*1024)
+	if err != nil || !bytes.Contains(raw, []byte("ghcr.io")) {
+		t.Fatal("private registry auth not saved")
+	}
+	if err := ensureRegistryAuth(filepath.Join(t.TempDir(), "missing.json"), nil); err == nil {
+		t.Fatal("missing auth did not fail without prompting")
+	}
+	if err := ensureRegistryAuth(path, &registryCredentials{Username: secret.New("synthetic-registry-user"), Token: secret.New("updated-synthetic-token")}); err != nil {
+		t.Fatal(err)
 	}
 }

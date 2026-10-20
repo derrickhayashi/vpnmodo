@@ -9,7 +9,7 @@ import (
 )
 
 func TestRegistryCredentials(t *testing.T) {
-	data, err := registryConfig(secret.New("synthetic-user"), secret.New("synthetic-token"))
+	data, err := RegistryConfig(secret.New("synthetic-user"), secret.New("synthetic-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestRegistryCredentials(t *testing.T) {
 		t.Fatal("wrong Docker registry auth")
 	}
 	for _, pair := range [][2]string{{"", "token"}, {"user:name", "token"}, {"user", ""}, {"user", "token\n"}} {
-		if _, err := registryConfig(secret.New(pair[0]), secret.New(pair[1])); err == nil {
+		if _, err := RegistryConfig(secret.New(pair[0]), secret.New(pair[1])); err == nil {
 			t.Fatal("accepted invalid registry credential input")
 		}
 	}

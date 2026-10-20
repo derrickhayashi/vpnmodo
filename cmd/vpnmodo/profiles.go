@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"os"
 	"time"
 
 	"github.com/derrickhayashi/vpn-sidecars-next/internal/credentialinput"
@@ -22,15 +21,16 @@ func profileCommand(base context.Context, registry string, args []string, out io
 		return errProfileOptions
 	}
 	if args[0] == "help" {
-		_, err := io.WriteString(out, `Usage: vpnmodo [--config FILE] profile create NAME --file PROFILE.json [--credentials-stdin | --credentials-fd N]
+		_, err := io.WriteString(out, `Usage: vpnmodo [--config FILE] profile create NAME --file PROFILE.json
        vpnmodo profile register ALIAS --profile NAME
        vpnmodo profile list
        vpnmodo profile inspect ALIAS
        vpnmodo profile update ALIAS --file PROFILE.json --revision N
-       vpnmodo profile rotate-credentials ALIAS --revision N [--credentials-stdin | --credentials-fd N]
+       vpnmodo profile rotate-credentials ALIAS --file PROFILE.json --revision N
        vpnmodo profile delete ALIAS --revision N
        vpnmodo profile unregister ALIAS
-All commands accept --json. Credentials use hidden prompts by default.
+All commands accept --json. JSON credentials contain username, password and psk.
+Only XAuth connection MFA prompts interactively.
 `)
 		return err
 	}
@@ -56,7 +56,7 @@ All commands accept --json. Credentials use hidden prompts by default.
 	if flags.Parse(options) != nil || flags.NArg() != 0 {
 		return errProfileOptions
 	}
-	allowed := map[string]string{"create": " file credentials-stdin credentials-fd json ", "register": " profile json ", "list": " json ", "inspect": " json ", "update": " file revision json ", "rotate-credentials": " revision credentials-stdin credentials-fd json ", "delete": " revision json ", "unregister": " json "}
+	allowed := map[string]string{"create": " file credentials-stdin credentials-fd json ", "register": " profile json ", "list": " json ", "inspect": " json ", "update": " file revision json ", "rotate-credentials": " file revision credentials-stdin credentials-fd json ", "delete": " revision json ", "unregister": " json "}
 	rule, ok := allowed[command]
 	if !ok {
 		return errProfileOptions
@@ -118,27 +118,37 @@ All commands accept --json. Credentials use hidden prompts by default.
 		}
 	}
 	var configuration profile.Profile
-	if command == "create" || command == "update" {
+	var credentials *profile.Credentials
+	if command == "create" || command == "update" || command == "rotate-credentials" && *file != "" {
 		if *file == "" || *file == "-" {
 			return errProfileOptions
 		}
-		input, err := os.Open(*file)
-		if err != nil {
-			return errors.New("profile file unavailable")
-		}
-		data, err := io.ReadAll(io.LimitReader(input, profile.MaxProfileBytes+1))
-		_ = input.Close()
-		if err != nil {
-			return errors.New("profile file unavailable")
-		}
-		configuration, err = profile.DecodeProfile(data)
+		input, err := readProfileFile(*file)
 		if err != nil {
 			return err
 		}
+		configuration = input.configuration()
+		credentials = input.Credentials
 		if command == "create" {
 			reference.Profile = configuration.Name
 		} else if configuration.Name != reference.Profile {
-			return errors.New("updated profile name must match the registered profile")
+			return errors.New("JSON profile name must match the registered profile")
+		}
+	}
+	if command == "create" || command == "rotate-credentials" {
+		if credentials != nil && (*stdin || *fd != "") {
+			return errors.New("supply credentials once, in the JSON file")
+		}
+		if credentials == nil {
+			// Explicit protected automation input remains supported, never prompting.
+			if !*stdin && *fd == "" {
+				return errors.New("JSON must include credentials with username, password and psk")
+			}
+			value, err := credentialinput.Read(ctx, *stdin, *fd)
+			if err != nil {
+				return err
+			}
+			credentials = &value
 		}
 	}
 	if command == "register" && !profile.ValidName(*remote) {
@@ -166,11 +176,7 @@ All commands accept --json. Credentials use hidden prompts by default.
 	var result profile.Snapshot
 	switch command {
 	case "create":
-		credentials, err := credentialinput.Read(ctx, *stdin, *fd)
-		if err != nil {
-			return err
-		}
-		encoded, err := (protocol.ProfileCreateParams{Profile: configuration, Credentials: credentials}).EncodeForTransport()
+		encoded, err := (protocol.ProfileCreateParams{Profile: configuration, Credentials: *credentials}).EncodeForTransport()
 		if err != nil {
 			return err
 		}
@@ -187,11 +193,7 @@ All commands accept --json. Credentials use hidden prompts by default.
 			return mutationError(err)
 		}
 	case "rotate-credentials":
-		credentials, err := credentialinput.Read(ctx, *stdin, *fd)
-		if err != nil {
-			return err
-		}
-		encoded, err := (protocol.CredentialRotateParams{Profile: reference.Profile, ExpectedRevision: *revision, Credentials: credentials}).EncodeForTransport()
+		encoded, err := (protocol.CredentialRotateParams{Profile: reference.Profile, ExpectedRevision: *revision, Credentials: *credentials}).EncodeForTransport()
 		if err != nil {
 			return err
 		}
