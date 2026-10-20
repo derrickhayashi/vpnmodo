@@ -1,19 +1,17 @@
 # Managed XAuth, MFA and namespace enforcement
 
-Issue #7 adds the second managed VPN backend. The shared `internal/managedvpn`
-adapter preserves the exact project/profile/revision/image checks and private
+The managed XAuth backend uses a separate MFA and packet-enforcement path.
+Its shared adapter applies the project/profile/revision/image checks and private
 credential bundles introduced for L2TP. Backend-specific manifests, startup and
 authentication remain separate. Legacy launchers, their Expect script and their
 image entry point retain their existing behavior.
 
 ## Authentication boundary
 
-The native interface investigation found that the pinned `charon-cmd` credential
-callback uses terminal prompts for the custom IKEv1 XAuth exchange. Generic VICI
-configuration/observation support does not demonstrate equivalent interactive
-support. Keep a managed Expect adapter until a replacement proves the actual
-password/passcode exchange and quiet session lifetime. This adapter is separate
-from the existing standalone script.
+The pinned `charon-cmd` client uses terminal prompts for the custom IKEv1 XAuth
+password/passcode exchange. A managed Expect adapter handles that interaction
+separately from the standalone launcher script. Generic VICI configuration does
+not provide this project's interactive MFA integration.
 
 The managed state machine accepts one PSK prompt, one password prompt and one PIN
 prompt in that order. It suppresses terminal echo and all client diagnostics.
@@ -99,9 +97,8 @@ are outside this isolation boundary.
 Health reporting separates private endpoint failures, namespace detachment and
 IPsec loss. Endpoint failure alone never starts another login. A healthy tunnel
 can repair only its application namespace without MFA. The application-only
-manifest pins the verified container ID and contains no VPN service to reconcile. On IPsec loss, stop the
-application and report authentication required; do not begin a new PSK/password
-attempt in the background. An explicit ensure creates a fresh attempt/challenge.
+manifest pins the verified container ID and contains no VPN service to reconcile. On IPsec loss, the controller stops the application and reports authentication
+required. It does not begin a new PSK/password attempt in the background. An explicit ensure creates a fresh attempt/challenge.
 The kernel filter remains the protection while the controller is unavailable.
 
 ## Acceptance

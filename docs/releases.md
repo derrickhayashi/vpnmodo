@@ -1,17 +1,19 @@
-# Private release artifacts
+# Release artifacts
 
-Issue #9 supplies an offline distribution path. ARM64 candidate qualification
-passes as recorded in the [validation record](release-validation.md). These are
-private release candidates. Builds stay local by default; `vm --publish` uploads
-release images to private GHCR. The standalone CLI is distributed through a
-private GitHub prerelease; there is no Homebrew tap. GitHub Actions runs only Go
-checks and Secret scan. Container release builds, publishing and protocol
-acceptance stay local; no GitLab build pipeline is planned.
+ARM64 candidate qualification is recorded in the
+[validation record](release-validation.md). Builds stay local by default;
+`vm --publish` uploads release images to GHCR. The standalone CLI is distributed
+through GitHub prereleases; there is no Homebrew tap. Repository visibility and
+GHCR package access are separate settings. The current runtime images require
+package access. Build CLI artifacts on the workstation and container images on
+a native Linux builder.
 
 ## Single-file CLI download
 
-The current standalone CLI release is `v0.1.0-rc.11`. Download `vpnmodo-darwin-arm64`
-from the authenticated private release page, install it and run `vpnmodo setup`. For private images supply the optional
+The current standalone CLI release is `v0.1.0-rc.12`. Download `vpnmodo-darwin-arm64`
+from the [rc.12 release](https://github.com/derrickhayashi/vpn-sidecars-next/releases/tag/v0.1.0-rc.12),
+install it and run `vpnmodo setup`. Sign in with an authorized GitHub account if
+release access is restricted. For private images supply the optional
 `--registry-auth FILE` described in [installation](../README.md#installation).
 The supported environment is one Apple Silicon Mac with one Lima VM managed by
 vpnmodo. Setup prepares the controller. VPN settings remain in JSON profiles, which
@@ -19,9 +21,12 @@ automatically use the managed VM. There is no host selection, external VM setup
 or manual provisioning-file transfer.
 
 The executable includes the Lima YAML, VM installer and registry manifest. It
-provisions the existing verified `v0.1.0-rc.7+git.4696f8c7ec50` runtime images;
-CLI and runtime versions are recorded separately. This CLI change does not
-require rebuilding those images.
+uses the rc.7 controller, L2TP and application images with the corrected XAuth
+image qualified for rc.12. The embedded
+[registry manifest](../examples/lima/registry-release.json) pins all four images
+by digest; its bundle version remains rc.7. CLI and runtime identities are
+recorded separately. The [validation record](release-validation.md) identifies
+the tested XAuth correction.
 
 `SHA256SUMS-cli` covers the executable. macOS binaries are unsigned and not
 notarized; follow your team's approved software policy. No installer changes
@@ -77,7 +82,7 @@ cd /absolute/private/build/cli
 shasum -a 256 -c SHA256SUMS-cli
 ```
 
-Transfer the checksum-verified source archive to an authorized, isolated native
+Transfer the checksum-verified source archive to an isolated native
 Linux builder. Extract outside any repository; run its bundled script:
 
 ```sh
@@ -98,12 +103,10 @@ script does not install emulation or provision another VM.
 
 The output directory must not exist. Failed builds can leave partial artifacts;
 discard the failed output directory and start with a new one. Successful builds
-write `SHA256SUMS-cli` or `SHA256SUMS-linux-<arch>` last. Review diffs and run
-`scripts/check-secrets` before pushing source. Review distribution contents before
-sharing. Without `--publish`, these commands do not upload artifacts. CI remains
-disabled.
+write `SHA256SUMS-cli` or `SHA256SUMS-linux-<arch>` last. Without `--publish`,
+these commands do not upload artifacts.
 
-## Publish private GHCR images
+## Publish GHCR images
 
 On the native Linux builder, log Docker into `ghcr.io` with package write access,
 then use the existing VM build command with `--publish`:
@@ -118,13 +121,15 @@ This builds the same four images and offline bundle, then pushes
 `l2tp`, `xauth` and `application`. `registry-release.json` records the returned
 registry digests. Docker can push a single-platform manifest whose digest
 differs from a local index; use the push result, not local `RepoDigests` or
-image IDs. Keep the packages private
-and grant intended users package read access.
+image IDs. Image publication does not change package visibility. Review the
+source and built image contents before changing package access; for restricted
+packages, grant intended users read access. Making this repository public does
+not make its packages public.
 
 The CLI embeds the Lima YAML, image installer and default registry manifest.
 When selecting a new runtime release, update `examples/lima/registry-release.json`
 from the published manifest before building the standalone CLI. Provisioning
-emits a receipt consumed internally by setup. No hosted CI is used for publication.
+emits a receipt consumed internally by setup.
 
 ## Installation and upgrades
 
@@ -140,24 +145,17 @@ and credentials as an upgrade shortcut.
 ## Validation scope
 
 See the [candidate validation record](release-validation.md) for tested revisions,
-platform results and remaining release gates.
+platform results and known limitations.
 
-The agreed first-release qualification targets are macOS arm64 and Ubuntu 24.04
-Linux arm64. Intel/amd64 native testing is not a release gate. The CLI builder
-still produces amd64 cross-built artifacts; record them as unvalidated on native
-Intel hardware. A successful cross-build alone does not establish runtime
-acceptance. Record native CLI installation, verified SSH onboarding, real
-VPN/service use, controller upgrade and disposal evidence for the ARM64 targets.
+Recorded native qualification covers macOS arm64 and Ubuntu 24.04 Linux arm64.
+The CLI builder also produces amd64 cross-built artifacts, but those do not have
+native Intel runtime qualification. Legacy rollback testing is not covered.
 
-The existing packet/recovery acceptance suites remain required backend evidence.
-`--onboarding-only` in the isolated harness tests packaged production images
-without shortening their production MFA/recovery policy. It exercises real
-authentication, private service access and controller replacement; it does not
-replace the full packet/failure/rekey suite. Real ARM64 adoption/cutover has
-passed, as recorded in the validation record. Legacy rollback testing is outside
-the agreed release scope. Controller upgrade/replacement acceptance remains
-required. Keep the
-unreproduced startup observation #19 open; it is not a reproducible release blocker.
+The `--onboarding-only` subset tests packaged production images without shortening
+their MFA/recovery timeouts. It exercises authentication, private TCP/DNS, service
+access and controller replacement. It does not run the full packet/failure/rekey
+suite. See [known issues](known-issues.md) for unresolved startup and session
+observations.
 
 Inside the isolated lab, after preparing the gateway/service fixture images from
 its normal runner, the production onboarding check accepts a different controller

@@ -62,7 +62,7 @@ func TestProfileRoundTripAndBackendIsolation(t *testing.T) {
 		"unsafe name":                     strings.Replace(xauthProfile, `"name":"example"`, `"name":"../example"`, 1),
 		"unsafe host":                     strings.Replace(l2tpProfile, "vpn.example.com", "vpn.example.com;id", 1),
 		"invalid numeric host":            strings.Replace(l2tpProfile, "vpn.example.com", "999.1.1.1", 1),
-		"unknown backend":                 strings.Replace(l2tpProfile, "l2tp-ipsec", "tailscale", 1),
+		"unknown backend":                 strings.Replace(l2tpProfile, "l2tp-ipsec", "unsupported", 1),
 		"proposal command":                strings.Replace(xauthProfile, `"server":"203.0.113.10"`, `"server":"203.0.113.10","ike_proposals":["aes256;id"]`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
