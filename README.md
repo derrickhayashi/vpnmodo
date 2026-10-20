@@ -313,5 +313,7 @@ scripts/check-secrets
 ```
 
 Compose checks require Docker Compose; protocol acceptance uses the isolated
-Linux lab separately. GitHub Actions remains disabled. Customer configuration,
-credentials, logs and runtime state belong outside this reusable repository.
+Linux lab separately. GitHub Actions runs only Go checks and Secret scan.
+Release container images are built locally and published to GHCR. Customer
+configuration, credentials, logs and runtime state belong outside this reusable
+repository.

@@ -13,11 +13,13 @@ visibility is an additional safeguard, not permission to store customer data.
 - Keep the original public repository read-only. Do not push or publish there
   without an explicit request. A future public PR must use reviewed patches on
   a branch based on the original repository; never merge this private history.
-- Do not incur paid CI or provision paid test infrastructure. GitHub Actions
-  is disabled for this private repository; keep it disabled unless the user
-  explicitly authorizes re-enabling it. Run checks locally and use an existing
-  authorized Linux environment for protocol acceptance. Do not treat missing
-  hosted CI results as passing tests.
+- GitHub Actions is enabled only for Go checks and Secret scan. Keep other
+  workflows disabled unless the user authorizes them. Do not provision paid
+  test infrastructure or expand CI beyond the authorized checks.
+- Build release container images locally on an existing native Linux Docker
+  builder and publish them to GHCR. Keep protocol acceptance local on an
+  authorized Linux environment; no GitLab build pipeline is planned. Do not
+  treat missing hosted CI or protocol results as passing tests.
 - New product/CLI name: `vpnmodo`; controller executable/image/service:
   `vpnmodo-controller`. Keep existing legacy launcher commands operational.
 - Workstation and VM each belong to one user. The planned control layer uses Go

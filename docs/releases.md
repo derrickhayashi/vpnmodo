@@ -3,8 +3,10 @@
 Issue #9 supplies an offline distribution path. ARM64 candidate qualification
 passes as recorded in the [validation record](release-validation.md). These are
 private release candidates. Builds stay local by default; `vm --publish` uploads
-release images to private GHCR. The standalone CLI is distributed through a private GitHub prerelease; there is no Homebrew tap. GitHub Actions stays disabled. Build and test on the
-workstation and authorized local VM.
+release images to private GHCR. The standalone CLI is distributed through a
+private GitHub prerelease; there is no Homebrew tap. GitHub Actions runs only Go
+checks and Secret scan. Container release builds, publishing and protocol
+acceptance stay local; no GitLab build pipeline is planned.
 
 ## Single-file CLI download
 
