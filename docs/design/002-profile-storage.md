@@ -1,20 +1,19 @@
 # Managed profile creation and credential storage
 
-Issue #4 adds profile management to the controller/SSH skeleton. VPN connection
-operations remain disabled. Creating a profile validates and commits its settings
+Creating a managed profile validates and commits its settings
 and credentials; it does not log in to a gateway, create VPN containers or adopt
 an existing deployment.
 
 ## Workstation workflow
 
-Build and register/setup the VM as described in the
-[controller guide](../../containers/controller/README.md), then create an explicit
-combined JSON file using the [README examples](../../README.md#vpn-configuration):
+Run `vpnmodo setup` as described in
+[installation](../../README.md#installation), then create a JSON profile using
+the [README examples](../../README.md#vpn-configuration):
 
 ```sh
-/tmp/vpnmodo profile create example --file /private/path/profile.json
-/tmp/vpnmodo profile list
-/tmp/vpnmodo profile inspect example
+vpnmodo profile create example --file /private/path/profile.json
+vpnmodo profile list
+vpnmodo profile inspect example
 ```
 
 The CLI input file includes connection settings plus `credentials.username`,
@@ -26,9 +25,10 @@ protected stdin/file-descriptor input remains available for automation. Never
 put secrets in argv, environment variables, shell history or diagnostics.
 
 The VM profile name comes from the profile file. The positional name is a local
-alias. Workstation references contain only alias, registered host name and VM
-profile name, in a protected sidecar file at `<host-registry>.profiles.json`.
-`--config FILE` before `profile` selects the host registry as with host commands.
+alias. Workstation references contain only that alias and the managed VM/profile
+identity; credentials remain on the VM. All profiles use the managed Lima
+environment. `--config FILE` selects an alternate workstation registry file; it
+does not select or provision another VM.
 
 If SSH is lost during a mutation, its result may be unknown. Inspect/list the VM
 before retrying; duplicate creation never overwrites a profile. If the VM commit
@@ -36,8 +36,8 @@ succeeds but local registration fails, repair local storage then explicitly
 register the already-created VM profile:
 
 ```sh
-/tmp/vpnmodo profile list
-/tmp/vpnmodo profile register example --profile example-l2tp
+vpnmodo profile list
+vpnmodo profile register example --profile example-l2tp
 ```
 
 Registration verifies the VM profile through RPC; it never fetches credentials.
@@ -52,9 +52,9 @@ nonzero exit status.
 Use the current revision returned by inspection, for example:
 
 ```sh
-/tmp/vpnmodo profile update example --file /private/path/profile.json --revision 1
-/tmp/vpnmodo profile rotate-credentials example --file /private/path/profile.json --revision 2
-/tmp/vpnmodo profile delete example --revision 3
+vpnmodo profile update example --file /private/path/profile.json --revision 1
+vpnmodo profile rotate-credentials example --file /private/path/profile.json --revision 2
+vpnmodo profile delete example --revision 3
 ```
 
 Each successful update/rotation increments the revision. Missing/stale revisions
@@ -68,9 +68,9 @@ Before a mutation, the controller queries only containers carrying all managed
 profile/project labels. Running, paused, restarting or unrecognized states block
 the change. Docker errors or ambiguous ownership also block it. Stopped/dead/new
 containers are inactive; existing legacy VPNs are excluded by ownership filters.
-No Docker resource is modified by these checks. Future lifecycle workers must
-coordinate through the profile transaction lock before starting/stopping sessions;
-Docker inspection alone cannot serialize an independent actor with socket access.
+No Docker resource is modified by these checks. Profile mutations and lifecycle
+operations share a transaction lock. VM administrators with direct Docker socket
+access can still make independent changes outside that coordination.
 
 ## VM transaction boundary
 

@@ -21,7 +21,7 @@ The supported path is **Apple Silicon Mac → vpnmodo-managed Lima VM**. Setup
 creates Ubuntu, Docker and the controller. Docker Desktop, Go and
 Ansible are not needed on the Mac.
 
-This is a private release candidate. See the [validation record](docs/release-validation.md)
+This is a prerelease. See the [validation record](docs/release-validation.md)
 for qualification and the unresolved intermittent startup/session observations
 [#19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19) and
 [#23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
@@ -32,8 +32,10 @@ for qualification and the unresolved intermittent startup/session observations
 ## Installation
 
 On an **Apple Silicon Mac**, download one file:
-[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.11/vpnmodo-darwin-arm64).
-Sign in to GitHub to download this private release.
+[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpn-sidecars-next/releases/download/v0.1.0-rc.12/vpnmodo-darwin-arm64).
+If the repository or release has restricted access, sign in to GitHub with an
+account that has access. Repository visibility and container package access are
+managed separately.
 
 Install it:
 
@@ -282,38 +284,18 @@ starting another login: the VM operation may still be running. Use the
 the [MFA guide](docs/design/006-managed-xauth.md) to submit a code to its existing
 challenge. An XAuth post-MFA exit is a failed attempt, not proof the code was
 wrong; known unresolved lifecycle failures are tracked in
-[issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
+[known issues guide](docs/known-issues.md#xauth-session-state-loss).
 
-## Existing launchers, architecture and development
+## More documentation
 
-Backend and legacy implementation references include the [legacy deployment guide](docs/deployment.md),
-[launcher profiles](docs/profiles.md),
-[watchdog](watchdog/README.md) and [legacy service forwards](docs/remote-services.md).
-[Tailscale](containers/tailscale/README.md) is a standalone Compose backend;
-it is not a managed `vpnmodo` profile type.
+- [Onboarding and profile maintenance](docs/onboarding.md): update settings, rotate credentials and remove profiles.
+- [Known issues and regressions](docs/known-issues.md): symptoms, affected versions and recovery steps.
+- [VPN and SSH proxy internals](docs/internals.md): how the VM, controller and application container carry traffic.
+- [Release artifacts](docs/releases.md): download, build and upgrade instructions.
+- [Release validation](docs/release-validation.md): tested versions, platforms and limitations.
+- [Local development](docs/development.md): build from source and run tests.
 
-For contributors, see [managed VPN and proxy internals](docs/internals.md),
-[development boundaries](docs/development.md),
-[implementation requirements](docs/implementation-requirements.md),
-[controller internals](containers/controller/README.md),
-[profile storage](docs/design/002-profile-storage.md),
-[recovery policy](docs/design/004-recovery-policy.md),
-[release builds/upgrades](docs/releases.md) and the
-[isolated Linux lab](tests/local-lab/README.md). The bundled
-[ensure-vpn skill](.agents/skills/ensure-vpn/SKILL.md) covers recovery of existing
-consumer deployments.
-
-Run local checks from a source checkout with Go 1.27 and `uv` installed:
-
-```sh
-go test -race ./...
-go vet ./...
-uv run --no-project --with pyyaml --with jinja2 --with ansible-core python -m unittest discover -s tests -v
-scripts/check-secrets
-```
-
-Compose checks require Docker Compose; protocol acceptance uses the isolated
-Linux lab separately. GitHub Actions runs only Go checks and Secret scan.
-Release container images are built locally and published to GHCR. Customer
-configuration, credentials, logs and runtime state belong outside this reusable
-repository.
+The older standalone launchers are documented in the
+[legacy deployment guide](docs/deployment.md), [launcher profiles](docs/profiles.md),
+[watchdog guide](watchdog/README.md) and
+[legacy service forwarding guide](docs/remote-services.md).

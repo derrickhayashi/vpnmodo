@@ -6,23 +6,15 @@ concept and standalone legacy launcher architecture.
 
 ## Problem statement
 
-Working across customer projects requires access to different private networks.
-In our current workflow, we can usually connect to only one customer VPN at a
-time, so moving between projects means disconnecting one VPN and connecting
-another. This interrupts ongoing work and adds repeated connection and
-authentication steps.
+Work across multiple private networks can require switching between VPN clients.
+Each switch can interrupt existing connections and repeat authentication. VPN
+clients on the same workstation can also compete for routes and DNS settings.
 
-Customer VPN clients also often interfere with the corporate VPN on the same
-workstation. Competing routes and DNS settings can make customer access and
-corporate access difficult to maintain together.
-
-The goal is to keep customer VPN connections separate from the workstation's
-corporate VPN and make each project's private systems available through an
-explicit access path. Each customer profile runs its VPN in a separate container
-network namespace on the Linux host. Users select the appropriate SSH alias or
-service forward for that customer. Access still depends on the workstation
-being able to reach the Linux host and on each customer's authentication and
-network policies.
+The sidecar keeps each VPN in a separate container network namespace on a Linux
+host. Users select an SSH alias or service forward to reach a particular
+network. This keeps VPN routing separate from the workstation's routing while
+providing an explicit access path. Access still requires SSH reachability to the
+Linux host and compliance with each network's authentication and access policies.
 
 ## Overview
 
@@ -53,7 +45,7 @@ The two profile-managed backends correspond to these familiar client setups:
 | Backend | Familiar client setup | Authentication in this project |
 | --- | --- | --- |
 | **L2TP/IPsec** | The same VPN protocol used by the macOS built-in **L2TP over IPsec** client. | Shared secret (PSK), username and password. |
-| **IPsec/XAuth with MFA** | A **Fortinet FortiClient-style IKEv1 IPsec/XAuth** connection for the supported customer setup. | PSK and username/password, plus an emailed MFA code entered through the hidden terminal prompt for a new login. |
+| **IPsec/XAuth with MFA** | A **Fortinet FortiClient-style IKEv1 IPsec/XAuth** connection using the supported emailed-code MFA flow. | PSK and username/password, plus an emailed MFA code entered through the hidden terminal prompt for a new login. |
 
 These are protocol and authentication mappings. The sidecar runs strongSwan
 rather than the macOS or FortiClient applications. Gateway settings, IKE/ESP
@@ -183,12 +175,10 @@ the Linux Docker host and omits the workstation-to-host SSH delegation.
 | --- | --- | --- |
 | L2TP/IPsec | strongSwan authenticates IPsec with the PSK; L2TP carries PPP, which authenticates with username/password. | Shared watchdog performs automatic recovery. The backend includes an IPv4 kill switch and disables IPv6 in the shared namespace. |
 | IPsec/XAuth | strongSwan uses IKEv1 PSK/XAuth and an emailed MFA code for a new login. | Watchdog reports failures; fresh MFA requires interactive reconnection. This backend has no post-disconnection kill switch. |
-| Tailscale | Official Tailscale image enrolls through an auth key or browser login; application shares its namespace. | Separate direct-Compose workflow with persistent enrollment and MagicDNS. The profile launcher, Ansible role and shared watchdog support the IPsec backends. |
 
-See the backend guides for [L2TP/IPsec](../containers/l2tp-ipsec/README.md),
-[IPsec/XAuth](../containers/ipsec-xauth/README.md) and
-[Tailscale](../containers/tailscale/README.md). The rest of this document describes
-the profile-managed IPsec workflow.
+See the backend guides for [L2TP/IPsec](../containers/l2tp-ipsec/README.md) and
+[IPsec/XAuth](../containers/ipsec-xauth/README.md). The rest of this document
+describes the profile-managed IPsec workflow.
 
 ## 4. How a user reaches a private machine
 

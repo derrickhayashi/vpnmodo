@@ -1,8 +1,8 @@
 # Controller container and workstation host commands
 
-This stage supplies runnable `vpnmodo` and `vpnmodo-controller` binaries, verified
-SSH transport, schema discovery and controller/Docker readiness. VPN profile
-management is now available through the [profile guide](../../docs/design/002-profile-storage.md).
+The `vpnmodo` CLI manages a containerized `vpnmodo-controller` over verified SSH.
+The controller provides profile management, connection operations, schema
+discovery and Docker readiness checks. See the [profile guide](../../docs/design/002-profile-storage.md).
 Persistent operation coordination is described in the
 [operation guide](../../docs/design/003-persistent-operations.md). The
 [managed L2TP adapter](../../docs/design/005-managed-l2tp.md) now supplies real
@@ -96,8 +96,7 @@ input/error handling, bridge EOF, service lifetime, registry updates and secret
 handling. Bootstrap unit tests fake Docker and never touch live resources.
 
 The [local Ubuntu lab](../../tests/local-lab/README.md) uses an existing VM and a
-disposable nested Docker daemon. The Controller SSH acceptance workflow remains
-disabled in GitHub Actions. The lab generates
+disposable nested Docker daemon. It generates
 ephemeral SSH keys outside the checkout, pins its own server key, rejects unknown
 keys, creates the controller through actual SSH/Compose, checks private mounts and
 permissions, repairs a stopped controller, recreates it with state retained, and

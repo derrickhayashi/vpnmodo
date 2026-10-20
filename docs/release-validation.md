@@ -1,15 +1,20 @@
 # ARM64 release validation
 
+This record lists completed checks by release and platform. Results apply to
+the recorded revisions. For symptoms, affected versions and recovery steps,
+see [known issues and regressions](known-issues.md).
+
 ## XAuth delayed-MFA handshake timeout — 2026-10-20
 
-The managed XAuth entrypoint now sets `charon-cmd.half_open_timeout = 300`,
-matching the existing legacy launcher. Its omission left the aggressive-mode
-IKE handshake on strongSwan's 30-second default, shorter than the controller's
-90-second MFA challenge. The controller deadline is unchanged.
+Qualified CLI: `v0.1.0-rc.12+git.68b20091f975`.
 
-The focused real-protocol regression uses the synthetic XAuth/RADIUS gateway
-on the existing managed VM, without its controller, profiles or credentials.
-The gateway has the same 300-second responder timeout in every trial.
+The managed XAuth entrypoint sets `charon-cmd.half_open_timeout = 300`, matching
+the legacy launcher. Its omission left the aggressive-mode IKE handshake on
+strongSwan's 30-second default, shorter than the controller's 90-second MFA
+challenge. The controller deadline is unchanged.
+
+The focused real-protocol regression uses the synthetic XAuth/RADIUS gateway.
+The responder timeout remains 300 seconds in every trial.
 
 | Trial | Result |
 | --- | --- |
@@ -19,181 +24,82 @@ The gateway has the same 300-second responder timeout in every trial.
 | Rebuilt fixed image, same 40-second delay | Tunnel establishment, enforcement checks and TCP echo pass |
 
 The one-setting control confirms the client handshake timer causes this delayed
-MFA failure. A diagnostic 27 here does not mean the supplied code was incorrect.
-The release image's file contents and permissions match the tested rebuild;
-only build timestamps/version labels differ. Synthetic containers and network
-were removed, and existing containers retained their running/start states.
-Existing XAuth reason tests and managed runtime/lifecycle Go tests also pass.
-The regression is `tests/xauth_handshake_timeout.py`; it accepts explicit old
-and fixed images plus the corrected entrypoint and requires a delay above 30s.
-This does not requalify unrelated protocol/lifecycle scenarios.
+MFA failure. Diagnostic 27 alone does not mean the supplied code was incorrect.
+The released image's file contents and permissions match the tested rebuild;
+only build timestamps/version labels differ. Existing XAuth reason tests and
+managed runtime/lifecycle Go tests also pass.
 
-Installed standalone CLI: `v0.1.0-rc.12+git.68b20091f975`. The private ARM64
-XAuth image is pinned by digest
+The regression is [`tests/xauth_handshake_timeout.py`](../tests/xauth_handshake_timeout.py).
+It accepts explicit old and fixed images plus the corrected entrypoint and
+requires a delay above 30 seconds. This focused check does not requalify unrelated
+protocol or lifecycle scenarios.
+
+The ARM64 XAuth image is pinned to
 `sha256:f8a578da17a5037d5a699fc40a79a3b1a97e0243e381288f197511419ecd796f`.
-Controller, L2TP and application image IDs remain unchanged. The same VM and
-persistent profile storage were retained. After updating Lima's saved manifest,
-a normal VM restart preserved the new pin; the receipt and running controller
-both selected the corrected image.
+Controller, L2TP and application images retain the rc.7 identities. See the
+[registry manifest](../examples/lima/registry-release.json); its bundle version
+remains rc.7. VM restart checks confirm that the saved manifest and controller
+select the corrected image. Native Mac archive/standalone installation smoke
+checks pass. Separate functional acceptance confirmed structured MFA completion,
+VPN readiness and authenticated destination SSH access.
 
-One explicitly authorized real connection through `connection ensure`, operation
-status and protected-stdin `submit-mfa` completed successfully. Read-only status
-confirmed `vpn_ready=true`, and authenticated SSH identity checks passed for both
-configured verification targets. The working VPN was left running. Native Mac
-archive/standalone installation smoke checks pass for this CLI release.
+## CLI and managed VM qualification — 2026-10-20
 
-## Fresh managed VM walkthrough — 2026-10-20
+| Release and source | Completed checks | Limits at that release |
+| --- | --- | --- |
+| rc.11, `423ebd07a24d` | Optional separate registry-auth input, anonymous provisioner/retry tests, saved-auth reuse/replacement, strict credential input, native ARM64 artifact installation and full Go race/vet checks | Anonymous pulls were tested locally through provisioner fixtures; no real anonymous registry pull was performed. Runtime images remained rc.7. |
+| rc.10, `7b01d6ffff00` | One-file VPN settings/credentials for both backends; create/update/rotation RPC tests; owner-only files and secret-free output; native ARM64 artifact checks; 77 Python tests and Go race/vet checks | Historical same-file registry input was replaced by rc.11's separate `--registry-auth`. This input-only release did not rerun protocol acceptance. |
+| rc.9, `ed242079fbd6` | Single managed `vpn-vm`, JSON profile creation, controller readiness, native artifact/setup checks, 77 Python tests and Go race/vet checks | A connection attempt exited after MFA with diagnostic 27; private access was not verified in that check. This was not an end-to-end pass. |
+| rc.8, `43e5e02d22fd` | Fresh Lima setup, Docker/kernel preparation, controller readiness, cold restart/retry, missing-image and registry-auth recovery, native ARM64 artifacts, 83 Python tests and Go race/vet checks | Lima was already installed; automatic Homebrew installation and native Intel execution were not exercised. VPN authentication was not repeated for this CLI change. |
 
-Installed CLI: `v0.1.0-rc.11+git.423ebd07a24d`; unchanged rc.7 runtime images.
-The single managed VM was deleted and recreated with the released setup command
-and a separate private registry-auth file. The VPN input and verified credential
-backup remained protected on the Mac throughout the reset.
+A fresh rc.11 managed-VM walkthrough also verified VM creation and noninteractive
+JSON profile import. Authentication results depended on the interaction path;
+the delayed-MFA check above subsequently reproduced and corrected the handshake
+timeout. The earlier failures remain part of the qualification record and do not
+establish that every diagnostic 27 has the same cause.
 
-| Check | Result |
-| --- | --- |
-| Fresh VM setup | Released CLI creates the managed VM and returns after controller readiness |
-| VPN JSON import | Profile creation with closed stdin succeeds using settings and credentials from one VPN file; no credential prompts |
-| Agent-driven login | Reaches MFA, then exits before tunnel establishment with diagnostic 27; controller reports backend unavailable |
-| Direct-terminal login | User runs the same installed CLI against the same VM/profile and completes MFA successfully |
-| Private access | Subsequent read-only checks confirm healthy VPN, private TCP endpoint and application; authenticated SSH identity checks pass for both configured verification targets |
+Registry input validation rejects malformed or duplicate fields and exposed
+file permissions without disclosing values. Setup keeps registry authentication
+separate from VPN configuration. Earlier setup qualification confirmed that root
+Docker auth stayed mode 0600 and that the supplied token and its base64 encoding
+were absent from VM logs. Secret scans passed for these candidates.
 
-At that checkpoint, the working connection was reused for verification and left
-running. A later explicitly requested structured-MFA comparison disconnected it
-and reproduced the failure despite accepting the code before challenge expiry.
-The delayed-MFA regression above identifies the missing client handshake timeout.
-The fresh walkthrough demonstrates functional access through the Lima setup; it
-does not resolve unrelated intermittent lifecycle observations.
-
-## Optional separate registry auth — 2026-10-20
-
-CLI identity: `v0.1.0-rc.11+git.423ebd07a24d`.
-
-CLI rc.11 keeps setup credentials separate from VPN configuration. Setup accepts
-optional `--registry-auth FILE` with GitHub `username` and `token`. With no
-supplied or saved credentials it prepares empty Docker auth for anonymous pulls;
-retries accept this anonymous configuration. Saved private access can be reused,
-and a supplied auth file replaces it. No credential prompts are added.
-
-Each VPN JSON contains only connection settings and its username/password/PSK
-credentials, using the same format for both backends. Setup still prepares only
-the VM/controller; profile creation reads its own VPN file afterwards.
-
-| Check | Result |
-| --- | --- |
-| Optional auth | Local tests pass for anonymous provisioning/retry, separate private auth input, cached reuse and explicit replacement |
-| Native release artifact | ARM64 standalone/archive hashes match; version/help, installation/replacement and corruption/symlink refusal checks pass |
-| Secret handling | Registry input rejects malformed/duplicate fields and exposed file permissions without disclosing values; both VPN input/RPC tests still pass |
-| Local checks | Full Go race tests, vet, 26 documentation JSON/shell blocks and secret scans pass |
-
-These are local input/provisioner tests. The release images remain private;
-no real anonymous pull, VM reset or new VPN authentication was performed. The
-previous post-MFA failure remains unresolved. Runtime image digests are unchanged.
-
-## One-file configuration — 2026-10-20
-
-CLI identity: `v0.1.0-rc.10+git.7b01d6ffff00`.
-
-CLI rc.10 reads VPN settings and `credentials.username`, `credentials.password`
-and `credentials.psk` from the same owner-only JSON file for both L2TP/IPsec and
-XAuth. `setup --file` can read private GHCR `registry.username` and `registry.token`
-from that file. Missing input fails without credential prompts. Settings remain
-separate from credentials in the controller RPC and storage; MFA remains an
-interactive connection step only for XAuth. Runtime image digests are unchanged.
-
-| Check | Result |
-| --- | --- |
-| Both backend inputs | Local fake-SSH RPC tests pass for create, settings update and credential rotation from one JSON file without interactive input |
-| Secret separation | RPC profile validation, secret-free output/local references, duplicate/invalid input and owner-only file checks pass |
-| Registry input | Noninteractive same-file registry auth and missing-auth errors pass |
-| Native release artifact | Standalone ARM64 executable matches archive metadata/hash; installation, replacement, version/help and corrupt/symlink refusal pass |
-| Local checks | Full Go race tests, vet, 77 Python tests, changed Python syntax, 21 documentation JSON/shell blocks and secret scans pass |
-
-The Python suite used the existing project virtual environment; the first run
-with system Python lacked its Ansible/Jinja dependencies. No VM reset, new real
-VPN authentication, protocol acceptance run or MFA email was performed for this
-input-only change. The failed real connection below remains unresolved.
-
-## Single managed VM flow — 2026-10-20
-
-CLI identity: `v0.1.0-rc.9+git.ed242079fbd6`.
-
-The rc.9 CLI removes alternate VM registration and selection. It uses
-only the managed `vpn-vm` and keeps VPN configuration in JSON files. The
-controller and image digests remain the published rc.7 runtime.
-
-| Check | Result |
-| --- | --- |
-| Default VM setup | `vpnmodo setup` succeeds on the workstation's managed Lima VM and reports controller readiness |
-| JSON profile creation | Creating a profile from a private JSON file succeeds on that VM; stored credentials are present |
-| Real VPN connection | Reaches the MFA prompt; after the fresh code is submitted, authentication fails and the client exits with diagnostic 27 |
-| Private access | Not verified because the VPN connection failed |
-| Release artifact | Standalone ARM64 binary matches the archive, passes native installation checks and completes setup on the managed VM |
-| Local checks | Full Go race tests, vet, 77 Python tests and secret scans pass |
-
-The failed connection is not an end-to-end pass. Retained diagnostics do not
-identify the underlying peer/client reason. The older qualification below
-remains historical evidence, not proof that this managed-VM connection works.
-No automatic authentication retry was performed.
-
-## Single-file setup — 2026-10-20
-
-CLI source: `43e5e02d22fdb428e85aa4da28cc32658df71ec3`.
-CLI identity: `v0.1.0-rc.8+git.43e5e02d22fd`.
-Embedded runtime: `v0.1.0-rc.7+git.4696f8c7ec50`, using the previously published
-private GHCR image digests. This workstation-only release does not rebuild the
-controller images. Subsequent documentation commits record these results.
-
-| Check | Result |
-| --- | --- |
-| Fresh local setup | One CLI executable creates an isolated Lima Ubuntu ARM64 VM, provisions Docker/kernel support, pulls private images, registers SSH and starts the controller |
-| Readiness | Setup returns only after controller storage, Docker and runtime report ready; version matches the installed release |
-| Restart/retry | Cold VM restart and repeated setup preserve the controller container ID and a single host registration |
-| Missing image/auth refresh | Removed the application image and guest registry auth; repeated setup refreshes auth from the protected local file and pulls the private image |
-| Credential handling | Root Docker auth remains mode 0600; supplied token and its base64 encoding are absent from Lima VM logs |
-| Exact release artifacts | Native ARM64 standalone binary matches archive metadata/hash, reports the recorded version, exposes setup help and completes setup against the test VM; archive installation/replacement/corruption checks pass |
-| Local checks | Full Go race tests, vet, 83 Python tests, focused setup recovery tests, documentation links/shell syntax and secret scans pass |
-
-The private image credentials were supplied through a protected test file;
-hidden prompting uses the existing terminal-input implementation. Lima was
-already available in the isolated test; automatic Homebrew installation was not
-exercised. Actual VPN authentication and private destination access were not
-repeated for this CLI change. Intel native qualification remains outside scope.
-All VMs used local resources; GitHub Actions remains disabled.
+For current commands, follow [installation](../README.md#installation) and
+[profile maintenance](onboarding.md), rather than historical CLI interfaces in
+older releases.
 
 ## Earlier rc.6 protocol qualification — 2026-10-19
 
-
 Validated source: `990dc2fe7caec4e1b68cf2b54788b996937e66c5`.
 Candidate identity: `v0.1.0-rc.6+git.990dc2fe7cae`.
-Subsequent documentation commits record these results without changing runtime code.
+Subsequent documentation commits record these results without changing runtime
+code. The complete isolated protocol/recovery/packet suite and a fresh ARM64
+release bundle built from production Dockerfiles passed. This qualification did
+not publish registry images or release artifacts.
 
-Both agreed validation gates pass: the complete isolated protocol/recovery/packet
-suite, and a fresh ARM64 release bundle built from the production Dockerfiles.
-That rc.6 qualification run kept the candidate private and did not publish a
-registry image, GitHub release or public artifact. GitHub Actions remains disabled; all work used the existing Mac and VM.
+### Qualified scope and results
 
-## Qualified scope and results
-
-Qualification covers macOS arm64 and Ubuntu 24.04 arm64. Intel/amd64 native testing
-and legacy rollback testing are outside the agreed release scope. Cross-built
-amd64 CLI artifacts have checksums but no native runtime qualification.
+Qualification covers macOS arm64 and Ubuntu 24.04 arm64. Intel/amd64 native
+testing and legacy rollback testing are outside this release qualification scope.
+Cross-built amd64 CLI artifacts have checksums but no native runtime
+qualification.
 
 | Check | Result |
 | --- | --- |
-| Native Mac ARM64 CLI | Fresh archive checksums, install, version/help, explicit replacement, corrupt/symlink refusal and temporary-prefix cleanup pass |
-| Hidden terminal input | Native credential/MFA waiting, echo suppression, cancellation and terminal restoration pass |
+| Native Mac ARM64 CLI | Archive checksums, install, version/help, explicit replacement, corrupt/symlink refusal and temporary-prefix cleanup pass |
+| Hidden terminal input | Credential/MFA waiting, echo suppression, cancellation and terminal restoration pass |
 | Full isolated Linux suite | Controller/profile/operation, L2TP, XAuth and PMTU suites complete with exit 0 |
 | XAuth authenticated CHILD rekey | Replacement CHILD_SA confirmed; 256 KiB each way passes before/after rekey with no route MTU/MSS override and zero observed plaintext |
-| XAuth controller replacement | Same VPN retained; 256 KiB each way and private service access pass before explicit disconnect |
-| Fresh container image bundle | Full production L2TP, XAuth and controller Dockerfile builds, pinned backend/application IDs, source inventory and SHA-256 verification pass |
-| Classic Docker image store | Docker 29.1.3, vfs, ARM64: schema-2 bundle import and immutable-ID receipt pass; existing development image tags remain unchanged |
+| XAuth controller replacement | VPN retained; 256 KiB each way and private service access pass before explicit disconnect |
+| Fresh container image bundle | Production L2TP, XAuth and controller Dockerfile builds, pinned image IDs, source inventory and SHA-256 verification pass |
+| Classic Docker image store | Docker 29.1.3, vfs, ARM64: schema-2 bundle import and immutable-ID receipt pass; development image tags remain unchanged |
 | Containerd image store | Docker 29.1.3, ARM64: checksum-verified import and repeat import pass; receipts verify all four images/version and report activation false |
 | Packaged onboarding/upgrade | Production-policy L2TP and XAuth authentication, private TCP/DNS, two-hop service access, credential disposal and controller upgrade pass; final exit 0 |
 | Local checks | Go race tests, vet and all 84 Python tests pass |
 
 The complete suite includes endpoint outage, namespace repair, automatic L2TP
 recovery and failed recovery, graceful stop and three fresh reconnects. XAuth
-covers real aggressive PSK/XAUTH_PASSCODE, a 95-second quiet session, expired,
+covers aggressive PSK/XAUTH_PASSCODE, a 95-second quiet session, expired,
 incorrect and repeated MFA, controller crash, DNS/IPv6 bypass refusal and SO_MARK
 forgery refusal. Captures require zero plaintext when SAs/policies disappear
 while the client and controller are suspended; reachable positive controls prove
@@ -208,47 +114,38 @@ probes remain blocked; all five scenarios pass.
 The bundle onboarding subset uses production operation/recovery settings. Its
 upgrade rehearsal changes the controller binary identity and backend/application
 image IDs while preserving the established VPN and service access. Full failure
-and packet acceptance use the separate test controller with shortened lab-only
-timings; the two suites provide complementary evidence.
+and packet acceptance use a test controller with shortened lab-only timings;
+the suites provide complementary evidence.
 
-## Adoption and known observations
+The first extended-suite attempt checked a payload after deliberate service
+teardown. Moving that probe before teardown corrected the fixture ordering; the
+complete committed-source rerun exits 0.
 
-The earlier native ARM64 functional trial completed real adoption/cutover:
-existing settings became a managed profile, credentials remained on the VM, the
-legacy session was stopped and retained, and the existing workstation wrapper
-and SSH aliases selected the managed application. Fresh MFA, authenticated SSH
-and 256 KiB uploads/downloads passed on both configured targets with interface
-MTU 1500 and no route MTU/MSS override. That trial used reviewed changes layered
-on verified base images; the newly validated bundle above is a fresh full build.
-Repeating real adoption/cutover or rehearsing legacy rollback is not a release gate.
+## Known limitations
 
-The intermittent post-MFA client exit (fixed diagnostic 27) and disappearance of
-established kernel IPsec state still have unconfirmed causes and are tracked in
-[issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
-These successes do not establish long-term stability or resolve that follow-up.
-The earlier unconfirmed synthetic L2TP startup observation remains tracked in
-[issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
+The delayed-MFA timeout above explains a reproducible cause of diagnostic 27.
+Other post-MFA exits and disappearance of established kernel IPsec state are
+tracked in [issue #23](https://github.com/derrickhayashi/vpn-sidecars-next/issues/23).
+These checks do not establish long-term session stability or resolve unrelated
+lifecycle observations.
 
-The first attempt at the extended full suite reached deliberate service teardown
-before a new payload probe, so the probe found no VPN. This was a fixture ordering
-mistake: the service test had explicitly disconnected it. Moving the probe before
-teardown corrected the test; the complete committed-source rerun exits 0.
+An intermittent synthetic L2TP startup exit during manual replacement remains
+tracked in [issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
+Its original cause was not confirmed by later successful full-suite runs.
+
+The published protocol results use synthetic fixtures and do not
+certify every gateway, MFA method or deployment configuration.
 
 ## Import isolation and cleanup
 
-Both Docker image-store imports verify immutable IDs and leave activation false.
-Every pre-existing named image tag is preserved. Immediate before/after snapshots
-around repeated containerd import show unchanged container IDs, running/stopped
-states and start times. The existing managed XAuth VPN/controller retain their
-identities and start times throughout the run.
+Both image-store imports verify immutable IDs and leave activation false. The
+import checks preserve pre-existing named image tags; immediate before/after
+containerd import snapshots show unchanged container identities, running/stopped
+states and start times. These bounded checks do not assert that unrelated
+resources were unchanged over the entire qualification window.
 
-An independent watchdog-managed legacy VPN was recreated during the longer test
-window, before the image import. Lifecycle timestamps distinguish that event
-from import; the whole-run snapshot is not claimed to show every unrelated
-container unchanged. No unrelated configuration or VPN logs were read.
-
-After both suites pass, the nested daemon has no remaining acceptance containers.
-The exact outer lab and VM staging directory are removed. Verified candidate
-archives, receipts and raw synthetic evidence remain privately outside source.
-Customer settings, credentials, transcripts and packet metadata are excluded
-from this repository and issue artifacts.
+After the suites pass, the nested daemon has no remaining acceptance containers;
+the outer lab and staging directory are removed. Candidate archives, receipts
+and raw synthetic evidence are kept outside source. Customer settings,
+credentials, transcripts and packet metadata are excluded from source and issue
+artifacts.

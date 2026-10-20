@@ -180,14 +180,12 @@ repair a host kernel crash. The role checks IPsec/XFRM support, loads PPP module
 and verifies `/dev/ppp` for L2TP, and can install missing module packages for the
 **running** kernel. It does not upgrade or select a kernel or reboot the VM.
 
-The L2TP crash signature on `6.8.0-146-generic` matches the tracked Ubuntu
-regression [LP 2169477](https://bugs.launchpad.net/bugs/2169477), with related
-reports in [LP 2169269](https://bugs.launchpad.net/bugs/2169269). Booting the
-previously installed `6.8.0-142-generic` restored service in the investigated
-ARM64 VM and passed initial checks. See the [kernel regression note](kernel-regression.md)
-for evidence, workaround limits and the dated upstream status. The role warns
-for the affected release by default; this does not implicate every 6.8 kernel
-or establish an XAuth reproduction.
+Public L2TP crash reports for `6.8.0-146-generic` are tracked in
+[LP 2169477](https://bugs.launchpad.net/bugs/2169477) and
+[LP 2169269](https://bugs.launchpad.net/bugs/2169269). The role warns for this
+release by default. Follow the [kernel regression guide](kernel-regression.md)
+for diagnosis, kernel selection and maintenance checks. The reports do not
+implicate every 6.8 kernel or establish an XAuth reproduction.
 
 Consumer policy can enforce approved or blocked releases in its settings:
 

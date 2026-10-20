@@ -1,7 +1,7 @@
 # Workstation service access and diagnostics
 
-Issue #8 adds named localhost forwards and composed `up`/`down` commands. The VM
-still owns VPN profiles and credentials. The workstation owns service names,
+Named localhost forwards make selected services available through `up`/`down`
+commands. The VM owns VPN profiles and credentials. The workstation owns service names,
 local ports, private destination SSH aliases and destination-relative endpoints.
 Existing `scripts/vpn-services` mappings are not imported or rewritten.
 

@@ -1,10 +1,10 @@
 # Isolated local VPN lab
 
-Run acceptance on an existing Ubuntu 24.04 VM instead of GitHub Actions. The
+Run the acceptance suite on an Ubuntu 24.04 VM. The
 outer test container has its own Docker daemon, network namespace and storage.
 It receives no VM Docker socket, host network, customer profiles or credentials.
 It is privileged to run nested containers and IPsec/PPP, so use trusted committed
-source on an authorized VM. This isolates Docker resources; it is not a security
+source on a VM you administer. This isolates Docker resources; it is not a security
 boundary against hostile code and still shares the VM kernel and resources.
 
 The workstation needs the project Go toolchain, Python 3.9+ and Git. The VM needs
@@ -126,60 +126,19 @@ Production images and logs retain their existing behavior.
 The packaged production-image onboarding subset and compatible controller
 upgrade rehearsal are described in the [release guide](../../docs/releases.md).
 Its [validation record](../../docs/release-validation.md) distinguishes tested
-architectures from cross-builds and the remaining adoption gate. The full default
+architectures from cross-builds and known limitations. The full default
 backend suite is unchanged.
 
-## Current validation
+## Results and regressions
 
-The complete production controller Dockerfile also builds successfully on the
-local ARM64 VM. Go race tests and vet pass; the CLI cross-builds for macOS/Linux
-arm64/amd64 and the controller for Linux arm64/amd64.
+The [release validation record](../../docs/release-validation.md) lists tested
+revisions, platforms, packet observations and remaining limitations. The
+[known issues guide](../../docs/known-issues.md) describes unresolved failures
+and user recovery steps, including intermittent L2TP replacement startup and
+XAuth session state loss.
 
-The default full runner completes with exit 0 at revision `990dc2fe7cae`,
-including real L2TP/XAuth service access, both SSH hops, port-conflict/partial
-results, missing VM/destination Python diagnosis, strict destination key/auth
-refusal, master crash recovery and controller-preserving forwarding. Composed
-XAuth JSON `up` handles a fresh real challenge through separate code submission.
-The current XAuth checks also require 256 KiB each way without route MTU/MSS
-overrides after fresh authentication, authenticated CHILD replacement and
-controller recreation. The payload probe runs before service teardown explicitly
-disconnects the VPN. Fresh full-production bundle build/load and packaged
-onboarding/upgrade acceptance also pass; see the validation record above.
-
-A native macOS arm64 workstation smoke check also passes verified SSH forwarding,
-real private HTTP traffic, live doctor, owned teardown and explicit VPN reconnect
-with a changed application ID. The Linux fixture's own forwards then reconnect
-and survive controller replacement. All synthetic test keys/state stay outside
-the checkout and are removed after teardown.
-
-One initial cold-lab manual L2TP replacement exited during startup while the
-controller was paused, before service acceptance. Later full runs at `1b05777`
-and `6c5181a` pass with unchanged startup/recovery/stop budgets. Its cause remains
-unconfirmed and is tracked in [issue #19](https://github.com/derrickhayashi/vpn-sidecars-next/issues/19).
-The private test-only startup capture supports diagnosis if it recurs.
-
-Ubuntu 24.04 ARM64 local acceptance passes verified SSH/controller/profile
-handling and the full real IKEv1/IPsec/L2TP/PPP/TCP/DNS suite, including endpoint
-outage, namespace repair, tunnel-loss recovery, failed recovery, explicit
-stop/reconnect, controller recreation and credential disposal.
-
-The XAuth suite also passes real aggressive PSK/XAUTH_PASSCODE over NAT-T,
-private TCP/DNS, authenticated CHILD rekey and quiet sessions. Physical-veth
-positive controls observe 2 unprivileged IKE-port probes before login, 4 ordinary
-plaintext probes, and 10 packets after policy/routing loss with enforcement
-intentionally opened. Every protected phase observes zero client plaintext,
-including existing TCP/UDP flows with SAs/policies removed while the controller
-and client are suspended. Kernel counters also require zero received plaintext
-and no dropped capture packets. The suite covers IPv6/Docker DNS bypass refusal,
-SO_MARK forgery refusal, expired/incorrect/repeated MFA, actual controller-process
-crash, hidden terminal input, session-preserving recreation and credential cleanup.
-
-Application repair now uses a separate application-only manifest pinned to the
-verified VPN container ID. It cannot start/recreate a VPN through Compose
-service-dependency reconciliation. The L2TP namespace test waits for its external
-replacement to become healthy before resuming the controller, then requires
-application-only repair. The full real L2TP suite and three stop/reconnect cycles
-pass with that precondition and without external namespace monitors.
+The regression details below explain what the fixtures check and how to interpret
+capture results.
 
 A foreground idle sleep deferred the VPN shell's TERM handler beyond Docker's
 two-second stop limit. The container could be force-killed before telling the
