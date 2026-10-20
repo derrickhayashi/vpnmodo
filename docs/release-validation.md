@@ -1,5 +1,33 @@
 # ARM64 release validation
 
+## XAuth delayed-MFA handshake timeout — 2026-10-20
+
+The managed XAuth entrypoint now sets `charon-cmd.half_open_timeout = 300`,
+matching the existing legacy launcher. Its omission left the aggressive-mode
+IKE handshake on strongSwan's 30-second default, shorter than the controller's
+90-second MFA challenge. The controller deadline is unchanged.
+
+The focused real-protocol regression uses the synthetic XAuth/RADIUS gateway
+on the existing managed VM, without its controller, profiles or credentials.
+The gateway has the same 300-second responder timeout in every trial.
+
+| Trial | Result |
+| --- | --- |
+| Shipped rc.7 image, immediate synthetic MFA | Tunnel establishment, enforcement checks and TCP echo pass |
+| Same image, MFA delayed 40 seconds | Reproduces exit 27 before CHILD_SA establishment |
+| Same image, only corrected entrypoint mounted, same 40-second delay | Tunnel establishment, enforcement checks and TCP echo pass |
+| Rebuilt fixed image, same 40-second delay | Tunnel establishment, enforcement checks and TCP echo pass |
+
+The one-setting control confirms the client handshake timer causes this delayed
+MFA failure. A diagnostic 27 here does not mean the supplied code was incorrect.
+The release image's file contents and permissions match the tested rebuild;
+only build timestamps/version labels differ. Synthetic containers and network
+were removed, and existing containers retained their running/start states.
+Existing XAuth reason tests and managed runtime/lifecycle Go tests also pass.
+The regression is `tests/xauth_handshake_timeout.py`; it accepts explicit old
+and fixed images plus the corrected entrypoint and requires a delay above 30s.
+This does not requalify unrelated protocol/lifecycle scenarios.
+
 ## Fresh managed VM walkthrough — 2026-10-20
 
 Installed CLI: `v0.1.0-rc.11+git.423ebd07a24d`; unchanged rc.7 runtime images.
@@ -15,12 +43,12 @@ backup remained protected on the Mac throughout the reset.
 | Direct-terminal login | User runs the same installed CLI against the same VM/profile and completes MFA successfully |
 | Private access | Subsequent read-only checks confirm healthy VPN, private TCP endpoint and application; authenticated SSH identity checks pass for both configured verification targets |
 
-The working connection was reused for verification and left running. No
-additional login, reset or runtime modification followed the successful manual
-connection. This demonstrates functional access through the fresh Lima setup.
-The difference between agent-driven and manual MFA remains unexplained; terminal
-handoff/timing is a hypothesis, not an established root cause. This short check
-does not resolve the previously observed intermittent lifecycle issue.
+At that checkpoint, the working connection was reused for verification and left
+running. A later explicitly requested structured-MFA comparison disconnected it
+and reproduced the failure despite accepting the code before challenge expiry.
+The delayed-MFA regression above identifies the missing client handshake timeout.
+The fresh walkthrough demonstrates functional access through the Lima setup; it
+does not resolve unrelated intermittent lifecycle observations.
 
 ## Optional separate registry auth — 2026-10-20
 
