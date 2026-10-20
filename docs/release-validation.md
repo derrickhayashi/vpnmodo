@@ -1,5 +1,27 @@
 # ARM64 release validation
 
+## Fresh managed VM walkthrough — 2026-10-20
+
+Installed CLI: `v0.1.0-rc.11+git.423ebd07a24d`; unchanged rc.7 runtime images.
+The single managed VM was deleted and recreated with the released setup command
+and a separate private registry-auth file. The VPN input and verified credential
+backup remained protected on the Mac throughout the reset.
+
+| Check | Result |
+| --- | --- |
+| Fresh VM setup | Released CLI creates the managed VM and returns after controller readiness |
+| VPN JSON import | Profile creation with closed stdin succeeds using settings and credentials from one VPN file; no credential prompts |
+| Agent-driven login | Reaches MFA, then exits before tunnel establishment with diagnostic 27; controller reports backend unavailable |
+| Direct-terminal login | User runs the same installed CLI against the same VM/profile and completes MFA successfully |
+| Private access | Subsequent read-only checks confirm healthy VPN, private TCP endpoint and application; authenticated SSH identity checks pass for both configured verification targets |
+
+The working connection was reused for verification and left running. No
+additional login, reset or runtime modification followed the successful manual
+connection. This demonstrates functional access through the fresh Lima setup.
+The difference between agent-driven and manual MFA remains unexplained; terminal
+handoff/timing is a hypothesis, not an established root cause. This short check
+does not resolve the previously observed intermittent lifecycle issue.
+
 ## Optional separate registry auth — 2026-10-20
 
 CLI identity: `v0.1.0-rc.11+git.423ebd07a24d`.
