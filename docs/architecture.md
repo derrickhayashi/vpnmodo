@@ -1,5 +1,9 @@
 # How the VPN sidecar works
 
+For the current managed Mac CLI, Lima VM, controller and SSH proxy path, see
+[vpnmodo internals](internals.md). This page explains the underlying sidecar
+concept and standalone legacy launcher architecture.
+
 ## Problem statement
 
 Working across customer projects requires access to different private networks.

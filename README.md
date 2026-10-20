@@ -213,6 +213,9 @@ Destination SSH keys and authentication stay on the Mac. `proxy` attaches to the
 current healthy application container; it does not start a VPN login or ask for
 MFA. Run `vpnmodo up work` first if the VPN is disconnected.
 
+See [how the proxy and controller work](docs/internals.md) for the profile lookup,
+JSON-RPC requests over SSH, container health checks and traffic path.
+
 ### Optionally forward a private web service
 
 For a dashboard listening on the **private SSH server's** `127.0.0.1:8081`, save
@@ -289,7 +292,8 @@ Backend and legacy implementation references include the [legacy deployment guid
 [Tailscale](containers/tailscale/README.md) is a standalone Compose backend;
 it is not a managed `vpnmodo` profile type.
 
-For contributors, see [development boundaries](docs/development.md),
+For contributors, see [managed VPN and proxy internals](docs/internals.md),
+[development boundaries](docs/development.md),
 [implementation requirements](docs/implementation-requirements.md),
 [controller internals](containers/controller/README.md),
 [profile storage](docs/design/002-profile-storage.md),
