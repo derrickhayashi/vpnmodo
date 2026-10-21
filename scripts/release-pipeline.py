@@ -90,9 +90,28 @@ class GitHub:
         require('sha256:' + sha256(destination) == asset['digest'], 'release asset checksum differs from GitHub')
 
 
+def find_release(api, version):
+    release = api.api('releases/tags/' + version, missing=True)
+    if release is not None:
+        return release
+    # The tag endpoint only returns published releases. Authorized release
+    # listings also include drafts, including one created by this build run.
+    found = None
+    for page in range(1, 101):
+        releases = api.api(f'releases?per_page=100&page={page}')
+        require(isinstance(releases, list), 'invalid GitHub release listing')
+        for item in releases:
+            if item.get('tag_name') == version:
+                require(found is None, 'multiple releases use this version tag')
+                found = item
+        if len(releases) < 100:
+            return found
+    raise ReleaseError('release listing exceeds the draft lookup limit')
+
+
 def check_existing(api, version, revision, run_id):
     marker = identity(version, revision, run_id)
-    release = api.api('releases/tags/' + version, missing=True)
+    release = find_release(api, version)
     tag = api.api('git/ref/tags/' + version, missing=True)
     if release:
         require(release.get('draft') is True and release.get('prerelease') is True,

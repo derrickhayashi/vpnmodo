@@ -60,7 +60,11 @@ class FakeGitHub:
             self.release.update(data)
             return copy.deepcopy(self.release)
         if path.startswith('releases/tags/'):
+            if self.release is not None and self.release['draft']:
+                return None
             return copy.deepcopy(self.release)
+        if path.startswith('releases?'):
+            return [copy.deepcopy(self.release)] if self.release is not None else []
         if path.startswith('git/ref/'):
             return copy.deepcopy(self.tag)
         if path == 'releases/latest':
@@ -202,6 +206,50 @@ class PipelineTests(unittest.TestCase):
         self.api.release = None
         with self.assertRaisesRegex(pipeline.ReleaseError, 'tag already exists'):
             pipeline.check_existing(self.api, VERSION, REVISION, RUN)
+
+    def test_draft_lookup_paginates_when_tag_endpoint_returns_404(self):
+        draft = dict(self.api.release, draft=True)
+        first = [dict(tag_name=f'v9.0.{n}', draft=False) for n in range(100)]
+        original = self.api.api
+        calls = []
+
+        def api(path, **kwargs):
+            calls.append(path)
+            if path.startswith('releases/tags/'):
+                return None
+            if path == 'releases?per_page=100&page=1':
+                return first
+            if path == 'releases?per_page=100&page=2':
+                return [draft]
+            return original(path, **kwargs)
+
+        self.api.api = api
+        self.assertEqual(pipeline.check_existing(self.api, VERSION, REVISION, RUN), draft)
+        self.assertIn('releases?per_page=100&page=2', calls)
+        self.assertEqual(self.api.mutations(), [])
+
+    def test_draft_listing_never_bypasses_ownership_checks(self):
+        self.api.release.update(draft=True, target_commitish='b' * 40)
+        with self.assertRaisesRegex(pipeline.ReleaseError, 'different source or build'):
+            pipeline.check_existing(self.api, VERSION, REVISION, RUN)
+        self.api.release.update(target_commitish=REVISION, body=pipeline.identity(VERSION, REVISION, RUN + 1))
+        with self.assertRaisesRegex(pipeline.ReleaseError, 'different source or build'):
+            pipeline.check_existing(self.api, VERSION, REVISION, RUN)
+        self.assertEqual(self.api.mutations(), [])
+
+    def test_duplicate_draft_tags_are_refused_before_mutation(self):
+        self.api.release['draft'] = True
+        original = self.api.api
+
+        def api(path, **kwargs):
+            if path.startswith('releases?'):
+                return [self.api.release, dict(self.api.release, id=100)]
+            return original(path, **kwargs)
+
+        self.api.api = api
+        with self.assertRaisesRegex(pipeline.ReleaseError, 'multiple releases'):
+            pipeline.check_existing(self.api, VERSION, REVISION, RUN)
+        self.assertEqual(self.api.mutations(), [])
 
     def test_publication_uploads_to_draft_and_never_sets_latest(self):
         self.api.release = self.api.tag = None
