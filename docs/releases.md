@@ -1,34 +1,72 @@
 # Release artifacts
 
-See [supported platforms](supported-platforms.md) before selecting a build.
-Builds stay local by default;
-`vm --publish` uploads release images to GHCR. The standalone CLI is distributed
-through GitHub prereleases; there is no Homebrew tap. Repository visibility and
-GHCR package access are separate settings. Public runtime images can be pulled without registry credentials. Build CLI artifacts on the workstation and container images on
-a native Linux builder.
+Every push to `main` runs the **Build prerelease** workflow. After Go checks,
+secret scanning and Python regressions succeed, it builds the Linux ARM64
+container images, publishes them to GHCR and builds matching CLI artifacts.
+Native macOS ARM64 installation checks run before the complete GitHub prerelease
+is published. Protocol acceptance runs separately on a local Linux lab.
 
-## Single-file CLI download
+See [supported platforms](supported-platforms.md) before choosing a build.
+GitHub-hosted builds require no workstation or local VM to be online.
 
-The current standalone CLI release is `v0.1.0-rc.13`. Download `vpnmodo-darwin-arm64`
-from the [rc.13 release](https://github.com/derrickhayashi/vpnmodo/releases/tag/v0.1.0-rc.13),
-install it and run `vpnmodo setup`. Sign in with an authorized GitHub account if
-release access is restricted. For private images supply the optional
-`--registry-auth FILE` described in [installation](../README.md#installation).
-The supported environment is one Apple Silicon Mac with one Lima VM managed by
-vpnmodo. Setup prepares the controller. VPN settings remain in JSON profiles, which
-automatically use the managed VM. There is no host selection, external VM setup
-or manual provisioning-file transfer.
+## Downloading the CLI
 
-The executable includes Lima YAML, the VM installer and a digest-pinned registry
-manifest. The release builder embeds the published runtime manifest through
-`--runtime-manifest FILE`, so the CLI and controller can use images built from the
-same committed source revision. `registry-release.json` is distributed alongside
-the binaries and included in their checksums.
+Open [Releases](https://github.com/derrickhayashi/vpnmodo/releases) and download
+`vpnmodo-darwin-arm64` for an Apple Silicon Mac. Choose the latest stable release
+for normal use, or a release marked **Pre-release** to test a candidate. If no
+stable release exists yet, the available releases are candidates.
 
-`SHA256SUMS-cli` covers the executable. macOS binaries are unsigned and not
-notarized; follow your team's approved software policy. No installer changes
-Gatekeeper settings. Existing source and image archives remain maintainer build
-artifacts, rather than another supported user installation flow.
+Follow [installation](../README.md#installation) to install the executable and
+run `vpnmodo setup`. The executable embeds the Lima inputs, VM installer and
+immutable runtime image references for that release. Public images need no
+registry credentials. Repository visibility and GHCR package access are separate.
+For private images, use the optional registry-auth file described in installation.
+macOS executables are unsigned and not notarized.
+
+## Automatic prereleases
+
+Each workflow run receives a permanent version, `v0.1.N`, where `N` is the
+workflow run number. Numbers may have gaps. A rerun keeps the same version and
+source commit. Already-published versions cannot be overwritten; start a new
+**Build prerelease** run on `main` to build another candidate from that commit.
+A failed publication can resume its own unpublished draft by rerunning failed
+jobs. Files are uploaded and verified while the release is a draft, then it is
+published with **Pre-release** set and **Latest** unset.
+
+The runtime and CLI come from the same commit. The CLI embeds the runtime's
+published GHCR digests. Release assets include the executables and archives,
+`registry-release.json`, `upgrade-darwin-arm64.json`, `build-metadata.json` and
+`SHA256SUMS`. The build metadata links the version to its source and workflow run.
+No user installation is upgraded by a merge or by publication.
+
+The workflow uses the repository's `GITHUB_TOKEN`, with package-write permission
+only in the runtime job and release-write permission only in the publication job.
+GHCR packages must be linked to this repository and permit its Actions workflows
+to write. New GHCR packages start private: set each new package to **Public**
+in its package settings, then rerun failed build jobs. The image checks use no
+publisher credentials and refuse to publish a candidate whose images require
+a registry login. This is a one-time setting per new package. Actions must be
+enabled for the two release workflows. No additional personal token is needed.
+Change the `v0.1` prefix in `release.yml` when starting a new version series; never reuse a published version.
+
+## Promoting a release
+
+1. Install and test the exact candidate, including required local VPN protocol
+   acceptance. Keep results in its PR or issue.
+2. Open **Actions → Promote release → Run workflow** on GitHub.
+3. Select `main`, enter the existing version and confirm that local protocol
+   acceptance for that exact build is complete. Run the workflow.
+
+Promotion verifies the successful main-branch build, source tag, full asset set,
+checksums, matching CLI/runtime metadata and anonymous availability of every
+pinned GHCR manifest. It then clears **Pre-release** and sets **Latest** on the same release.
+It does not rebuild, rename the version or replace any executable or image.
+Promotion refuses to move **Latest** to an older version.
+
+Users receive the promoted version through `vpnmodo upgrade`. To opt into a
+candidate, use `vpnmodo upgrade --prerelease` or `--version VERSION`. Promotion
+changes release availability; each user chooses when to upgrade. See
+[updating an installation](upgrading.md) for runtime behavior and recovery.
 
 ## Matching CLI and runtime builds
 

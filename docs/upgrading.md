@@ -37,8 +37,9 @@ vpnmodo upgrade --prerelease
 These version numbers illustrate syntax. A selected release must include
 `upgrade-darwin-arm64.json` and `vpnmodo-darwin-arm64` assets with SHA-256 digests
 in the GitHub Releases API. Older releases without this metadata are refused;
-the command does not fall back to an unverified download. No release containing
-this new command has been published by this change.
+the command does not fall back to an unverified download. Automatic prereleases
+include this metadata; only [promoted releases](releases.md#promoting-a-release)
+become the default stable upgrade target.
 
 If repository access requires authentication, supply a user-owned mode-0600
 file containing a GitHub token with repository contents read access:

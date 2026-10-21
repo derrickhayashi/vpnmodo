@@ -13,13 +13,15 @@ documentation suitable for public distribution, regardless of repository visibil
 - Keep the original public repository read-only. Do not push or publish there
   without an explicit request. Contributions there must use reviewed patches on a
   branch based on its history. Publish this project only to derrickhayashi/vpnmodo.
-- GitHub Actions is enabled only for Go checks and Secret scan. Keep other
-  workflows disabled unless the user authorizes them. Do not provision paid
-  test infrastructure or expand CI beyond the authorized checks.
-- Build release container images locally on an existing native Linux Docker
-  builder and publish them to GHCR. Keep protocol acceptance local on an
-  authorized Linux environment; no GitLab build pipeline is planned. Do not
-  treat missing hosted CI or protocol results as passing tests.
+- GitHub Actions runs Go checks, Secret scan, automatic main-branch prerelease
+  builds and manually dispatched stable promotion. Keep controller/protocol
+  acceptance workflows disabled. Do not provision paid test infrastructure or
+  expand hosted CI beyond these authorized workflows.
+- Build release containers on native Linux ARM64 GitHub-hosted runners and
+  publish matching images to GHCR. Build the CLI from the same commit with those
+  immutable digests. Stable promotion reuses verified artifacts without rebuilding.
+  Keep protocol acceptance local on an authorized Linux environment; missing
+  protocol results are not passing tests. No GitLab pipeline is planned.
 - New product/CLI name: `vpnmodo`; controller executable/image/service:
   `vpnmodo-controller`. User workflows use the Go CLI and controller; do not
   restore the retired standalone launchers or their compatibility paths.

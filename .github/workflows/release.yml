@@ -1,0 +1,169 @@
+name: Build prerelease
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/workflows/promote.yml
+      - .github/workflows/go-checks.yml
+      - .github/workflows/secret-scan.yml
+      - scripts/build-release.py
+      - scripts/build-upgrade-manifest.py
+      - scripts/release-pipeline.py
+      - scripts/release/**
+      - tests/test_release*.py
+
+permissions:
+  contents: read
+
+# One permanent version per workflow run. Reruns retain the version; gaps are OK.
+env:
+  RELEASE_VERSION: v0.1.${{ github.run_number }}
+
+# Serialize retries of the same build, without cancelling other merge builds.
+concurrency:
+  group: prerelease-${{ github.run_id }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  checks:
+    uses: ./.github/workflows/go-checks.yml
+  secrets:
+    uses: ./.github/workflows/secret-scan.yml
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install native Expect for prompt regression tests
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq expect
+      - name: Python regressions
+        run: python3 -m unittest discover -s tests -v
+
+  preflight:
+    needs: [checks, secrets, python]
+    if: github.repository == 'derrickhayashi/vpnmodo' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Refuse published or conflicting versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release-pipeline.py preflight --version "$RELEASE_VERSION"
+
+  runtime:
+    needs: preflight
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require native Linux ARM64
+        run: test "$(uname -s)/$(uname -m)" = Linux/aarch64
+      - name: Use temporary Docker credentials
+        run: printf 'DOCKER_CONFIG=%s/docker-config\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Authenticate to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Build and publish the matching runtime image set
+        run: python3 scripts/build-release.py vm --version "$RELEASE_VERSION" --publish --output "$RUNNER_TEMP/runtime"
+      - name: Verify anonymous access to published images
+        run: python3 scripts/release-pipeline.py check-images --version "$RELEASE_VERSION" --directory "$RUNNER_TEMP/runtime"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: runtime-${{ github.run_id }}
+          path: ${{ runner.temp }}/runtime/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+      - name: Remove registry login
+        if: always()
+        run: docker logout ghcr.io
+
+  cli:
+    needs: runtime
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: runtime-${{ github.run_id }}
+          path: ${{ runner.temp }}/runtime
+      - name: Build CLI artifacts with the published runtime digests
+        run: |
+          test "$(uname -s)/$(uname -m)" = Darwin/arm64
+          python3 scripts/build-release.py cli --version "$RELEASE_VERSION" \
+            --runtime-manifest "$RUNNER_TEMP/runtime/registry-release.json" --output "$RUNNER_TEMP/cli"
+          python3 scripts/build-upgrade-manifest.py --cli-dir "$RUNNER_TEMP/cli" \
+            --runtime "$RUNNER_TEMP/runtime/registry-release.json"
+      - name: Check the native macOS installation and executable
+        run: |
+          python3 tests/smoke_release_cli.py \
+            --archive "$RUNNER_TEMP/cli/vpnmodo-$RELEASE_VERSION-darwin-arm64.tar.gz" \
+            --binary "$RUNNER_TEMP/cli/vpnmodo-darwin-arm64"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cli-${{ github.run_id }}
+          path: ${{ runner.temp }}/cli/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+          overwrite: true
+
+  publish:
+    needs: cli
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: runtime-${{ github.run_id }}
+          path: ${{ runner.temp }}/runtime
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: cli-${{ github.run_id }}
+          path: ${{ runner.temp }}/cli
+      - name: Verify and assemble release assets
+        run: |
+          python3 scripts/release-pipeline.py assemble --version "$RELEASE_VERSION" \
+            --input "$RUNNER_TEMP/runtime" --input "$RUNNER_TEMP/cli" --output "$RUNNER_TEMP/release"
+      - name: Publish a complete prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release-pipeline.py publish --version "$RELEASE_VERSION" --directory "$RUNNER_TEMP/release"
+      - name: Release link
+        run: printf 'Prerelease [%s](https://github.com/derrickhayashi/vpnmodo/releases/tag/%s)\n' "$RELEASE_VERSION" "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"

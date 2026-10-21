@@ -16,9 +16,9 @@ not establish compatibility with every gateway or authentication policy.
 | IPsec/XAuth | PSK/XAuth and emailed-code MFA | IPv4 | Fresh login requires an explicit command and a new code |
 | IKEv2 | EAP-MSCHAPv2 and CA-verified server certificate | IPv4 | Bounded controller recovery; permanent authentication failures stop retries |
 
-The published rc.13 release supplies L2TP/IPsec and XAuth. IKEv2 requires images
-built from source; follow the [IKEv2 guide](ikev2.md) for trust, proposal and
-networking requirements. Backend selection does not change the Mac's default
+Older releases can omit the IKEv2 image; choose a complete release that includes
+it. Follow the [IKEv2 guide](ikev2.md) for trust, proposal and networking
+requirements. Backend selection does not change the Mac's default
 route: private access goes through the profile's application namespace.
 
 ## Operational limits
