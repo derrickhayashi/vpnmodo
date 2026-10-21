@@ -1,6 +1,7 @@
 name: Go checks
 
 on:
+  workflow_call:
   push:
     paths:
       - '**/*.go'

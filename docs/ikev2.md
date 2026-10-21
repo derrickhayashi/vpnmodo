@@ -8,10 +8,10 @@ server. This backend has no PSK, emailed-code challenge or interactive MFA.
 
 ## Install and import
 
-Use a controller and image bundle built from this source. Existing release
-manifests remain readable but do not gain an IKEv2 image automatically. Newly
-built VM bundles include the `ikev2` role and its immutable local image ID; GHCR
-publication uses `ghcr.io/derrickhayashi/vpnmodo/ikev2`. The controller image and
+Choose a [release](releases.md) that includes the IKEv2 controller and backend
+image. Older release manifests remain readable but do not gain an IKEv2 image
+automatically. New VM bundles include the `ikev2` role and its immutable local
+image ID; GHCR publication uses `ghcr.io/derrickhayashi/vpnmodo/ikev2`. The controller image and
 Compose override are `IKEV2_IMAGE` and `VPNMODO_IKEV2_IMAGE`, respectively.
 
 For development on an existing native Linux Docker builder:

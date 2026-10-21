@@ -30,15 +30,18 @@ Go on the Mac.
 
 This is a prerelease. See [supported platforms and limitations](docs/supported-platforms.md)
 and [known issues](docs/known-issues.md) before installation.
-[IKEv2 with EAP-MSCHAPv2](docs/ikev2.md) is available when building from source.
+For [IKEv2 with EAP-MSCHAPv2](docs/ikev2.md), choose a release that includes the
+IKEv2 image.
 
 - [Installation](#installation): install the CLI, prepare the VM and create a profile once.
 - [Usage](#usage): connect, access private services and disconnect.
 
 ## Installation
 
-On an **Apple Silicon Mac**, download one file:
-[**vpnmodo-darwin-arm64**](https://github.com/derrickhayashi/vpnmodo/releases/download/v0.1.0-rc.13/vpnmodo-darwin-arm64).
+On an **Apple Silicon Mac**, open
+[Releases](https://github.com/derrickhayashi/vpnmodo/releases), choose a version
+and download **vpnmodo-darwin-arm64**. Use the latest stable release for normal
+use; versions marked **Pre-release** are testing candidates.
 The source and release downloads are public.
 
 Install it:
@@ -297,7 +300,7 @@ wrong; known unresolved lifecycle failures are tracked in
 - [Known issues and regressions](docs/known-issues.md): symptoms, affected versions and recovery steps.
 - [VPN and SSH proxy internals](docs/internals.md): how the VM, controller and application container carry traffic.
 - [Setup configuration](docs/design/008-setup-configuration.md): optional `setup --config` input, currently ignored.
-- [Release artifacts](docs/releases.md): download, build and upgrade instructions.
+- [Releases](docs/releases.md): downloads, automatic builds and stable promotion.
 - [Supported platforms](docs/supported-platforms.md): platform requirements and current limitations.
 - [Local development](docs/development.md): build from source and run tests.
 
