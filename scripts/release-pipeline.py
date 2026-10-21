@@ -90,23 +90,43 @@ class GitHub:
         require('sha256:' + sha256(destination) == asset['digest'], 'release asset checksum differs from GitHub')
 
 
+def list_releases(api):
+    for page in range(1, 101):
+        releases = api.api(f'releases?per_page=100&page={page}')
+        require(isinstance(releases, list) and all(isinstance(item, dict) for item in releases),
+                'invalid GitHub release listing')
+        yield from releases
+        if len(releases) < 100:
+            return
+    raise ReleaseError('release listing exceeds the lookup limit')
+
+
 def find_release(api, version):
     release = api.api('releases/tags/' + version, missing=True)
     if release is not None:
         return release
     # The tag endpoint only returns published releases. Authorized release
     # listings also include drafts, including one created by this build run.
-    found = None
-    for page in range(1, 101):
-        releases = api.api(f'releases?per_page=100&page={page}')
-        require(isinstance(releases, list), 'invalid GitHub release listing')
-        for item in releases:
-            if item.get('tag_name') == version:
-                require(found is None, 'multiple releases use this version tag')
-                found = item
-        if len(releases) < 100:
-            return found
-    raise ReleaseError('release listing exceeds the draft lookup limit')
+    matches = [item for item in list_releases(api) if item.get('tag_name') == version]
+    require(len(matches) <= 1, 'multiple releases use this version tag')
+    return matches[0] if matches else None
+
+
+def promotion_version(api, version):
+    if version:
+        require(VERSION.fullmatch(version), 'use the permanent numeric candidate version')
+        return version
+    candidates = []
+    for release in list_releases(api):
+        tag = release.get('tag_name')
+        if release.get('draft') is False and release.get('prerelease') is True and isinstance(tag, str):
+            match = VERSION.fullmatch(tag)
+            if match:
+                candidates.append((tuple(map(int, match.groups())), tag))
+    require(candidates, 'no published numeric prerelease is available to promote')
+    selected = max(candidates)[1]
+    require(sum(tag == selected for _, tag in candidates) == 1, 'multiple releases use this version tag')
+    return selected
 
 
 def check_existing(api, version, revision, run_id):
@@ -234,7 +254,7 @@ def publish(api, directory, version, revision, run_id):
             'This is an automated prerelease. Use `vpnmodo upgrade --prerelease` to opt in, '
             'or select this version with `vpnmodo upgrade --version ' + version + '`.\n\n'
             'Build checks and native ARM64 packaging checks run automatically. VPN protocol acceptance '
-            'runs locally and must be confirmed before stable promotion.\n\n'
+            'runs locally; test the exact candidate before stable promotion.\n\n'
             f'[Build workflow](https://github.com/{REPOSITORY}/actions/runs/{run_id})')
         release = api.api('releases', 'POST', dict(tag_name=version, target_commitish=revision,
             name=version, body=notes, draft=True, prerelease=True, make_latest='false'))
@@ -269,9 +289,8 @@ def verify_build_run(api, metadata):
         and run.get('conclusion') == 'success', 'candidate does not have a successful main-branch release build')
 
 
-def promote(api, version, acceptance_confirmed):
-    require(acceptance_confirmed, 'confirm local protocol acceptance before promotion')
-    require(VERSION.fullmatch(version), 'use the permanent numeric candidate version')
+def promote(api, version=''):
+    version = promotion_version(api, version)
     release = api.api('releases/tags/' + version)
     require(release.get('tag_name') == version and release.get('draft') is False, 'candidate is not a published release')
     assets = release.get('assets', [])
@@ -300,20 +319,23 @@ def promote(api, version, acceptance_confirmed):
             and current.get('body') == release.get('body') and current.get('draft') is False,
             'release changed during promotion checks')
         api.api('releases/' + str(release['id']), 'PATCH', dict(prerelease=False, make_latest='true'))
+    return version
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('preflight', 'check-images', 'assemble', 'publish', 'promote'))
-    parser.add_argument('--version', required=True)
+    parser.add_argument('--version', default='', help='release version; promotion defaults to the newest published prerelease')
     parser.add_argument('--input', type=Path, action='append', default=[])
     parser.add_argument('--output', type=Path)
     parser.add_argument('--directory', type=Path)
-    parser.add_argument('--acceptance-confirmed', action='store_true')
     args = parser.parse_args()
+    if args.command != 'promote' and not args.version:
+        parser.error('--version is required for ' + args.command)
     try:
         revision, run_id = context(args.command == 'promote')
-        identity(args.version, revision, run_id)
+        if args.command != 'promote':
+            identity(args.version, revision, run_id)
         api = GitHub()
         if args.command == 'preflight':
             check_existing(api, args.version, revision, run_id)
@@ -327,7 +349,10 @@ def main():
             require(args.directory is not None, 'publication needs a release directory')
             publish(api, args.directory, args.version, revision, run_id)
         else:
-            promote(api, args.version, args.acceptance_confirmed)
+            args.version = promote(api, args.version)
+            if os.environ.get('GITHUB_OUTPUT'):
+                with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+                    output.write('version=' + args.version + '\n')
         print('Release ' + args.command + ' completed: ' + args.version)
     except (ReleaseError, OSError, ValueError, KeyError, TypeError, tarfile.TarError, subprocess.SubprocessError) as error:
         parser.exit(1, 'release operation failed: ' + str(error) + '\n')

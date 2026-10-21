@@ -54,8 +54,14 @@ Change the `v0.1` prefix in `release.yml` when starting a new version series; ne
 1. Install and test the exact candidate, including required local VPN protocol
    acceptance. Keep results in its PR or issue.
 2. Open **Actions → Promote release → Run workflow** on GitHub.
-3. Select `main`, enter the existing version and confirm that local protocol
-   acceptance for that exact build is complete. Run the workflow.
+3. Select `main` and run the workflow. Leave **Version** blank to select the
+   newest published prerelease, or enter a specific version to promote it.
+
+Automatic selection uses the highest numeric version and ignores drafts, stable
+releases and older `-rc` tags. The selected version appears in the run summary.
+If no published candidate exists, promotion stops without changing a release.
+There is no separate acceptance checkbox. Protocol testing remains a local
+maintainer task; the workflow verifies build artifacts and publication metadata.
 
 Promotion verifies the successful main-branch build, source tag, full asset set,
 checksums, matching CLI/runtime metadata and anonymous availability of every
