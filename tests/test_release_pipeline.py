@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -131,9 +132,9 @@ class PipelineTests(unittest.TestCase):
         (self.bundle / 'SHA256SUMS').write_text(''.join(pipeline.sha256(p) + '  ' + p.name + '\n'
             for p in sorted(self.bundle.iterdir()) if p.name != 'SHA256SUMS'))
 
-    def promote(self, confirmed=True):
+    def promote(self, version=VERSION):
         with patch.object(pipeline.subprocess, 'run', side_effect=self.api.command):
-            pipeline.promote(self.api, VERSION, confirmed)
+            return pipeline.promote(self.api, version)
 
     def test_assembly_preserves_matching_jobs_and_covers_every_asset(self):
         self.assertEqual(len(list(self.bundle.iterdir())), 14)
@@ -279,10 +280,60 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(before, [(a['name'], a['digest']) for a in self.api.release['assets']])
         self.assertEqual(self.api.tag['object']['sha'], REVISION)
 
-    def test_acceptance_confirmation_is_required_before_any_api_call(self):
-        with self.assertRaisesRegex(pipeline.ReleaseError, 'confirm local protocol'):
-            self.promote(False)
+    def test_automatic_promotion_verifies_and_promotes_the_selected_release(self):
+        self.assertEqual(self.promote(''), VERSION)
+        self.assertEqual(self.api.mutations(), [('releases/99', 'PATCH', dict(prerelease=False, make_latest='true'))])
+
+    def test_auto_selection_uses_numeric_versions_across_pages(self):
+        first = [dict(tag_name=f'v0.1.{n}', draft=True, prerelease=True) for n in range(100)]
+        first[0] = dict(tag_name='v0.1.9', draft=False, prerelease=True)
+        second = [dict(tag_name='v0.1.10', draft=False, prerelease=True),
+            dict(tag_name='v9.0.0', draft=False, prerelease=False),
+            dict(tag_name='v0.1.99-rc.1', draft=False, prerelease=True)]
+        calls = []
+
+        def api(path):
+            calls.append(path)
+            return first if path.endswith('page=1') else second
+
+        self.api.api = api
+        self.assertEqual(pipeline.promotion_version(self.api, ''), 'v0.1.10')
+        self.assertEqual(calls, ['releases?per_page=100&page=1', 'releases?per_page=100&page=2'])
+
+    def test_auto_selection_without_a_published_candidate_changes_nothing(self):
+        self.api.release['draft'] = True
+        with self.assertRaisesRegex(pipeline.ReleaseError, 'no published numeric prerelease'):
+            self.promote('')
+        self.api.release.update(draft=False, prerelease=False)
+        with self.assertRaisesRegex(pipeline.ReleaseError, 'no published numeric prerelease'):
+            self.promote('')
+        self.assertEqual(self.api.mutations(), [])
+
+    def test_explicit_version_bypasses_auto_selection_and_remains_validated(self):
+        self.assertEqual(pipeline.promotion_version(self.api, VERSION), VERSION)
+        for value in ('latest', 'v0.1.42-rc.1', 'v0.01.1'):
+            with self.subTest(value=value), self.assertRaises(pipeline.ReleaseError):
+                pipeline.promotion_version(self.api, value)
         self.assertEqual(self.api.calls, [])
+
+    def test_auto_promotion_still_blocks_a_bad_candidate_and_a_downgrade(self):
+        self.api.latest = dict(tag_name='v0.2.0')
+        with self.assertRaisesRegex(pipeline.ReleaseError, 'backwards'):
+            self.promote('')
+        self.api.release['assets'] = []
+        with self.assertRaisesRegex(pipeline.ReleaseError, 'missing or duplicate assets'):
+            self.promote('')
+        self.assertEqual(self.api.mutations(), [])
+
+    def test_auto_promotion_cli_exports_the_selected_version(self):
+        output = self.root / 'github-output'
+        env = dict(GITHUB_REPOSITORY=pipeline.REPOSITORY, GITHUB_REF='refs/heads/main',
+            GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_SHA=REVISION, GITHUB_RUN_ID=str(RUN), GITHUB_OUTPUT=str(output))
+        with patch.dict(os.environ, env), patch.object(pipeline, 'GitHub', return_value=self.api), \
+             patch.object(sys, 'argv', ['release-pipeline.py', 'promote']), \
+             patch.object(pipeline.subprocess, 'run', side_effect=self.api.command), patch('builtins.print'):
+            pipeline.main()
+        self.assertEqual(output.read_text(), 'version=' + VERSION + '\n')
 
     def test_failed_incomplete_foreign_or_wrong_source_runs_block_promotion(self):
         original = copy.deepcopy(self.api.run)

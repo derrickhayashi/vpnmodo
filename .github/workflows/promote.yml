@@ -4,14 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Existing prerelease version to promote (for example v0.1.1)
+        description: Version to promote (leave blank for newest published prerelease)
         type: string
-        required: true
-      acceptance_confirmed:
-        description: Local protocol acceptance for this exact build is complete
-        type: boolean
-        required: true
-        default: false
+        required: false
 
 permissions:
   contents: read
@@ -30,17 +25,17 @@ jobs:
       contents: write
     env:
       RELEASE_VERSION: ${{ inputs.version }}
-      ACCEPTANCE_CONFIRMED: ${{ inputs.acceptance_confirmed }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Require maintainer confirmation of local acceptance
-        run: test "$ACCEPTANCE_CONFIRMED" = true
       - name: Verify the candidate and promote its existing artifacts
+        id: promote
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/release-pipeline.py promote --version "$RELEASE_VERSION" --acceptance-confirmed
+        run: python3 scripts/release-pipeline.py promote --version "$RELEASE_VERSION"
       - name: Release link
+        env:
+          RELEASE_VERSION: ${{ steps.promote.outputs.version }}
         run: printf 'Stable release [%s](https://github.com/derrickhayashi/vpnmodo/releases/tag/%s)\n' "$RELEASE_VERSION" "$RELEASE_VERSION" >> "$GITHUB_STEP_SUMMARY"
