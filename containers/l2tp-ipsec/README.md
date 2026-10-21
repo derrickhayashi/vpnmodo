@@ -6,6 +6,15 @@ service tunnels. Run Docker Engine natively on Ubuntu, including an Ubuntu VM
 on macOS. The VPN uses strongSwan (IKEv1/IPsec transport mode), xl2tpd, and PPP.
 An Alpine forwarding container shares its network namespace.
 
+For managed profiles, use `backend.type: "l2tp-ipsec"` and optional
+`backend.config.ike_proposals` / `esp_proposals` arrays in the
+[complete JSON example](../../README.md#vpn-configuration). See
+[proposal settings](../../docs/profiles.md#ike-and-esp-proposals) for defaults,
+syntax, ordering and the trailing `!` needed to suppress additional strongSwan
+engine defaults. The standalone Compose settings are comma-separated
+`VPN_IKE_PROPOSALS` and `VPN_ESP_PROPOSALS` values in `.env`; the legacy launcher
+uses the same keys in `profile.env`.
+
 ```text
 Workstation -> SSH to Ubuntu host -> application container -> ppp0
             -> private destination -> optional downstream devices
@@ -79,8 +88,9 @@ and watchdog commands; otherwise they can target a different deployment.
 
 `VPN_DNS` optionally specifies comma-separated private DNS servers. Otherwise
 PPP-provided DNS is used, and startup fails if PPP supplies none. Configure DNS explicitly when the
-server does not provide it. IKE/ESP proposal settings are
-adjustable for server compatibility. Some servers allow one login per account.
+server does not provide it. Adjust IKE/ESP proposal settings for server
+compatibility using the [proposal guide](../../docs/profiles.md#ike-and-esp-proposals).
+Some servers allow one login per account.
 
 The entrypoint keeps a host route to the VPN server, routes application traffic
 through ppp0, applies an IPv4 OUTPUT kill switch, and disables IPv6. DNSmasq
