@@ -17,7 +17,9 @@ and everyday commands, start with the [README](../README.md).
 
 The controller is a persistent Go service. Short-lived bridge processes relay
 requests to it. Closing an RPC session does not stop a connection operation.
-The controller supervises the VPN and coordinates application attachment and recovery.
+The controller supervises the VPN and coordinates vpntools attachment and recovery.
+The `vpntools` image supplies this container; it is separate from the `vpnmodo`
+CLI executable. Runtime metadata and RPC methods call this role `application`.
 
 ```mermaid
 flowchart LR
@@ -115,7 +117,7 @@ application API version with `system.hello`:
 }
 ```
 
-After the handshake, it asks for the profile's application container:
+After the handshake, it asks for the profile's vpntools container:
 
 ```json
 {
@@ -165,7 +167,7 @@ After validation, the helper replaces itself with the equivalent of:
 docker --host unix:///var/run/docker.sock exec -i CONTAINER_ID nc HOST PORT
 ```
 
-`nc` opens the destination TCP socket from inside the application container.
+`nc` opens the destination TCP socket from inside the vpntools container.
 Docker configures that container with `network_mode: service:vpn`, so it shares
 the VPN container's interfaces, routes and traffic enforcement. Its generated
 resolver configuration is mounted separately. The socket therefore uses the

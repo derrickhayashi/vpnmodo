@@ -100,7 +100,7 @@ class PipelineTests(unittest.TestCase):
         self.runtime.mkdir()
         identity = VERSION + '+git.' + REVISION[:12]
         registry = dict(schema_version=1, version=VERSION, binary_version=identity,
-            os='linux', arch='arm64', images={role: f'ghcr.io/{pipeline.REPOSITORY}/{role}@sha256:' + 'b' * 64 for role in pipeline.ROLES})
+            os='linux', arch='arm64', images={role: f"ghcr.io/{pipeline.REPOSITORY}/{'vpntools' if role == 'application' else role}@sha256:" + 'b' * 64 for role in pipeline.ROLES})
         for folder in (self.cli, self.runtime):
             (folder / 'registry-release.json').write_text(json.dumps(registry))
         for arch in ('arm64', 'amd64'):
@@ -165,6 +165,8 @@ class PipelineTests(unittest.TestCase):
         path = self.bundle / 'registry-release.json'
         original = json.loads(path.read_text())
         variants = [dict(original, arch='amd64'), dict(original, version='v0.1.43'),
+            dict(original, images=dict(original['images'], application=f'ghcr.io/{pipeline.REPOSITORY}/application@sha256:' + 'b' * 64)),
+            dict(original, images=dict(original['images'], application=f'ghcr.io/{pipeline.REPOSITORY}/vpntools:latest')),
             dict(original, images={role: ref for role, ref in original['images'].items() if role != 'ikev2'}),
             dict(original, images=dict(original['images'], controller='ghcr.io/other/project/controller@sha256:' + 'b' * 64)),
             dict(original, images=dict(original['images'], controller=f'ghcr.io/{pipeline.REPOSITORY}/controller:latest'))]

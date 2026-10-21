@@ -125,7 +125,8 @@ def runtime_manifest(directory, version, revision):
         and registry.get('arch') == 'arm64' and isinstance(registry.get('images'), dict)
         and set(registry['images']) == ROLES, 'runtime manifest does not match the complete ARM64 release')
     for role, ref in registry['images'].items():
-        prefix = f'ghcr.io/{REPOSITORY}/{role}@'
+        package = 'vpntools' if role == 'application' else role
+        prefix = f'ghcr.io/{REPOSITORY}/{package}@'
         require(isinstance(ref, str) and ref.startswith(prefix) and DIGEST.fullmatch(ref[len(prefix):]),
                 'runtime manifest contains a mutable or foreign image')
     return registry

@@ -121,7 +121,7 @@ def runtime_input(path, metadata):
             or data.get('arch') != 'arm64' or set(data.get('images', {})) not in ({'controller', 'l2tp', 'xauth', 'application'}, {'controller', 'l2tp', 'xauth', 'ikev2', 'application'})):
         raise RuntimeError('runtime manifest must match the release version and source revision')
     for role, ref in data['images'].items():
-        if not isinstance(ref, str) or not re.fullmatch(r'ghcr\.io/derrickhayashi/vpnmodo/' + role + r'@sha256:[0-9a-f]{64}', ref):
+        if not isinstance(ref, str) or not re.fullmatch(r'ghcr\.io/derrickhayashi/vpnmodo/' + (r'(?:vpntools|application)' if role == 'application' else role) + r'@sha256:[0-9a-f]{64}', ref):
             raise RuntimeError('runtime manifest must use immutable vpnmodo image references')
     return raw
 
@@ -177,8 +177,10 @@ def vm(source, output, metadata, temporary):
         tag = name + ':' + version
         docker('build', '--build-arg', 'VERSION=' + identity, '--build-arg', 'REVISION=' + revision, '-t', tag, str(source / path))
         images[role] = {'tag': tag, 'id': docker('image', 'inspect', '--format', '{{.Id}}', tag)}
-    docker('pull', 'alpine:3.22')
-    images['application'] = {'tag': 'alpine:3.22', 'id': docker('image', 'inspect', '--format', '{{.Id}}', 'alpine:3.22')}
+    tools = 'vpnmodo-vpntools:' + version
+    docker('build', '--build-arg', 'VERSION=' + identity, '--build-arg', 'REVISION=' + revision,
+           '-t', tools, str(source / 'containers/vpntools'))
+    images['application'] = {'tag': tools, 'id': docker('image', 'inspect', '--format', '{{.Id}}', tools)}
     controller = 'vpnmodo-controller:' + version
     docker('build', '-f', str(source / 'containers/controller/Dockerfile'), '-t', controller,
            '--build-arg', 'VERSION=' + identity, '--build-arg', 'REVISION=' + revision,
@@ -213,7 +215,7 @@ def publish(manifest, output):
     prefix = 'ghcr.io/derrickhayashi/vpnmodo/'
     refs = {}
     for role in sorted(data['images']):
-        repository = prefix + role
+        repository = prefix + ('vpntools' if role == 'application' else role)
         tag = repository + ':' + data['version'] + '-' + data['arch']
         docker('tag', data['images'][role]['id'], tag)
         # A partial multiplatform index can produce a different registry digest.

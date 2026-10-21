@@ -32,7 +32,7 @@ an old MFA code. Other post-MFA exits can have different causes.
 
 **Symptom:** an established connection loses kernel IPsec state while the client
 process still appears to be running. The controller reports a disconnected or
-authentication-required state and removes the application container.
+authentication-required state and removes the vpntools container.
 
 The cause remains unconfirmed. Updating the delayed-MFA handshake timeout does
 not establish a fix for this separate session-lifetime problem. Kernel filtering

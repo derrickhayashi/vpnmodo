@@ -9,8 +9,8 @@ vpnmodo upgrade
 
 The command updates the standalone CLI and controller in your existing Lima VM.
 It preserves VPN profiles, credentials, service mappings, registry login, SSH
-identity, and diagnostic logs. Connected VPN and application containers keep
-running. Their new images take effect after you explicitly disconnect and connect
+identity, and diagnostic logs. Connected VPN and vpntools containers
+keep running. Their new images take effect after you explicitly disconnect and connect
 that VPN again; XAuth may then ask for a fresh MFA code.
 
 An upgrade briefly pauses the controller while copying its private state. Status
@@ -54,8 +54,10 @@ GitHub's HTTPS API digests; runtime references must be immutable repository GHCR
 image digests. This trusts GitHub, the repository's release publishers and their
 accounts. It does not provide independent signatures or notarization.
 
-For a CLI predating this feature, replace the standalone executable once using
-the normal verified download procedure. Subsequent updates use `vpnmodo upgrade`.
+For a CLI predating this feature, or version `v0.1.0-rc.13` and earlier, replace
+the standalone executable once using the normal verified download procedure.
+Those early clients do not recognize the `vpntools` image name. Subsequent
+updates use `vpnmodo upgrade`.
 If you use a separately registered host, pass `--host NAME`; the default is the
 managed `vpn-vm` host. The selected host must already have a running managed
 controller and private controller state.

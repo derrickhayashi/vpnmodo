@@ -63,6 +63,9 @@ func (m Manifest) Validate(osname, arch string) error {
 	for _, role := range []string{"controller", "l2tp", "xauth", "application"} {
 		ref := r.Images[role]
 		prefix := "ghcr.io/" + Repository + "/" + role + "@"
+		if role == "application" && strings.HasPrefix(ref, "ghcr.io/"+Repository+"/vpntools@") {
+			prefix = "ghcr.io/" + Repository + "/vpntools@"
+		}
 		if !strings.HasPrefix(ref, prefix) || !digestPattern.MatchString(strings.TrimPrefix(ref, prefix)) {
 			return ErrRelease
 		}

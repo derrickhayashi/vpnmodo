@@ -19,6 +19,7 @@ func fixture(data []byte) Manifest {
 	for _, role := range []string{"controller", "l2tp", "xauth", "application"} {
 		m.Runtime.Images[role] = "ghcr.io/" + Repository + "/" + role + "@sha256:" + strings.Repeat("a", 64)
 	}
+	m.Runtime.Images["application"] = "ghcr.io/" + Repository + "/vpntools@sha256:" + strings.Repeat("a", 64)
 	return m
 }
 func TestReleaseIntegrityAndCompatibility(t *testing.T) {
@@ -107,5 +108,26 @@ func TestIKEv2RuntimeImageRoleIsImmutableAndOptionalForOldReleases(t *testing.T)
 	m.Runtime.Images["ikev2"] = "ghcr.io/" + Repository + "/ikev2:mutable"
 	if m.Validate("darwin", "arm64") == nil {
 		t.Fatal("mutable IKEv2 image accepted")
+	}
+}
+
+func TestVPNToolsImageReferenceValidation(t *testing.T) {
+	for _, tc := range []struct {
+		ref string
+		ok  bool
+	}{
+		{"ghcr.io/" + Repository + "/vpntools@sha256:" + strings.Repeat("b", 64), true},
+		{"ghcr.io/" + Repository + "/application@sha256:" + strings.Repeat("b", 64), true},
+		{"ghcr.io/" + Repository + "/vpntools:latest", false},
+		{"ghcr.io/" + Repository + "/controller@sha256:" + strings.Repeat("b", 64), false},
+		{"ghcr.io/other/project/vpntools@sha256:" + strings.Repeat("b", 64), false},
+	} {
+		t.Run(tc.ref, func(t *testing.T) {
+			m := fixture([]byte("synthetic binary"))
+			m.Runtime.Images["application"] = tc.ref
+			if got := m.Validate("darwin", "arm64") == nil; got != tc.ok {
+				t.Fatalf("valid = %t, want %t", got, tc.ok)
+			}
+		})
 	}
 }
