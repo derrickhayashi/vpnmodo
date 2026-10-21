@@ -74,8 +74,8 @@ class ReleaseTests(unittest.TestCase):
             with tarfile.open(root / 'a.tar.gz') as tar:
                 self.assertEqual(tar.getmember('vpnmodo').mode, 0o755)
 
-    def bundle(self, root, tagged=False):
-        roles = ('controller', 'l2tp', 'xauth', 'application')
+    def bundle(self, root, tagged=False, ikev2=False):
+        roles = ('controller', 'l2tp', 'xauth', 'application') + (('ikev2',) if ikev2 else ())
         configs = {role: json.dumps({'architecture': 'arm64', 'os': 'linux', 'role': role}).encode() for role in roles}
         images = {role: {'id': 'sha256:' + hashlib.sha256(config).hexdigest(), 'tag': 'vpnmodo-' + role + ':fixture'} for role, config in configs.items()}
         with tarfile.open(root / 'export.tar', 'w') as tar:
@@ -106,6 +106,13 @@ class ReleaseTests(unittest.TestCase):
                 'binary_version': 'v0.1.0-rc.1+git.' + 'a' * 12, 'images': images, 'archive_sha256': builder.digest(root / 'images.tar')}
         (root / 'release.json').write_text(json.dumps(data))
         return data
+
+    def test_ikev2_offline_archive_validates_all_five_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bundle(root, ikev2=True)
+            data = loader.verify(root)
+            self.assertEqual(set(data['images']), {'controller', 'l2tp', 'xauth', 'ikev2', 'application'})
 
     def test_tampering_fails_before_any_docker_command(self):
         with tempfile.TemporaryDirectory() as directory:

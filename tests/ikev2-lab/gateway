@@ -1,0 +1,64 @@
+#!/bin/sh
+set -eu
+umask 077
+mkdir -p /run/lab /etc/swanctl/x509ca /etc/swanctl/x509 /etc/swanctl/private
+ip address add 198.51.100.1/32 dev lo
+# Keys and certificates are freshly generated in this disposable lab only.
+openssl req -new -x509 -newkey rsa:2048 -nodes -subj /CN=Synthetic-IKEv2-CA -days 2 -keyout /run/lab/ca.key -out /run/lab/ca.pem >/dev/null 2>&1
+openssl req -new -x509 -newkey rsa:2048 -nodes -subj /CN=Synthetic-Untrusted-CA -days 2 -keyout /run/lab/other.key -out /run/lab/other.pem >/dev/null 2>&1
+openssl req -new -newkey rsa:2048 -nodes -subj /CN=vpn.example.test -keyout /etc/swanctl/private/server.key -out /run/lab/server.csr >/dev/null 2>&1
+printf 'subjectAltName=DNS:vpn.example.test\nextendedKeyUsage=serverAuth\nbasicConstraints=CA:FALSE\n' > /run/lab/extensions
+cert_days=2
+if [ "${LAB_CERT_MODE:-valid}" = expired ]; then cert_days=-1; fi
+openssl x509 -req -in /run/lab/server.csr -CA /run/lab/ca.pem -CAkey /run/lab/ca.key -CAcreateserial -days "$cert_days" -extfile /run/lab/extensions -out /etc/swanctl/x509/server.pem >/dev/null 2>&1
+cp /run/lab/ca.pem /etc/swanctl/x509ca/ca.pem
+# Keep the production client routing policy out of this synthetic responder.
+cat > /etc/strongswan.conf <<'CONFIG'
+charon {
+ load_modular = yes
+ plugins { include /etc/strongswan.d/charon/*.conf }
+}
+CONFIG
+cat > /etc/swanctl/swanctl.conf <<'CONFIG'
+connections {
+ lab {
+  version = 2
+  local_addrs = %any
+  remote_addrs = %any
+  proposals = aes256-sha256-modp2048,aes128-sha256-modp2048
+  pools = lab
+  local {
+   auth = pubkey
+   id = vpn.example.test
+   certs = server.pem
+  }
+  remote {
+   auth = eap-mschapv2
+   eap_id = %any
+  }
+  children {
+   lab {
+    local_ts = 0.0.0.0/0
+    remote_ts = dynamic
+    esp_proposals = aes256-sha256,aes128-sha256
+    rekey_time = 0s
+    dpd_action = clear
+   }
+  }
+ }
+}
+pools { lab { addrs = 198.51.100.10-198.51.100.20 } }
+secrets {
+ eap-lab {
+  id = synthetic-user
+  secret = synthetic-password
+ }
+}
+CONFIG
+python3 /usr/local/bin/sink.py >/dev/null 2>&1 &
+dnsmasq --keep-in-foreground --no-resolv --no-hosts --address=/private.example/198.51.100.1 --local=/private.example/ >/dev/null 2>&1 &
+/usr/lib/ipsec/charon >/dev/null 2>&1 &
+i=0
+until swanctl --load-all >/dev/null 2>&1; do i=$((i+1)); test "$i" -lt 30; sleep 1; done
+touch /run/lab/ready
+exec sleep infinity

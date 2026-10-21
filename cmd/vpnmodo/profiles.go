@@ -29,7 +29,7 @@ func profileCommand(base context.Context, registry string, args []string, out io
        vpnmodo profile rotate-credentials ALIAS --file PROFILE.json --revision N
        vpnmodo profile delete ALIAS --revision N
        vpnmodo profile unregister ALIAS
-All commands accept --json. JSON credentials contain username, password and psk.
+All commands accept --json. JSON credentials follow backend describe: username/password plus psk or ca_cert.
 Only XAuth connection MFA prompts interactively.
 `)
 		return err
@@ -142,7 +142,7 @@ Only XAuth connection MFA prompts interactively.
 		if credentials == nil {
 			// Explicit protected automation input remains supported, never prompting.
 			if !*stdin && *fd == "" {
-				return errors.New("JSON must include credentials with username, password and psk")
+				return errors.New("JSON must include credentials for the selected backend (see backend describe)")
 			}
 			value, err := credentialinput.Read(ctx, *stdin, *fd)
 			if err != nil {

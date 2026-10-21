@@ -74,6 +74,19 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(self.install(), receipt)
         self.assertFalse(any(c[0] == 'pull' for c in self.calls))
 
+    def test_ikev2_release_includes_immutable_backend_receipt(self):
+        ref = PREFIX + 'ikev2@sha256:' + 'f' * 64
+        self.refs['ikev2'] = ref
+        self.images[ref] = {'Id': 'sha256:' + 'e' * 64, 'Architecture': 'arm64', 'Os': 'linux'}
+        receipt = self.install()
+        self.assertEqual(receipt['backend_images']['ikev2'], self.images[ref]['Id'])
+        self.assertEqual(sum(c[0] == 'pull' for c in self.calls), 5)
+        self.calls.clear()
+        self.release['images']['ikev2'] = PREFIX + 'ikev2:mutable'
+        with self.assertRaises(loader.InstallError):
+            self.install()
+        self.assertEqual(self.calls, [])
+
     def test_missing_image_or_mutable_reference_fails_before_docker(self):
         del self.release['images']['xauth']
         with self.assertRaises(loader.InstallError):

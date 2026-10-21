@@ -47,7 +47,7 @@ type Event struct {
 
 func DiagnosticReason(s string) bool {
 	switch s {
-	case "established", "peer_delete", "dpd_timeout", "rekey_failed", "authentication_failed", "client_exit", "ppp_down", "support_process_exit", "stopping", "container_oom", "container_exit", "tunnel_state_lost":
+	case "certificate_expired", "certificate_untrusted", "server_identity_mismatch", "proposal_mismatch", "handshake_timeout", "established", "peer_delete", "dpd_timeout", "rekey_failed", "authentication_failed", "client_exit", "ppp_down", "support_process_exit", "stopping", "container_oom", "container_exit", "tunnel_state_lost":
 		return true
 	}
 	return false
@@ -56,7 +56,7 @@ func (e Event) valid() bool {
 	if e.ExitCode != nil && (*e.ExitCode < 0 || *e.ExitCode > 255) {
 		return false
 	}
-	if e.At.IsZero() || !profile.ValidName(e.Profile) || e.Backend != "" && e.Backend != profile.L2TP && e.Backend != profile.XAuth || e.OperationID != "" && !operation.ValidID(e.OperationID) || e.SourceID != "" && !sourcePattern.MatchString(e.SourceID) {
+	if e.At.IsZero() || !profile.ValidName(e.Profile) || e.Backend != "" && e.Backend != profile.L2TP && e.Backend != profile.XAuth && e.Backend != profile.IKEv2 || e.OperationID != "" && !operation.ValidID(e.OperationID) || e.SourceID != "" && !sourcePattern.MatchString(e.SourceID) {
 		return false
 	}
 	if e.Operation != "" && !e.Operation.Valid() || e.Failure != "" && !e.Failure.Valid() || e.Health != "" && !e.Health.Valid() {

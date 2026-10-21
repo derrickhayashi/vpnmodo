@@ -38,15 +38,15 @@ type Status struct {
 	RuntimeEnabled bool                `json:"runtime_enabled"`
 }
 type Config struct {
-	events                                    *eventlog.Store
-	EnableManagedVPN, EnableXAuth             bool
-	XAuthImage                                string
-	DockerRunner                              managedvpn.Runner
-	L2TPImage, ApplicationImage, DockerBinary string
-	Socket, StateDir, DockerSocket, Version   string
-	Adapter                                   lifecycle.Adapter
-	OperationTimeout, MFATimeout              time.Duration
-	Recovery                                  lifecycle.RecoveryPolicy
+	events                                     *eventlog.Store
+	EnableManagedVPN, EnableXAuth, EnableIKEv2 bool
+	XAuthImage, IKEv2Image                     string
+	DockerRunner                               managedvpn.Runner
+	L2TPImage, ApplicationImage, DockerBinary  string
+	Socket, StateDir, DockerSocket, Version    string
+	Adapter                                    lifecycle.Adapter
+	OperationTimeout, MFATimeout               time.Duration
+	Recovery                                   lifecycle.RecoveryPolicy
 }
 type Server struct {
 	ctx         context.Context
@@ -115,6 +115,9 @@ func Listen(config Config) (*Server, error) {
 			return nil, ErrService
 		}
 		if config.EnableXAuth && adapter.EnableXAuth(config.XAuthImage) != nil {
+			return nil, ErrService
+		}
+		if config.EnableIKEv2 && adapter.EnableIKEv2(config.IKEv2Image) != nil {
 			return nil, ErrService
 		}
 		config.Adapter = adapter
@@ -286,14 +289,15 @@ func (d *dispatcher) handle(ctx context.Context, req *jrpc2.Request) (any, error
 		if err := d.session.Negotiate(params); err != nil {
 			return nil, fault(protocol.CodeVersion)
 		}
-		return protocol.HelloResult{API: protocol.CurrentAPI(), ControllerVersion: d.config.Version, Backends: []profile.BackendType{profile.L2TP, profile.XAuth}}, nil
+		return protocol.HelloResult{API: protocol.CurrentAPI(), ControllerVersion: d.config.Version, Backends: []profile.BackendType{profile.L2TP, profile.XAuth, profile.IKEv2}}, nil
 	case protocol.BackendList:
 		if jsonstrict.Decode(raw, &struct{}{}, protocol.MaxMessageBytes) != nil {
 			return nil, fault(protocol.CodeInvalidParams)
 		}
 		l2tp, _ := profile.DescribeBackend(profile.L2TP)
 		xauth, _ := profile.DescribeBackend(profile.XAuth)
-		return []profile.BackendDescriptor{l2tp, xauth}, nil
+		ikev2, _ := profile.DescribeBackend(profile.IKEv2)
+		return []profile.BackendDescriptor{l2tp, xauth, ikev2}, nil
 	case protocol.BackendDescribe:
 		var params struct {
 			Backend profile.BackendType `json:"backend"`

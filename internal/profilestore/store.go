@@ -157,7 +157,7 @@ func (s *Store) transaction(ctx context.Context, fn func(map[string]record) erro
 func (s *Store) snapshot(r record) Snapshot {
 	data, err := privatefile.Read(s.credentialPath(r.CredentialRef), profile.MaxProfileBytes)
 	var credentials profile.Credentials
-	present := err == nil && jsonstrict.Decode(data, &credentials, profile.MaxProfileBytes) == nil && credentials.Validate() == nil
+	present := err == nil && jsonstrict.Decode(data, &credentials, profile.MaxProfileBytes) == nil && credentials.ValidateFor(r.Profile.Backend.Type) == nil
 	return Snapshot{Profile: r.Profile, Revision: r.Revision, CredentialsPresent: present}
 }
 func (s *Store) List(ctx context.Context) ([]profile.Summary, error) {
@@ -197,7 +197,7 @@ func (s *Store) Create(ctx context.Context, p profile.Profile, c profile.Credent
 	if p.Validate() != nil {
 		return Snapshot{}, profile.ErrProfile
 	}
-	if c.Validate() != nil {
+	if c.ValidateFor(p.Backend.Type) != nil {
 		return Snapshot{}, profile.ErrCredentials
 	}
 	var result Snapshot
@@ -266,6 +266,9 @@ func (s *Store) Rotate(ctx context.Context, name string, expected uint64, c prof
 		return Snapshot{}, profile.ErrCredentials
 	}
 	return s.change(ctx, name, expected, func(r *record) error {
+		if c.ValidateFor(r.Profile.Backend.Type) != nil {
+			return profile.ErrCredentials
+		}
 		ref, err := s.saveCredentials(c)
 		if err != nil {
 			return err
@@ -376,7 +379,7 @@ func (s *Store) WithCredentials(ctx context.Context, name string, fn func(Snapsh
 		}
 		data, err := privatefile.Read(s.credentialPath(r.CredentialRef), profile.MaxProfileBytes)
 		var c profile.Credentials
-		if err != nil || jsonstrict.Decode(data, &c, profile.MaxProfileBytes) != nil || c.Validate() != nil {
+		if err != nil || jsonstrict.Decode(data, &c, profile.MaxProfileBytes) != nil || c.ValidateFor(r.Profile.Backend.Type) != nil {
 			return profile.ErrCredentials
 		}
 		return fn(Snapshot{Profile: r.Profile, Revision: r.Revision, CredentialsPresent: true}, c)

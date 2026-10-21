@@ -1,0 +1,294 @@
+#!/opt/vici/bin/python3
+"""Single bounded IKEv2 attempt. Raw daemon/VICI data never crosses stdout.
+
+Credentials enter charon through root-only swanctl files/VICI; fixed diagnostics
+alone enter the controller spool. The controller is the sole reconnect owner.
+"""
+import ipaddress
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import socket
+import subprocess
+import sys
+import time
+
+RUN = Path('/run/vpn')
+CONF = Path('/etc/swanctl')
+REQID = 42
+MARK = 0x76706e6d
+IKE = re.compile(r'^(aes(128|256)-sha(256|384|512)(-prfsha(256|384|512))?|aes(128|256)gcm16-prfsha(256|384|512))-(modp(2048|3072|4096)|ecp(256|384|521)|curve25519)$')
+ESP = re.compile(r'^(aes(128|256)-sha(256|384|512)|aes(128|256)gcm16)(-(modp(2048|3072|4096)|ecp(256|384|521)|curve25519))?$')
+IDENTITY = re.compile(r'^[a-zA-Z0-9_@][a-zA-Z0-9_.@:+/-]{0,252}$')
+
+
+def command(*args, timeout=5):
+    return subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, timeout=timeout, check=True).stdout
+
+
+def diagnostic(reason):
+    # The helper checks an allowlist. Neither daemon text nor peer data is passed.
+    try:
+        command('/usr/local/bin/vpn-diagnostic', reason)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def quote(value):
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+
+def credential(key, limit=4096):
+    path = Path(os.environ['VPN_' + key.upper() + '_FILE'])
+    with path.open('rb') as stream:
+        value = stream.read(limit + 1)
+    if not value or len(value) > limit:
+        raise ValueError('credential')
+    return value
+
+
+def proposals(key, pattern):
+    values = os.environ[key].split(',')
+    if len(values) > 32 or any(not pattern.fullmatch(v) for v in values):
+        raise ValueError('proposal')
+    # No "default" suffix and no ipsec.conf "!" semantics in swanctl.
+    return ','.join(values)
+
+
+def configuration():
+    peer = str(ipaddress.IPv4Address(os.environ['VPN_SERVER']))
+    server_id = os.environ['VPN_SERVER_IDENTITY']
+    if not IDENTITY.fullmatch(server_id):
+        raise ValueError('identity')
+    username = credential('username').decode('utf-8')
+    password = credential('password')
+    if any(c in username for c in '\x00\r\n') or any(c in password for c in (b'\x00', b'\r', b'\n')):
+        raise ValueError('credential')
+    client_id = os.environ.get('VPN_CLIENT_IDENTITY') or username
+    eap_id = os.environ.get('VPN_EAP_IDENTITY') or username
+    # IDs supplied in profiles use the schema subset; credential identities may
+    # also contain spaces/backslashes, safely quoted as swanctl literal strings.
+    ike = proposals('VPN_IKE_PROPOSALS', IKE)
+    esp = proposals('VPN_ESP_PROPOSALS', ESP)
+    ca = credential('ca_cert', 32768)
+    certs = re.findall(rb'-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\s]+-----END CERTIFICATE-----', ca)
+    if not certs or len(certs) > 16 or b''.join(ca.split()) != b''.join(b''.join(certs).split()):
+        raise ValueError('trust')
+    (CONF / 'x509ca').mkdir(parents=True, exist_ok=True)
+    for index, cert in enumerate(certs):
+        (CONF / 'x509ca' / ('ca-%d.pem' % index)).write_bytes(cert + b'\n')
+    # Explicit policy is sent as-is. charon must fail if no peer transform matches.
+    return f'''connections {{
+ vpn {{
+  version = 2
+  remote_addrs = {peer}
+  vips = 0.0.0.0
+  proposals = {ike}
+  encap = yes
+  mobike = no
+  keyingtries = 1
+  dpd_delay = 15s
+  reauth_time = 0s
+  rekey_time = 3h
+  local {{
+   auth = eap-mschapv2
+   id = {quote(client_id)}
+   eap_id = {quote(eap_id)}
+  }}
+  remote {{
+   auth = pubkey
+   id = {quote(server_id)}
+   revocation = relaxed
+  }}
+  children {{
+   vpn {{
+    local_ts = dynamic
+    remote_ts = 0.0.0.0/0
+    esp_proposals = {esp}
+    reqid = {REQID}
+    set_mark_out = 0x{MARK:x}
+    rekey_time = 50m
+    life_time = 1h
+    start_action = none
+    close_action = none
+    dpd_action = clear
+   }}
+  }}
+ }}
+}}
+secrets {{
+ eap-vpn {{
+  id = {quote(eap_id)}
+  secret = 0x{password.hex()}
+ }}
+}}
+'''
+
+
+def authenticated():
+    # Query structured VICI state, never infer authentication from a status file.
+    import vici
+    with socket.socket(socket.AF_UNIX) as sock:
+        sock.settimeout(3)
+        sock.connect('/var/run/charon.vici')
+        session = vici.Session(sock)
+        for event in session.list_sas({'ike': 'vpn'}):
+            sa = event.get('vpn', {})
+            if sa.get('state') != b'ESTABLISHED' or sa.get('version') != b'2':
+                continue
+            vips = sa.get('local-vips', [])
+            if not any(ipaddress.ip_address(v.decode()).version == 4 for v in vips):
+                continue
+            for child in sa.get('child-sas', {}).values():
+                if child.get('state') == b'INSTALLED' and child.get('reqid') == str(REQID).encode() and child.get('mode') == b'TUNNEL':
+                    return True
+    return False
+
+
+def protected():
+    command('/usr/local/bin/vpn-enforce', 'check')
+    if not authenticated():
+        return False
+    peer = os.environ['VPN_SERVER']
+    # ip xfrm state includes keys. It stays in memory and is never logged.
+    # Ubuntu 24.04 iproute2 ignores -j for XFRM and emits text. -o keeps each
+    # state/policy on one line, so checks never combine unrelated records.
+    states = command('ip', '-o', 'xfrm', 'state').decode().replace('\\', ' ').splitlines()
+    policies = command('ip', '-o', 'xfrm', 'policy').decode().replace('\\', ' ').splitlines()
+    def fields(line):
+        return ('dst ' + peer + ' ' in line and 'proto esp ' in line and
+                re.search(r'\breqid ' + str(REQID) + r'\b', line) and 'mode tunnel' in line)
+    state_ok = any(fields(s) and re.search(r'\boutput-mark 0x76706e6d(?:/0xffffffff)?(?:\s|$)', s) for s in states)
+    policy_ok = any(fields(p) and re.search(r'\bdir out\b', p) for p in policies)
+    return bool(state_ok and policy_ok)
+
+
+# Only sanitized classifications survive a raw daemon line. Order matters:
+# certificate/auth failures are permanent; connectivity failures use bounded retry.
+def classify(line):
+    line = line.lower()
+    if re.search(rb'certificate.*(?:expired|not valid)', line) or b'not valid until' in line:
+        return 'certificate_expired'
+    if b'constraint check failed' in line and b'identity' in line:
+        return 'server_identity_mismatch'
+    if b'not trusted' in line or b'no trusted rsa public key' in line or b'no trusted ecdsa public key' in line or b'issuer certificate not found' in line:
+        return 'certificate_untrusted'
+    if any(x in line for x in (b'no matching peer config found', b'eap-mschapv2 failed', b'eap_failure', b'authentication failed', b'received auth_failed', b'authentication_failed')) or (b'authentication of' in line and b'failed' in line) or re.search(rb'eap.*failed', line):
+        return 'authentication_failed'
+    if b'no_proposal_chosen' in line or b'no acceptable proposal' in line:
+        return 'proposal_mismatch'
+    return None
+
+
+def main():
+    os.umask(0o077)
+    RUN.mkdir(mode=0o700, parents=True, exist_ok=True)
+    command('/usr/local/bin/vpn-enforce')
+    (CONF / 'swanctl.conf').write_text(configuration())
+    dns = []
+    for address in filter(None, os.environ.get('VPN_DNS', '').split(',')):
+        dns.append('--server=' + str(ipaddress.IPv4Address(address)))
+    processes = []
+    try:
+        if dns:
+            processes.append(subprocess.Popen(['dnsmasq', '--keep-in-foreground', '--no-resolv', '--no-hosts', '--bind-interfaces', '--listen-address=127.0.0.1', '--user=nobody', '--pid-file=/run/vpn/dns.pid', *dns], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        daemon = subprocess.Popen(['/usr/lib/ipsec/charon'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        processes.append(daemon)
+        # A nonblocking bounded line consumer prevents pipe stalls and retains no
+        # transcript. All child command output is discarded, including secrets.
+        os.set_blocking(daemon.stdout.fileno(), False)
+        selector = selectors.DefaultSelector()
+        selector.register(daemon.stdout, selectors.EVENT_READ)
+        pending = b''
+        permanent = None
+        def drain():
+            nonlocal pending, permanent
+            for key, _ in selector.select(0):
+                data = os.read(key.fileobj.fileno(), 8192)
+                pending += data
+                lines = pending.split(b'\n')
+                pending = lines.pop()[-8192:]
+                for line in lines:
+                    reason = classify(line)
+                    # Preserve a specific certificate/proposal failure when a
+                    # later generic authentication failure summarizes it.
+                    priority = {'authentication_failed': 1, 'certificate_untrusted': 2, 'proposal_mismatch': 3, 'server_identity_mismatch': 4, 'certificate_expired': 5}
+                    if reason and priority[reason] > priority.get(permanent, 0):
+                        permanent = reason
+        deadline = time.monotonic() + 120
+        while not Path('/run/charon.vici').exists():
+            drain()
+            if daemon.poll() is not None or time.monotonic() >= deadline:
+                diagnostic('client_exit')
+                return 1
+            time.sleep(.1)
+        command('swanctl', '--load-all', '--file', str(CONF / 'swanctl.conf'), timeout=10)
+        # Spawn the bounded initiation, then keep draining daemon output.
+        initiate = subprocess.Popen(['swanctl', '--initiate', '--child', 'vpn', '--timeout', '100'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        processes.append(initiate)
+        while time.monotonic() < deadline:
+            drain()
+            if permanent:
+                diagnostic(permanent)
+                return 2
+            if daemon.poll() is not None or any(p.poll() is not None for p in processes[:1] if p is not daemon):
+                diagnostic('support_process_exit')
+                return 1
+            try:
+                if protected():
+                    break
+            except Exception:
+                pass
+            if initiate.poll() is not None and initiate.returncode != 0:
+                # Drain after child exit to preserve the sanitized failure class.
+                time.sleep(.1)
+                drain()
+                diagnostic(permanent or 'handshake_timeout')
+                return 2 if permanent else 1
+            time.sleep(.5)
+        else:
+            diagnostic('handshake_timeout')
+            return 1
+        (RUN / 'ready').touch(mode=0o600)
+        diagnostic('established')
+        misses = 0
+        while True:
+            drain()
+            if daemon.poll() is not None or any(p.poll() is not None for p in processes if p not in (daemon, initiate)):
+                diagnostic('support_process_exit')
+                return 1
+            try:
+                misses = 0 if protected() else misses + 1
+            except Exception:
+                misses += 1
+            if misses >= 3:
+                diagnostic(permanent or 'tunnel_state_lost')
+                return 2 if permanent else 1
+            time.sleep(2)
+    finally:
+        (RUN / 'ready').unlink(missing_ok=True)
+        for proc in reversed(processes):
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+
+
+if __name__ == '__main__':
+    def stop(*_):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        if len(sys.argv) == 2 and sys.argv[1] == '--check':
+            sys.exit(0 if (RUN / 'ready').is_file() and protected() else 1)
+        sys.exit(main())
+    except Exception:
+        diagnostic('client_exit')
+        sys.exit(1)

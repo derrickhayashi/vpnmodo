@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -27,10 +28,10 @@ var namespacePattern = regexp.MustCompile(`^net:\[[0-9]+\]$`)
 var containerPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 type Adapter struct {
-	events                          *eventlog.Store
-	root, image, xauth, application string
-	store                           *profilestore.Store
-	docker                          Runner
+	events                                 *eventlog.Store
+	root, image, xauth, ikev2, application string
+	store                                  *profilestore.Store
+	docker                                 Runner
 }
 
 func New(root, image, application string, store *profilestore.Store, docker Runner) (*Adapter, error) {
@@ -227,7 +228,7 @@ func (a *Adapter) Access(ctx context.Context, p profile.Profile) (operation.Heal
 		return operation.HealthUnavailable, "", nil
 	}
 	if !c.State.Running {
-		if c.State.ExitCode == 0 && !c.State.OOMKilled {
+		if (c.State.ExitCode == 0 || p.Backend.Type == profile.IKEv2 && c.State.ExitCode == 2) && !c.State.OOMKilled {
 			return operation.HealthStopped, "", nil
 		}
 		return operation.HealthTunnelDown, "", nil
@@ -331,11 +332,11 @@ func (a *Adapter) removeCredentials(p profile.Profile) error {
 			return ErrRuntime
 		}
 		for _, f := range files {
-			if f.Name() != "username" && f.Name() != "password" && f.Name() != "psk" {
+			if f.Name() != "username" && f.Name() != "password" && f.Name() != "psk" && f.Name() != "ca_cert" {
 				return ErrRuntime
 			}
 			path := filepath.Join(dir, f.Name())
-			if _, err = privatefile.Read(path, 8192); err != nil {
+			if _, err = privatefile.Read(path, profile.MaxProfileBytes); err != nil {
 				return ErrRuntime
 			}
 			if os.Remove(path) != nil {
@@ -350,6 +351,14 @@ func (a *Adapter) removeCredentials(p profile.Profile) error {
 }
 func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, error) {
 	var out deployment
+	gateway := ""
+	if p.Backend.Type == profile.IKEv2 {
+		var err error
+		gateway, err = a.resolveGateway(ctx, p.Backend.IKEv2.Server)
+		if err != nil {
+			return nil, err
+		}
+	}
 	err := a.store.WithCredentials(ctx, p.Name, func(snapshot profile.Snapshot, c profile.Credentials) error {
 		if !reflect.DeepEqual(snapshot.Profile, p) {
 			return ErrRuntime
@@ -366,7 +375,12 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 		if privatefile.Dir(dir) != nil {
 			return ErrRuntime
 		}
-		for key, value := range map[string]secret.Value{"username": c.Username, "password": c.Password, "psk": c.PSK} {
+		values := map[string]secret.Value{"username": c.Username, "password": c.Password, "psk": c.PSK}
+		if p.Backend.Type == profile.IKEv2 {
+			delete(values, "psk")
+			values["ca_cert"] = c.CACert
+		}
+		for key, value := range values {
 			if _, err := privatefile.Write(filepath.Join(dir, key), value.BytesForProtectedFile()); err != nil {
 				return ErrRuntime
 			}
@@ -381,12 +395,15 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 		if p.Backend.Type == profile.XAuth {
 			image = a.xauth
 		}
-		if p.Backend.Type == profile.XAuth {
+		if p.Backend.Type == profile.IKEv2 {
+			image = a.ikev2
+		}
+		if p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2 {
 			if err := writeXAuthResolver(a.dir(p)); err != nil {
 				return err
 			}
 		}
-		out = deployment{1, p, snapshot.Revision, token, image, a.application}
+		out = deployment{SchemaVersion: 1, Profile: p, Revision: snapshot.Revision, Token: token, VPNImage: image, ApplicationImage: a.application, GatewayIPv4: gateway}
 		data, err := manifest(out, a.dir(p))
 		if err != nil {
 			return ErrRuntime
@@ -466,6 +483,9 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 		if p.Backend.Type == profile.XAuth {
 			image = a.xauth
 		}
+		if p.Backend.Type == profile.IKEv2 {
+			image = a.ikev2
+		}
 		for _, image := range []string{image, a.application} {
 			if _, err = a.docker.Run(ctx, "image", "inspect", image); err != nil {
 				return ErrRuntime
@@ -494,7 +514,7 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 		}
 		c := cs["vpn"]
 		if c.ID == "" || !c.State.Running {
-			if p.Backend.Type == profile.XAuth && c.ID != "" && (c.State.ExitCode == 2 || c.State.ExitCode >= 20 && c.State.ExitCode <= 31) {
+			if (p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2) && c.ID != "" && (c.State.ExitCode == 2 || c.State.ExitCode >= 20 && c.State.ExitCode <= 31) {
 				return lifecycle.ErrAuthentication
 			}
 			return ErrRuntime
@@ -536,7 +556,7 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 			}
 		}
 		if ok, err := a.tunnel(ctx, c); err != nil {
-			if p.Backend.Type == profile.XAuth {
+			if p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2 {
 				_, latest, observeErr := a.owned(ctx, p)
 				stopped := latest["vpn"]
 				if observeErr == nil && stopped.ID == c.ID && !stopped.State.Running && (stopped.State.ExitCode == 2 || stopped.State.ExitCode >= 20 && stopped.State.ExitCode <= 31) {
@@ -599,7 +619,7 @@ func (a *Adapter) EnableXAuth(image string) error {
 	return nil
 }
 func (a *Adapter) Supports(b profile.BackendType) bool {
-	return b == profile.L2TP || b == profile.XAuth && a.xauth != ""
+	return b == profile.L2TP || b == profile.XAuth && a.xauth != "" || b == profile.IKEv2 && a.ikev2 != ""
 }
 
 // Forget is called only under the inactive profile-deletion transaction. It does
@@ -640,7 +660,7 @@ func (a *Adapter) Forget(ctx context.Context, name string) error {
 	if err = a.removeCredentials(d.Profile); err != nil {
 		return err
 	}
-	if d.Profile.Backend.Type == profile.XAuth {
+	if d.Profile.Backend.Type == profile.XAuth || d.Profile.Backend.Type == profile.IKEv2 {
 		path := filepath.Join(root, "xauth-resolv.conf")
 		if err := checkXAuthResolver(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ErrRuntime
@@ -701,10 +721,61 @@ func (a *Adapter) Prerequisites(ctx context.Context, p profile.Profile) bool {
 	if p.Backend.Type == profile.XAuth {
 		image = a.xauth
 	}
+	if p.Backend.Type == profile.IKEv2 {
+		image = a.ikev2
+	}
 	for _, value := range []string{image, a.application} {
 		if _, err := a.docker.Run(ctx, "image", "inspect", value); err != nil {
 			return false
 		}
 	}
 	return true
+}
+
+// EnableIKEv2 is operator configuration, never a profile-selected image.
+func (a *Adapter) EnableIKEv2(image string) error {
+	if image == "" {
+		image = DefaultIKEv2Image
+	}
+	if !imagePattern.MatchString(image) {
+		return ErrRuntime
+	}
+	a.ikev2 = image
+	return nil
+}
+
+// Resolve once before starting the protected namespace. DNS is never exempted
+// from its packet policy. A fresh controller-owned reconnect resolves again.
+func (a *Adapter) resolveGateway(ctx context.Context, host string) (string, error) {
+	if addr, err := netip.ParseAddr(host); err == nil && addr.Is4() {
+		return addr.String(), nil
+	}
+	runner, ok := a.docker.(InputRunner)
+	if !ok {
+		return "", ErrRuntime
+	}
+	token, err := privatefile.Token()
+	if err != nil {
+		return "", ErrRuntime
+	}
+	name := "vpnmodo-resolve-" + token
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = a.docker.Run(cleanup, "rm", "--force", name)
+	}()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	// The controller has network_mode:none. A disposable unprivileged resolver
+	// gets no vault/state mounts and never joins the VPN/application namespace.
+	code := "import socket,sys; print(socket.getaddrinfo(sys.stdin.read(),None,socket.AF_INET,socket.SOCK_DGRAM)[0][4][0])"
+	raw, err := runner.RunInput(ctx, []byte(host), "run", "--rm", "--interactive", "--name", name, "--log-driver", "none", "--network", "bridge", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--user", "65534:65534", "--entrypoint", "timeout", a.ikev2, "5", "/opt/vici/bin/python3", "-c", code)
+	if err != nil {
+		return "", ErrRuntime
+	}
+	addr, err := netip.ParseAddr(strings.TrimSpace(string(raw)))
+	if err != nil || !addr.Is4() {
+		return "", ErrRuntime
+	}
+	return addr.String(), nil
 }

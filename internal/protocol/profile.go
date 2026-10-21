@@ -20,7 +20,7 @@ func DecodeProfileCreate(data []byte) (ProfileCreateParams, error) {
 	if err := params.Profile.Validate(); err != nil {
 		return ProfileCreateParams{}, err
 	}
-	if err := params.Credentials.Validate(); err != nil {
+	if err := params.Credentials.ValidateFor(params.Profile.Backend.Type); err != nil {
 		return ProfileCreateParams{}, err
 	}
 	return params, nil
@@ -33,7 +33,7 @@ func (p ProfileCreateParams) EncodeForTransport() ([]byte, error) {
 	if err := p.Profile.Validate(); err != nil {
 		return nil, err
 	}
-	if err := p.Credentials.Validate(); err != nil {
+	if err := p.Credentials.ValidateFor(p.Profile.Backend.Type); err != nil {
 		return nil, err
 	}
 	credentials, err := p.Credentials.EncodeForTransport()

@@ -31,9 +31,28 @@ type BackendDescriptor struct {
 func DescribeBackend(kind BackendType) (BackendDescriptor, error) {
 	d := BackendDescriptor{Type: kind, CredentialFields: fields(reflect.TypeFor[Credentials]())}
 	d.Capabilities.RequireFailClosed = true
+	if kind != IKEv2 {
+		filtered := []Field{}
+		for _, f := range d.CredentialFields {
+			if f.Name != "ca_cert" {
+				filtered = append(filtered, f)
+			}
+		}
+		d.CredentialFields = filtered
+	}
 	switch kind {
 	case L2TP:
 		d.ConfigFields = fields(reflect.TypeFor[L2TPConfig]())
+		d.Capabilities.AutomaticRecovery = true
+	case IKEv2:
+		d.ConfigFields = fields(reflect.TypeFor[IKEv2Config]())
+		d.CredentialFields = []Field{}
+		for _, f := range fields(reflect.TypeFor[Credentials]()) {
+			if f.Name != "psk" {
+				f.Required = true
+				d.CredentialFields = append(d.CredentialFields, f)
+			}
+		}
 		d.Capabilities.AutomaticRecovery = true
 	case XAuth:
 		d.ConfigFields = fields(reflect.TypeFor[XAuthConfig]())

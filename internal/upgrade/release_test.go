@@ -94,3 +94,18 @@ func TestRedirectAuthAndScheme(t *testing.T) {
 		}
 	}
 }
+
+func TestIKEv2RuntimeImageRoleIsImmutableAndOptionalForOldReleases(t *testing.T) {
+	m := fixture([]byte("synthetic binary"))
+	if m.Validate("darwin", "arm64") != nil {
+		t.Fatal("legacy release refused")
+	}
+	m.Runtime.Images["ikev2"] = "ghcr.io/" + Repository + "/ikev2@sha256:" + strings.Repeat("b", 64)
+	if m.Validate("darwin", "arm64") != nil {
+		t.Fatal("IKEv2 release refused")
+	}
+	m.Runtime.Images["ikev2"] = "ghcr.io/" + Repository + "/ikev2:mutable"
+	if m.Validate("darwin", "arm64") == nil {
+		t.Fatal("mutable IKEv2 image accepted")
+	}
+}

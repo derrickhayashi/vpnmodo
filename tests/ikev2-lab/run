@@ -1,0 +1,14 @@
+#!/bin/sh
+# Run inside the existing isolated local-lab daemon, after transferring reviewed
+# source. No host Docker socket or live VPN state is passed to this suite.
+set -eu
+cd /work
+docker build -t vpnmodo-ikev2:dev containers/ipsec-ikev2
+docker build -t vpnmodo-ikev2-gateway:acceptance tests/ikev2-lab
+VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/ikev2_acceptance.py
+# The production-controller check needs a disposable daemon whose socket may be
+# mounted into its temporary controller. Its resources use unique test names.
+if [ -n "${VPNMODO_IKEV2_TEST_CONTROLLER_IMAGE:-}" ]; then
+    VPNMODO_ISOLATED_TEST_HOST=1 python3 tests/ikev2_controller_acceptance.py \
+        --controller-image "$VPNMODO_IKEV2_TEST_CONTROLLER_IMAGE"
+fi

@@ -57,13 +57,19 @@ func (m Manifest) Validate(osname, arch string) error {
 		return ErrRelease
 	}
 	r := m.Runtime
-	if r.SchemaVersion != 1 || r.Version != m.Version || r.BinaryVersion != m.CLIVersion || !tagPattern.MatchString(r.Version) || r.BinaryVersion == "" || len(r.BinaryVersion) > 128 || r.OS != "linux" || r.Arch != arch || len(r.Images) != 4 {
+	if r.SchemaVersion != 1 || r.Version != m.Version || r.BinaryVersion != m.CLIVersion || !tagPattern.MatchString(r.Version) || r.BinaryVersion == "" || len(r.BinaryVersion) > 128 || r.OS != "linux" || r.Arch != arch || (len(r.Images) != 4 && len(r.Images) != 5) {
 		return ErrRelease
 	}
 	for _, role := range []string{"controller", "l2tp", "xauth", "application"} {
 		ref := r.Images[role]
 		prefix := "ghcr.io/" + Repository + "/" + role + "@"
 		if !strings.HasPrefix(ref, prefix) || !digestPattern.MatchString(strings.TrimPrefix(ref, prefix)) {
+			return ErrRelease
+		}
+	}
+	if len(r.Images) == 5 {
+		prefix := "ghcr.io/" + Repository + "/ikev2@"
+		if !strings.HasPrefix(r.Images["ikev2"], prefix) || !digestPattern.MatchString(strings.TrimPrefix(r.Images["ikev2"], prefix)) {
 			return ErrRelease
 		}
 	}

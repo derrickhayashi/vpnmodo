@@ -34,3 +34,15 @@ func TestInstalledReleaseContainsCompleteLocalImageSet(t *testing.T) {
 		t.Fatal("unsafe image accepted or disclosed")
 	}
 }
+
+func TestIKEv2LocalBackendReceipt(t *testing.T) {
+	image := "sha256:" + strings.Repeat("b", 64)
+	images := map[string]string{"l2tp": image, "xauth": image, "ikev2": image, "application": image}
+	if !validBackendImages(images) {
+		t.Fatal("IKEv2 receipt refused")
+	}
+	images["ikev2"] = "mutable:tag"
+	if validBackendImages(images) {
+		t.Fatal("mutable IKEv2 receipt accepted")
+	}
+}

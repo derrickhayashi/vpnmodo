@@ -22,6 +22,7 @@ type BackendType string
 const (
 	L2TP  BackendType = "l2tp-ipsec"
 	XAuth BackendType = "ipsec-xauth"
+	IKEv2 BackendType = "ipsec-ikev2"
 )
 
 var (
@@ -49,6 +50,7 @@ type Backend struct {
 	Type  BackendType  `json:"type"`
 	L2TP  *L2TPConfig  `json:"-"`
 	XAuth *XAuthConfig `json:"-"`
+	IKEv2 *IKEv2Config `json:"-"`
 }
 
 type L2TPConfig struct {
@@ -94,13 +96,16 @@ func (p Profile) Validate() error {
 	if p.Backend.Type == XAuth && len(p.Backend.XAuth.DNS) == 0 && !ipv4(p.Health.Host) {
 		return ErrProfile
 	}
+	if p.Backend.Type == IKEv2 && len(p.Backend.IKEv2.DNS) == 0 && !ipv4(p.Health.Host) {
+		return ErrProfile
+	}
 	return nil
 }
 
 func (b Backend) Validate() error {
 	switch b.Type {
 	case L2TP:
-		if b.L2TP == nil || b.XAuth != nil {
+		if b.L2TP == nil || b.XAuth != nil || b.IKEv2 != nil {
 			return ErrProfile
 		}
 		c := b.L2TP
@@ -114,7 +119,7 @@ func (b Backend) Validate() error {
 		}
 		return validateProposals(c.IKEProposals, c.ESPProposals)
 	case XAuth:
-		if b.XAuth == nil || b.L2TP != nil {
+		if b.XAuth == nil || b.L2TP != nil || b.IKEv2 != nil {
 			return ErrProfile
 		}
 		if !ipv4(b.XAuth.Server) || len(b.XAuth.DNS) > 8 {
@@ -126,6 +131,11 @@ func (b Backend) Validate() error {
 			}
 		}
 		return validateProposals(b.XAuth.IKEProposals, b.XAuth.ESPProposals)
+	case IKEv2:
+		if b.IKEv2 == nil || b.L2TP != nil || b.XAuth != nil {
+			return ErrProfile
+		}
+		return b.IKEv2.validate()
 	default:
 		return ErrBackend
 	}
@@ -138,6 +148,9 @@ func (b Backend) MarshalJSON() ([]byte, error) {
 	var config any = b.L2TP
 	if b.Type == XAuth {
 		config = b.XAuth
+	}
+	if b.Type == IKEv2 {
+		config = b.IKEv2
 	}
 	return json.Marshal(struct {
 		Type   BackendType `json:"type"`
@@ -163,6 +176,11 @@ func (b *Backend) UnmarshalJSON(data []byte) error {
 	case XAuth:
 		result.XAuth = new(XAuthConfig)
 		if err := jsonstrict.Decode(wire.Config, result.XAuth, MaxProfileBytes); err != nil {
+			return err
+		}
+	case IKEv2:
+		result.IKEv2 = new(IKEv2Config)
+		if err := jsonstrict.Decode(wire.Config, result.IKEv2, MaxProfileBytes); err != nil {
 			return err
 		}
 	default:
