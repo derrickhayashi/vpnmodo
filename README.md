@@ -21,8 +21,9 @@ Mac: vpnmodo CLI / OpenSSH
                                                     └─ private network
 ```
 
-Managed profiles support **L2TP/IPsec** with username/password and PSK, and
-**IPsec/XAuth** with username/password, PSK and emailed MFA.
+Managed profiles support **L2TP/IPsec** with username/password and PSK,
+**IPsec/XAuth** with username/password, PSK and emailed MFA, and
+**IKEv2/EAP-MSCHAPv2** with username/password and a CA-verified server certificate.
 
 The supported path is **Apple Silicon Mac → vpnmodo-managed Lima VM**. Setup
 creates Ubuntu, Docker and the controller. You do not need Docker Desktop or
@@ -35,6 +36,7 @@ IKEv2 image.
 
 - [Installation](#installation): install the CLI, prepare the VM and create a profile once.
 - [Usage](#usage): connect, access private services and disconnect.
+- [IKEv2 configuration](#ikev2eap-mschapv2): configure the gateway, server identity and CA trust.
 
 ## Installation
 
@@ -82,11 +84,15 @@ nano "$HOME/vpnmodo-private/work.json"
 
 Save **one** of the following JSON profiles as `work.json`. Replace the example
 server, DNS and health addresses with your VPN's approved settings. Fill in the
-VPN username, password and pre-shared key. Both VPN types use the same
-`credentials` section; registry access stays in the separate setup file. `health` must identify a TCP service reachable through the
-VPN, such as a private SSH server; it is used to check tunnel readiness.
+VPN username and password, plus the pre-shared key for L2TP/XAuth or the CA
+certificate bundle for IKEv2. All three use a `credentials` object; registry access
+stays in the separate optional registry-auth file. `health` must identify a TCP
+service reachable through the VPN, such as a private SSH server; it is used to
+check tunnel readiness.
 
-**L2TP/IPsec:** the gateway may be a DNS name or IPv4 address.
+### L2TP/IPsec
+
+The gateway may be a DNS name or IPv4 address.
 
 ```json
 {
@@ -111,8 +117,10 @@ VPN, such as a private SSH server; it is used to check tunnel readiness.
 }
 ```
 
-**IPsec/XAuth:** the gateway must be an IPv4 address. Use this backend for the
-supported emailed-code MFA flow.
+### IPsec/XAuth
+
+The gateway must be an IPv4 address. Use this backend for the supported
+emailed-code MFA flow.
 
 ```json
 {
@@ -142,8 +150,66 @@ settings; these examples illustrate configuration, not a recommended security
 policy. Omit either array to use that backend's defaults. See
 [proposal settings](docs/profiles.md#ike-and-esp-proposals) for the defaults,
 syntax, ordering and additional strongSwan defaults offered by L2TP. Both of
-these backends use IKEv1; proposal settings do not enable the separately planned
-IKEv2 backend.
+these backends use IKEv1. IKEv2 uses its own backend and proposal policy below.
+
+### IKEv2/EAP-MSCHAPv2
+
+Use `ipsec-ikev2` for username/password EAP-MSCHAPv2 with a certificate-authenticated
+server. This backend requires a release containing the IKEv2 image. It supports
+IPv4 and has no PSK, client-certificate authentication or interactive MFA.
+
+The gateway may be a DNS name or IPv4 address. Set `server_identity` to the
+expected IKE identity configured on the gateway and covered by its certificate;
+it can differ from the gateway address. Client and EAP identities default to the
+VPN username. Set `client_identity` or `eap_identity` only if your gateway requires
+another identity.
+
+```json
+{
+  "schema_version": 1,
+  "name": "work",
+  "backend": {
+    "type": "ipsec-ikev2",
+    "config": {
+      "server": "vpn.example.com",
+      "server_identity": "vpn.example.com",
+      "dns": ["192.0.2.53"],
+      "ike_proposals": ["aes256-sha256-modp2048"],
+      "esp_proposals": ["aes256-sha256"]
+    }
+  },
+  "health": {"host": "192.0.2.10", "port": 22},
+  "credentials": {
+    "username": "YOUR_VPN_USERNAME",
+    "password": "YOUR_VPN_PASSWORD",
+    "ca_cert": "REPLACED_FROM_CA_FILE_BELOW"
+  }
+}
+```
+
+Save your administrator-provided CA certificate bundle as
+`$HOME/vpnmodo-private/ca.pem`. After saving the profile as `work.json`, copy the
+PEM contents into `credentials.ca_cert` before importing. This command handles
+JSON newline escaping without printing the profile or credentials:
+
+```sh
+python3 - <<'PYCODE'
+import json
+from pathlib import Path
+private = Path.home() / "vpnmodo-private"
+path = private / "work.json"
+profile = json.loads(path.read_text())
+profile["credentials"]["ca_cert"] = (private / "ca.pem").read_text()
+path.write_text(json.dumps(profile, indent=2) + "\n")
+PYCODE
+```
+
+The bundle must contain CA certificates only, with no private keys. IKEv2 trusts
+only this bundle and verifies the server certificate and expected identity.
+See the [IKEv2 guide](docs/ikev2.md) for CA limits, proposal policy, DNS,
+troubleshooting and current limitations.
+
+### Import your profile
 
 Then, on the **Mac**, import the settings and credentials together:
 
@@ -162,7 +228,8 @@ private and outside Git: it contains plaintext secrets. Setup and profile creati
 never prompt for credentials. The VM stores
 VPN credentials separately from its profile metadata in protected files, and SSH
 encrypts transport. Profile output and local references omit the secrets.
-Only XAuth prompts for the fresh MFA code when connecting; L2TP does not prompt.
+Only XAuth prompts for a fresh MFA code when connecting; L2TP and IKEv2 use the
+saved credentials without a prompt.
 See [profile maintenance](docs/onboarding.md) for updates and credential rotation.
 
 ## Usage
@@ -180,8 +247,8 @@ vpnmodo doctor work
 ```
 
 For XAuth, `up` asks for the newest emailed code for this attempt through a hidden
-prompt. L2TP does not ask for an emailed code. An already healthy managed session
-is reused. XAuth will not silently start another MFA login after session loss.
+prompt. L2TP and IKEv2 do not ask for an emailed code. An already healthy managed
+session is reused. XAuth will not silently start another MFA login after session loss.
 
 A successful VPN health check proves the configured TCP endpoint is reachable;
 it does not establish an SSH login or HTTP application login. Without configured
@@ -276,7 +343,7 @@ vpnmodo down work
 
 ### Troubleshooting
 
-Use `vpnmodo logs work --since 24h` for disconnect/recovery history across both
+Use `vpnmodo logs work --since 24h` for disconnect/recovery history across all
 VPN backends. See [VPN logging](docs/logging.md) for storage, retention, privacy,
 pagination and diagnostic limitations. Backend diagnostics require rebuilt
 controller/backend images and a new explicit connection.
@@ -297,6 +364,7 @@ wrong; known unresolved lifecycle failures are tracked in
 ## More documentation
 
 - [Onboarding and profile maintenance](docs/onboarding.md): update settings, rotate credentials and remove profiles.
+- [IKEv2 with EAP-MSCHAPv2](docs/ikev2.md): server identity, CA trust, proposals and backend limitations.
 - [Known issues and regressions](docs/known-issues.md): symptoms, affected versions and recovery steps.
 - [VPN and SSH proxy internals](docs/internals.md): how the VM, controller and vpntools container carry traffic.
 - [Setup configuration](docs/design/008-setup-configuration.md): optional `setup --config` input, currently ignored.
