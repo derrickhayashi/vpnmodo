@@ -17,7 +17,7 @@ Control traffic uses SSH; there is no HTTP API port to expose.
 Mac: vpnmodo CLI / OpenSSH
   └─ SSH → your Ubuntu VM
              ├─ controller container + private profile/credential storage
-             └─ VPN container ← shared network → application helper container
+             └─ VPN container ← shared network → vpntools container
                                                     └─ private network
 ```
 
@@ -215,7 +215,7 @@ ssh -o BatchMode=yes private-server hostname
 ```
 
 Destination SSH keys and authentication stay on the Mac. `proxy` attaches to the
-current healthy application container; it does not start a VPN login or ask for
+current healthy vpntools container; it does not start a VPN login or ask for
 MFA. Run `vpnmodo up work` first if the VPN is disconnected.
 
 See [how the proxy and controller work](docs/internals.md) for the profile lookup,
@@ -298,7 +298,7 @@ wrong; known unresolved lifecycle failures are tracked in
 
 - [Onboarding and profile maintenance](docs/onboarding.md): update settings, rotate credentials and remove profiles.
 - [Known issues and regressions](docs/known-issues.md): symptoms, affected versions and recovery steps.
-- [VPN and SSH proxy internals](docs/internals.md): how the VM, controller and application container carry traffic.
+- [VPN and SSH proxy internals](docs/internals.md): how the VM, controller and vpntools container carry traffic.
 - [Setup configuration](docs/design/008-setup-configuration.md): optional `setup --config` input, currently ignored.
 - [Releases](docs/releases.md): downloads, automatic builds and stable promotion.
 - [Supported platforms](docs/supported-platforms.md): platform requirements and current limitations.

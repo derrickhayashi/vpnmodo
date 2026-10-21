@@ -22,7 +22,7 @@ through stdin to a private temporary file. Raw client transcripts are discarded.
 
 Use `vpnmodo up PROFILE` to connect and answer the hidden MFA prompt. The
 controller verifies tunnel enforcement and a private TCP endpoint before
-attaching the unprivileged application container. After tunnel loss, run an
+attaching the unprivileged vpntools container. After tunnel loss, run an
 explicit ensure with a fresh code; XAuth does not start unattended MFA logins.
 See [authentication and enforcement](../../docs/design/006-managed-xauth.md)
 for the state machine, DNS behavior and recovery rules.

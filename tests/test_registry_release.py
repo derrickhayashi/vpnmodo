@@ -29,7 +29,7 @@ class RegistryTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.refs = {role: PREFIX + role + '@sha256:' + f'{n:064x}' for n, role in enumerate(ROLES, 1)}
+        self.refs = {role: PREFIX + ('vpntools' if role == 'application' else role) + '@sha256:' + f'{n:064x}' for n, role in enumerate(ROLES, 1)}
         self.images = {ref: {'Id': 'sha256:' + f'{n + 16:064x}', 'Architecture': 'arm64', 'Os': 'linux'}
                        for n, ref in enumerate(self.refs.values(), 1)}
         self.release = {'schema_version': 1, 'version': 'v0.1.0-rc.7',
@@ -74,6 +74,14 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(self.install(), receipt)
         self.assertFalse(any(c[0] == 'pull' for c in self.calls))
 
+    def test_existing_published_application_reference_still_installs(self):
+        current = self.refs['application']
+        old = current.replace('/vpntools@', '/application@')
+        self.refs['application'] = old
+        self.images[old] = self.images.pop(current)
+        receipt = self.install()
+        self.assertEqual(receipt['backend_images']['application'], self.images[old]['Id'])
+
     def test_ikev2_release_includes_immutable_backend_receipt(self):
         ref = PREFIX + 'ikev2@sha256:' + 'f' * 64
         self.refs['ikev2'] = ref
@@ -117,6 +125,8 @@ class RegistryTests(unittest.TestCase):
             ('binary_version', 'v0.1.0-rc.7+git.' + 'f' * 12),
             ('version', 'v0.1.0-rc.8'), ('arch', 'amd64'),
             ('images', dict(self.refs, xauth=PREFIX + 'xauth:latest')),
+            ('images', dict(self.refs, application=PREFIX + 'vpntools:latest')),
+            ('images', dict(self.refs, application=PREFIX + 'controller@sha256:' + 'a' * 64)),
             ('images', dict(self.refs, xauth='ghcr.io/another/repository/xauth@sha256:' + 'a' * 64)),
         ]
         for key, value in changes:
@@ -136,7 +146,8 @@ class RegistryTests(unittest.TestCase):
         def docker(*args):
             calls.append(args)
             if args[0] == 'push':
-                role = args[-1].split('/')[-1].split(':')[0]
+                package = args[-1].split('/')[-1].split(':')[0]
+                role = 'application' if package == 'vpntools' else package
                 digest = self.refs[role].split('@')[1]
                 return f'old sha256:{"f" * 64} -> {digest}\n{args[-1]}: digest: {digest} size: 1025'
             return ''

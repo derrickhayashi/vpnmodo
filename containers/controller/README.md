@@ -39,7 +39,7 @@ docker build -t vpnmodo-controller:dev -f containers/controller/Dockerfile .
 The build context allowlists only the controller's Go source packages and module
 files. The runtime image bundles the static Go binary and Docker CLI/Compose.
 It contains no customer configuration or credentials. Install the development
-backend/application images explicitly on the VM before connection:
+backend and vpntools images explicitly on the VM before connection:
 
 ```sh
 docker build -t vpnmodo-l2tp:dev containers/l2tp-ipsec

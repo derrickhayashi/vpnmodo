@@ -2,7 +2,7 @@
 
 vpnmodo targets an Apple Silicon Mac with one managed Ubuntu 24.04 ARM64 Lima
 VM. The Mac runs the CLI and OpenSSH; the VM runs Docker, the controller and
-per-profile VPN/application containers. Start with [installation](../README.md#installation).
+per-profile VPN and vpntools containers. Start with [installation](../README.md#installation).
 
 The project is a prerelease. Intel/AMD64 binaries can be cross-built, but native
 AMD64 operation is not qualified. A successful connection to one gateway does

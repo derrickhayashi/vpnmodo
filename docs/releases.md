@@ -80,8 +80,8 @@ published runtime manifest provide the inputs needed to reproduce the CLI build.
 ## Artifacts and trust
 
 The supported user artifact is the standalone executable. It embeds the
-[Lima provisioning inputs](lima.md) and pulls the controller, L2TP, XAuth and
-application images into the managed VM. Container/source archives are retained
+[Lima provisioning inputs](lima.md) and pulls the controller, L2TP, XAuth, IKEv2
+and vpntools images into the managed VM. Container/source archives are retained
 as maintainer build artifacts.
 
 A release has macOS arm64/amd64 CLI archives, a committed source archive, and a
@@ -97,7 +97,7 @@ recorded in each manifest. `vpnmodo version` reports, for example,
 `v0.1.0-rc.1+git.<12-character-revision>`.
 
 Docker container images are built separately on each native Linux architecture. The bundle
-contains the controller, L2TP, XAuth, IKEv2 and application images with
+contains the controller, L2TP, XAuth, IKEv2 and vpntools images with
 reserved, content-addressed `vpnmodo-offline/`
 references. The loader verifies archive and configuration hashes, the complete
 OCI manifest set, architecture and controller version. It refuses a conflicting
@@ -164,8 +164,9 @@ python3 scripts/build-release.py vm --version v0.1.0-rc.13 --publish \
 
 This builds the same images and offline bundle, then pushes
 `ghcr.io/derrickhayashi/vpnmodo/ROLE:VERSION-arm64` for `controller`,
-`l2tp`, `xauth` and `application`. `registry-release.json` records the returned
-registry digests. Docker can push a single-platform manifest whose digest
+`l2tp`, `xauth`, `ikev2` and `vpntools`. The `vpntools` image supplies network
+tools inside each VPN connection; the `vpnmodo` CLI is a separate executable.
+`registry-release.json` records the returned registry digests. Docker can push a single-platform manifest whose digest
 differs from a local index; use the push result, not local `RepoDigests` or
 image IDs. Image publication does not change package visibility. Review the
 source and built image contents before changing package access; for restricted
