@@ -197,3 +197,30 @@ func TestCombinedFileValidationBeforeSSH(t *testing.T) {
 		t.Fatalf("ordinary input permissions rejected: %v", err)
 	}
 }
+
+func TestIKEv2CombinedFileHasCAInsteadOfPSK(t *testing.T) {
+	raw, err := os.ReadFile("../../examples/profiles/v1/example-ikev2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := os.ReadFile("../../internal/profile/testdata/ikev2-ca.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input map[string]any
+	if json.Unmarshal(raw, &input) != nil {
+		t.Fatal("fixture decode")
+	}
+	input["credentials"] = map[string]string{"username": "synthetic-user", "password": "synthetic-password", "ca_cert": string(ca)}
+	path := filepath.Join(t.TempDir(), "input.json")
+	writeCombined(t, path, input)
+	p, err := readProfileFile(path)
+	if err != nil || p.Credentials == nil || p.Credentials.ValidateFor(profile.IKEv2) != nil {
+		t.Fatal("EAP combined input failed")
+	}
+	input["credentials"].(map[string]string)["psk"] = "synthetic-shared"
+	writeCombined(t, path, input)
+	if _, err := readProfileFile(path); err == nil {
+		t.Fatal("EAP profile accepted XAuth PSK")
+	}
+}

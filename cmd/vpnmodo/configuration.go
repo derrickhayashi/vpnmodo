@@ -34,7 +34,7 @@ func readProfileFile(path string) (profileFile, error) {
 	if err := result.configuration().Validate(); err != nil {
 		return profileFile{}, err
 	}
-	if result.Credentials != nil && result.Credentials.Validate() != nil {
+	if result.Credentials != nil && result.Credentials.ValidateFor(result.Backend.Type) != nil {
 		return profileFile{}, profile.ErrCredentials
 	}
 

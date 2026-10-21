@@ -48,7 +48,7 @@ def setup(params):
     if not isinstance(image, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._/:@-]{0,254}", image):
         raise SetupError("input")
     backends = params.get("backend_images")
-    if backends is not None and (not isinstance(backends, dict) or set(backends) != {"l2tp", "xauth", "application"} or any(not isinstance(v, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", v) for v in backends.values())):
+    if backends is not None and (not isinstance(backends, dict) or set(backends) not in ({"l2tp", "xauth", "application"}, {"l2tp", "xauth", "ikev2", "application"}) or any(not isinstance(v, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", v) for v in backends.values())):
         raise SetupError("input")
     if json.loads(docker("info", "--format", "{{json .OSType}}")) != "linux":
         raise SetupError("prerequisites")

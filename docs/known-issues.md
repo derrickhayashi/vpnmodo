@@ -1,9 +1,9 @@
-# Known issues and regressions
+# Troubleshooting known issues
 
-Use `vpnmodo status PROFILE` and `vpnmodo doctor PROFILE` to distinguish VM,
-controller, tunnel and destination-service failures. A failed destination check
-does not by itself mean VPN authentication failed. Replace `work` below with your
-profile name.
+Use `vpnmodo status PROFILE`, `vpnmodo doctor PROFILE` and
+`vpnmodo logs PROFILE --since 24h` to distinguish VM, controller, tunnel and
+private-service failures. A failed destination check alone does not mean VPN
+authentication failed. Replace `work` below with your profile alias.
 
 ## XAuth delayed MFA on older runtime images
 
@@ -11,90 +11,67 @@ profile name.
 the tunnel is established when code entry takes more than about 30 seconds.
 Diagnostic 27 identifies the failed stage; it does not prove the code was wrong.
 
-The rc.7 managed XAuth image used a 30-second client handshake timeout, shorter
-than the controller's 90-second MFA window. The rc.12 release pins a corrected
-XAuth image with a 300-second handshake timeout. The controller's MFA deadline
-remains 90 seconds. A synthetic regression reproduces the failure with a
-40-second delay and passes with only that timeout corrected.
+Runtime images predating rc.12 can have a 30-second client handshake timeout,
+shorter than the controller's 90-second MFA window. Updated XAuth images allow
+300 seconds for the handshake while retaining the controller's MFA deadline.
+Use the current [release and runtime upgrade](upgrading.md); replacing only the
+workstation executable does not update the VM's backend images.
 
-Use the [rc.12 release](releases.md#single-file-cli-download) and its corrected
-XAuth image. Replacing only the workstation binary does not upgrade an existing
-VM runtime automatically; see [installation and upgrades](releases.md#installation-and-upgrades).
-If a login is still in progress, inspect its operation before starting another:
+Inspect the current operation before starting another login:
 
 ```sh
 vpnmodo status work
 vpnmodo operation status op-0123456789abcdef0123456789abcdef --json
 ```
 
-Replace the example operation ID with the one returned by your connection
-attempt. If the attempt failed, start a new explicit `vpnmodo up work` when ready
-and use the new code for that attempt. Do not reuse an old code. Other causes of
-post-MFA exits remain under investigation in
-[XAuth session observations](#xauth-session-state-loss).
+Replace the operation ID with the one returned by your attempt. After a failed
+operation, use `vpnmodo up work` and the new code for that attempt. Do not reuse
+an old MFA code. Other post-MFA exits can have different causes.
 
 ## XAuth session state loss
 
-**Symptom:** an established connection loses its kernel IPsec state while the
-client process still appears to be running. The controller reports a disconnected
-or authentication-required state and removes the application container.
+**Symptom:** an established connection loses kernel IPsec state while the client
+process still appears to be running. The controller reports a disconnected or
+authentication-required state and removes the application container.
 
-The cause remains unconfirmed. The rc.12 delayed-MFA correction does not establish
-that it fixes this separate session-lifetime problem. Kernel enforcement continues
-to block unprotected application traffic; the controller does not silently retry
+The cause remains unconfirmed. Updating the delayed-MFA handshake timeout does
+not establish a fix for this separate session-lifetime problem. Kernel filtering
+blocks unprotected application traffic; the controller does not silently retry
 XAuth authentication.
 
-Check the current state:
+Check `vpnmodo status work`, `vpnmodo doctor work` and recent logs. After the
+previous operation ends, use `vpnmodo up work` and a fresh code to reconnect.
+Report recurring failures with the CLI/runtime versions and sanitized diagnostic
+codes. Omit credentials, codes and private endpoint details.
 
-```sh
-vpnmodo status work
-vpnmodo doctor work
-```
+## L2TP startup failure
 
-To start a new login after confirming that the previous operation has ended, run
-`vpnmodo up work` and supply the fresh MFA code. Report recurring failures with the
-CLI version and sanitized status/doctor results, omitting credentials, MFA codes
-and private destination details. Follow
-[XAuth session observations](#xauth-session-state-loss) for progress.
-
-## Intermittent L2TP startup exit in the test lab
-
-A cold isolated-lab run observed an L2TP container exit with status 2 during manual
-replacement while the controller was paused. Later full runs passed without
-changing startup, recovery or stop timeouts. The original cause is unconfirmed;
-see [the release validation record](release-validation.md#known-limitations).
-
-This observation does not establish a general L2TP deployment failure. When
-investigating a repeated startup failure, first distinguish a container startup
-error from VM/kernel prerequisites and an unreachable health endpoint with
-`vpnmodo status PROFILE` and `vpnmodo doctor PROFILE`. The
-[isolated lab guide](../tests/local-lab/README.md) describes the targeted service
-test and protected startup diagnostics for reproducing the lab failure.
+Use status, doctor and logs to distinguish missing VM/kernel prerequisites,
+container startup errors, authentication failures and an unreachable health
+endpoint. A private-service outage alone does not require another VPN login.
+Do not increase recovery budgets or loop connection commands to hide a recurring
+startup failure. Report the fixed diagnostic codes and software versions.
 
 ## Ubuntu 6.8.0-146 L2TP kernel regression
 
 L2TP/IPsec operation on Ubuntu's `6.8.0-146-generic` kernel has public reports of
-crashes and soft lockups. VPN containers share the VM kernel, so replacing a
-container or restarting the watchdog cannot repair a kernel fault.
+crashes and soft lockups. Containers share the VM kernel; replacing a container
+or restarting the controller cannot repair a kernel fault.
 
-Check the VM's running kernel with `uname -r` and follow the
-[kernel regression guide](kernel-regression.md) for the dated bug references,
-configuration options and maintenance checks. That guide has not verified a
-released fixed kernel. The public L2TP reports do not establish that XAuth or all
-6.8 kernels are affected.
+Check the VM's running kernel with `uname -r` and see the
+[kernel regression guide](kernel-regression.md) for the reported symptoms and
+maintenance checks. These L2TP reports do not establish that XAuth or all 6.8
+kernels are affected.
 
-## Resolved packet and shutdown regressions
+## Stalled transfers and incomplete shutdown
 
-- **XAuth PMTU feedback:** the older managed filter dropped related IPv4
-  fragmentation-needed errors. Transfers over smaller routed links could stall.
-  The correction permits only conntrack-related fragmentation-needed feedback;
-  unrelated ICMP and plaintext traffic remain blocked. The regression transfers
-  256 KiB each way across a 1280-byte path without a route MTU or MSS override.
-- **L2TP shutdown:** a foreground idle sleep delayed the TERM handler beyond
-  Docker's two-second stop limit, leaving the peer session open. The idle wait is
-  now interruptible. The regression checks clean termination, peer cleanup and
-  three fresh reconnects within the existing limits.
+Older XAuth filters could drop related IPv4 fragmentation-needed feedback,
+causing transfers to stall over smaller routed links. Current filters permit
+only conntrack-related fragmentation-needed feedback while blocking unrelated
+ICMP and plaintext traffic. Update the backend through the normal upgrade
+workflow before considering route MTU or MSS overrides.
 
-See [release validation](release-validation.md) for the tested source revisions,
-platforms and protocol coverage. Successful short tests do not establish
-long-term session stability or compatibility with every gateway and MFA method.
+Older L2TP idle loops could delay shutdown beyond Docker's stop budget, leaving
+the peer session open. Current idle waits are interruptible. If the peer still
+reports an existing login after disconnect, inspect backend versions and logs
+before reconnecting repeatedly.

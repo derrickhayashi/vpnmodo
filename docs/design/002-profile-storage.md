@@ -17,8 +17,9 @@ vpnmodo profile inspect example
 ```
 
 The CLI input file includes connection settings plus `credentials.username`,
-`credentials.password` and `credentials.psk` for both supported backends. It must
-be an owner-only regular file. Missing or invalid credentials fail without a
+`credentials.password`, plus `credentials.psk` for L2TP/XAuth or
+`credentials.ca_cert` for [IKEv2](../ikev2.md). Keep this plaintext input file
+private and outside source control. Missing or invalid credentials fail without a
 prompt. The CLI separates settings and credentials before RPC; profile records,
 inspection output and local references do not contain credential values. Explicit
 protected stdin/file-descriptor input remains available for automation. Never
@@ -67,7 +68,7 @@ Other aliases may still refer to a deleted VM profile and can be unregistered.
 Before a mutation, the controller queries only containers carrying all managed
 profile/project labels. Running, paused, restarting or unrecognized states block
 the change. Docker errors or ambiguous ownership also block it. Stopped/dead/new
-containers are inactive; existing legacy VPNs are excluded by ownership filters.
+containers are inactive; unrelated VPNs are excluded by ownership filters.
 No Docker resource is modified by these checks. Profile mutations and lifecycle
 operations share a transaction lock. VM administrators with direct Docker socket
 access can still make independent changes outside that coordination.
@@ -78,7 +79,7 @@ Inside the protected controller state root:
 
 ```text
 profiles/<profile-name>.json       # non-secret settings, revision, credential ref
-credentials/<random-token>.json    # username/password/PSK; protected vault only
+credentials/<random-token>.json    # backend-specific credentials; protected vault only
 .profiles.lock                    # interprocess transaction lock
 ```
 
@@ -116,14 +117,3 @@ owns profile/vault transactions, `internal/credentialinput` owns workstation sec
 input, and `internal/host` owns local references. Shared profile/RPC validators run
 at both ends. Pinned [golang.org/x/term](https://pkg.go.dev/golang.org/x/term@v0.47.0)
 provides hidden terminal input and restoration.
-
-## Evidence
-
-Go tests inject failed profile commits before/after publication, failed credential
-rotation, concurrent stale updates across independent store instances, unsafe
-paths/permissions, cancellation and RPC result redaction. The isolated Ubuntu SSH
-acceptance entrypoint covers noninteractive combined-file CLI creation and
-rotation, active and stale update refusal, local rebinding, controller recreation,
-persisted credentials and explicit deletion. This entrypoint has been adapted
-for the input-file change; its protocol suite was not rerun for this CLI change. These tests use synthetic
-values and do not establish VPN protocol interoperability or packet isolation.

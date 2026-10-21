@@ -1,7 +1,7 @@
 # Release artifacts
 
-ARM64 candidate qualification is recorded in the
-[validation record](release-validation.md). Builds stay local by default;
+See [supported platforms](supported-platforms.md) before selecting a build.
+Builds stay local by default;
 `vm --publish` uploads release images to GHCR. The standalone CLI is distributed
 through GitHub prereleases; there is no Homebrew tap. Repository visibility and
 GHCR package access are separate settings. Public runtime images can be pulled without registry credentials. Build CLI artifacts on the workstation and container images on
@@ -23,9 +23,7 @@ The executable includes Lima YAML, the VM installer and a digest-pinned registry
 manifest. The release builder embeds the published runtime manifest through
 `--runtime-manifest FILE`, so the CLI and controller can use images built from the
 same committed source revision. `registry-release.json` is distributed alongside
-the binaries and included in their checksums. The
-[validation record](release-validation.md) distinguishes historical qualification
-from checks performed for the current release.
+the binaries and included in their checksums.
 
 `SHA256SUMS-cli` covers the executable. macOS binaries are unsigned and not
 notarized; follow your team's approved software policy. No installer changes
@@ -61,15 +59,16 @@ recorded in each manifest. `vpnmodo version` reports, for example,
 `v0.1.0-rc.1+git.<12-character-revision>`.
 
 Docker container images are built separately on each native Linux architecture. The bundle
-contains all four images with reserved, content-addressed `vpnmodo-offline/`
+contains the controller, L2TP, XAuth, IKEv2 and application images with
+reserved, content-addressed `vpnmodo-offline/`
 references. The loader verifies archive and configuration hashes, the complete
 OCI manifest set, architecture and controller version. It refuses a conflicting
-reserved reference before loading and does not overwrite legacy image tags.
+reserved reference before loading and does not overwrite pre-existing image tags.
 Loading does not activate a controller or change an existing VPN deployment.
 
 Docker's classic and containerd image stores can assign different local IDs to
 the same exported image. Save the loader's JSON output as `installed-release.json`:
-it records the verified destination-local immutable IDs for all four images.
+it records the verified destination-local immutable IDs for the complete image set.
 The embedded setup code applies those exact IDs, including backend defaults.
 Do not substitute mutable `:latest`/`:dev` references. Keep the old receipt and
 images for explicit rollback. Source identity and artifact hashes are pinned;
@@ -125,7 +124,7 @@ python3 scripts/build-release.py vm --version v0.1.0-rc.13 --publish \
   --output /absolute/private/release/linux-arm64
 ```
 
-This builds the same four images and offline bundle, then pushes
+This builds the same images and offline bundle, then pushes
 `ghcr.io/derrickhayashi/vpnmodo/ROLE:VERSION-arm64` for `controller`,
 `l2tp`, `xauth` and `application`. `registry-release.json` records the returned
 registry digests. Docker can push a single-platform manifest whose digest
@@ -152,20 +151,16 @@ different running controller release. Runtime upgrades require a release-specifi
 migration procedure. Do not delete controller storage containing saved profiles
 and credentials as an upgrade shortcut.
 
-## Validation scope
+## Release checks
 
-See the [candidate validation record](release-validation.md) for tested revisions,
-platform results and known limitations.
-
-Recorded native qualification covers macOS arm64 and Ubuntu 24.04 Linux arm64.
-The CLI builder also produces amd64 cross-built artifacts, but those do not have
-native Intel runtime qualification. Legacy rollback testing is not covered.
+Run release checks on the [supported platforms](supported-platforms.md).
+Cross-building an executable does not qualify it for native operation.
+Keep results and source/image identities in the release PR or issue.
 
 The `--onboarding-only` subset tests packaged production images without shortening
 their MFA/recovery timeouts. It exercises authentication, private TCP/DNS, service
 access and controller replacement. It does not run the full packet/failure/rekey
-suite. See [known issues](known-issues.md) for unresolved startup and session
-observations.
+suite. See [known issues](known-issues.md) for unresolved startup and session failures.
 
 Inside the isolated lab, after preparing the gateway/service fixture images from
 its normal runner, the production onboarding check accepts a different controller

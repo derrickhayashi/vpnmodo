@@ -25,7 +25,7 @@ def build(cli_dir, runtime_file):
     digest = hashlib.sha256(binary.read_bytes()).hexdigest()
     if cli['binary_sha256'] != digest or cli['binary_version'] != runtime['binary_version'] or cli['version'] != version or cli['os'] != 'darwin' or cli['arch'] != 'arm64':
         raise ValueError('CLI and runtime release do not match')
-    if runtime['schema_version'] != 1 or runtime['os'] != 'linux' or runtime['arch'] != 'arm64' or set(runtime['images']) != {'controller', 'l2tp', 'xauth', 'application'}:
+    if runtime['schema_version'] != 1 or runtime['os'] != 'linux' or runtime['arch'] != 'arm64' or set(runtime['images']) not in ({'controller', 'l2tp', 'xauth', 'application'}, {'controller', 'l2tp', 'xauth', 'ikev2', 'application'}):
         raise ValueError('incompatible runtime release')
     for role, image in runtime['images'].items():
         if not re.fullmatch(r'ghcr\.io/derrickhayashi/vpnmodo/' + role + r'@sha256:[0-9a-f]{64}', image):

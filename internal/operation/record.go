@@ -86,7 +86,7 @@ type Connection struct {
 }
 
 func (c Connection) Validate() error {
-	if c.Backend != "" && c.Backend != profile.L2TP && c.Backend != profile.XAuth {
+	if c.Backend != "" && c.Backend != profile.L2TP && c.Backend != profile.XAuth && c.Backend != profile.IKEv2 {
 		return ErrOperation
 	}
 	if c.Recovery != nil && c.Recovery.Validate() != nil {

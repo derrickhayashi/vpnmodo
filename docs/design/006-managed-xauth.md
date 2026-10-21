@@ -3,15 +3,13 @@
 The managed XAuth backend uses a separate MFA and packet-enforcement path.
 Its shared adapter applies the project/profile/revision/image checks and private
 credential bundles introduced for L2TP. Backend-specific manifests, startup and
-authentication remain separate. Legacy launchers, their Expect script and their
-image entry point retain their existing behavior.
+authentication remain separate.
 
 ## Authentication boundary
 
 The pinned `charon-cmd` client uses terminal prompts for the custom IKEv1 XAuth
-password/passcode exchange. A managed Expect adapter handles that interaction
-separately from the standalone launcher script. Generic VICI configuration does
-not provide this project's interactive MFA integration.
+password/passcode exchange. An Expect adapter handles that interaction. Generic
+VICI configuration does not provide this project's interactive MFA integration.
 
 The managed state machine accepts one PSK prompt, one password prompt and one PIN
 prompt in that order. It suppresses terminal echo and raw client diagnostics.
@@ -25,11 +23,10 @@ service checks determine readiness. Unexpected prompts, EOF and timeouts fail.
 Managed changes to pinned strongSwan 5.9.14 apply only when the managed entry
 point selects them. The username comes from its protected credential mount rather
 than a process argument. Password/PIN values are not added to the credential
-cache, preventing a repeated XAuth request from replaying them. Legacy operation
-keeps the original credential handling. A managed CHILD_SA also sets a native
-XFRM output mark after ESP encryption. Managed IKEv1 scheduled reauthentication is
-disabled; CHILD rekeying with the current IKE SA remains enabled. Both modes retain the existing
-XAUTH_PASSCODE compatibility patch.
+cache, preventing a repeated XAuth request from replaying them. A CHILD_SA sets
+a native XFRM output mark after ESP encryption. Managed IKEv1 scheduled reauthentication is
+disabled; CHILD rekeying with the current IKE SA remains enabled. The client
+supports XAUTH_PASSCODE through the PIN prompt.
 
 The lifecycle manager owns operation/challenge IDs and expiry. `connection ensure
 --wait` and `operation watch` use a hidden controlling-terminal prompt. JSON
@@ -75,8 +72,7 @@ Inbound IPv4 ICMP fragmentation-needed errors are accepted only when conntrack
 classifies their quoted flow as RELATED. This permits path MTU discovery for
 ESP/NAT-T across smaller routed links. Unrelated ICMP remains dropped; this adds
 no general RELATED exception or outbound plaintext permission. No fixed route
-MTU or MSS override is installed by this correction. Existing legacy entrypoints
-are unchanged.
+MTU or MSS override is installed.
 
 IPv6 is disabled for all/default interfaces and its filter policies drop traffic.
 Loopback egress is limited to 127.0.0.1, excluding Docker's embedded resolver at
@@ -102,28 +98,3 @@ can repair only its application namespace without MFA. The application-only
 manifest pins the verified container ID and contains no VPN service to reconcile. On IPsec loss, the controller stops the application and reports authentication
 required. It does not begin a new PSK/password attempt in the background. An explicit ensure creates a fresh attempt/challenge.
 The kernel filter remains the protection while the controller is unavailable.
-
-## Acceptance
-
-The local Ubuntu lab uses a real aggressive-mode PSK gateway with strongSwan's
-[xauth-radius multiple-round profile](https://docs.strongswan.org/docs/5.9/plugins/eap-radius.html#_multiple_rounds)
-and a synthetic RADIUS verifier for password plus XAUTH_PASSCODE. No email service
-or customer gateway is contacted. This proves the protocol exchange, not email
-delivery or customer gateway certification.
-
-A separate reachable escape sink shares the physical bridge. The observer runs
-in the outer lab's stable namespace on the host side of the VPN veth, before
-bridge routing. It sees physical egress after encryption, so an IPsec route via
-the gateway cannot hide plaintext from it. Deliberate positive controls both
-before login and after policy removal must demonstrate detection. The observer
-holds no VPN namespace descriptor and is stopped/reaped after each phase.
-Immediate capture avoids buffering away short UDP probes. A kernel BPF source-MAC
-filter limits counters to client egress; both processed and kernel-received
-plaintext must be zero, with no kernel packet loss. Before VPN startup, a
-capability-free workload that can bind ports 500/4500 must still be blocked from
-using the root IKE exceptions. The
-suite exercises pending MFA, private TCP/DNS, quiet sessions, CHILD rekey, active
-flows with SAs/policies removed while controller and client are suspended,
-recreation, expiry, wrong/repeated codes and controller restart. Zero observed
-plaintext is required for protected phases. See the
-[local lab](../../tests/local-lab/README.md) for execution and recorded validation.

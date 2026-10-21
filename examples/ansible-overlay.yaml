@@ -1,8 +1,0 @@
----
-# Load after your project's native inventory. Adjust groups and users as needed.
-all:
-  vars:
-    ansible_ssh_common_args: >-
-      -F inventory/vpn.ssh_config
-      -o IdentitiesOnly=yes
-      -o ProxyJump=example-vpn-jump

@@ -24,13 +24,16 @@ func validBackendImages(images map[string]string) bool {
 	if images == nil {
 		return true
 	}
-	if len(images) != 3 {
+	if len(images) != 3 && len(images) != 4 {
 		return false
 	}
 	for _, role := range []string{"l2tp", "xauth", "application"} {
 		if !localImageID.MatchString(images[role]) {
 			return false
 		}
+	}
+	if len(images) == 4 && !localImageID.MatchString(images["ikev2"]) {
+		return false
 	}
 	return true
 }

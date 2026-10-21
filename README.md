@@ -25,11 +25,12 @@ Managed profiles support **L2TP/IPsec** with username/password and PSK, and
 **IPsec/XAuth** with username/password, PSK and emailed MFA.
 
 The supported path is **Apple Silicon Mac → vpnmodo-managed Lima VM**. Setup
-creates Ubuntu, Docker and the controller. Docker Desktop, Go and
-Ansible are not needed on the Mac.
+creates Ubuntu, Docker and the controller. You do not need Docker Desktop or
+Go on the Mac.
 
-This is a prerelease. See the [validation record](docs/release-validation.md)
-for qualification and [known issues](docs/known-issues.md) for startup/session observations.
+This is a prerelease. See [supported platforms and limitations](docs/supported-platforms.md)
+and [known issues](docs/known-issues.md) before installation.
+[IKEv2 with EAP-MSCHAPv2](docs/ikev2.md) is available when building from source.
 
 - [Installation](#installation): install the CLI, prepare the VM and create a profile once.
 - [Usage](#usage): connect, access private services and disconnect.
@@ -297,12 +298,7 @@ wrong; known unresolved lifecycle failures are tracked in
 - [VPN and SSH proxy internals](docs/internals.md): how the VM, controller and application container carry traffic.
 - [Setup configuration](docs/design/008-setup-configuration.md): optional `setup --config` input, currently ignored.
 - [Release artifacts](docs/releases.md): download, build and upgrade instructions.
-- [Release validation](docs/release-validation.md): tested versions, platforms and limitations.
+- [Supported platforms](docs/supported-platforms.md): platform requirements and current limitations.
 - [Local development](docs/development.md): build from source and run tests.
-
-The older standalone launchers are documented in the
-[legacy deployment guide](docs/deployment.md), [launcher profiles](docs/profiles.md),
-[watchdog guide](watchdog/README.md) and
-[legacy service forwarding guide](docs/remote-services.md).
 
 See [updating an existing installation](docs/upgrading.md) for the in-place CLI and container upgrade workflow.

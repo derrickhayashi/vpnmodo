@@ -118,7 +118,7 @@ def runtime_input(path, metadata):
     identity = metadata['version'] + '+git.' + metadata['revision'][:12]
     if (data.get('schema_version') != 1 or data.get('version') != metadata['version']
             or data.get('binary_version') != identity or data.get('os') != 'linux'
-            or data.get('arch') != 'arm64' or set(data.get('images', {})) != {'controller', 'l2tp', 'xauth', 'application'}):
+            or data.get('arch') != 'arm64' or set(data.get('images', {})) not in ({'controller', 'l2tp', 'xauth', 'application'}, {'controller', 'l2tp', 'xauth', 'ikev2', 'application'})):
         raise RuntimeError('runtime manifest must match the release version and source revision')
     for role, ref in data['images'].items():
         if not isinstance(ref, str) or not re.fullmatch(r'ghcr\.io/derrickhayashi/vpnmodo/' + role + r'@sha256:[0-9a-f]{64}', ref):
@@ -173,7 +173,7 @@ def vm(source, output, metadata, temporary):
     version, revision = metadata['version'], metadata['revision']
     identity = version + '+git.' + revision[:12]
     images = {}
-    for role, path, name in [('l2tp', 'containers/l2tp-ipsec', 'vpnmodo-l2tp'), ('xauth', 'containers/ipsec-xauth', 'vpnmodo-xauth')]:
+    for role, path, name in [('l2tp', 'containers/l2tp-ipsec', 'vpnmodo-l2tp'), ('xauth', 'containers/ipsec-xauth', 'vpnmodo-xauth'), ('ikev2', 'containers/ipsec-ikev2', 'vpnmodo-ikev2')]:
         tag = name + ':' + version
         docker('build', '--build-arg', 'VERSION=' + identity, '--build-arg', 'REVISION=' + revision, '-t', tag, str(source / path))
         images[role] = {'tag': tag, 'id': docker('image', 'inspect', '--format', '{{.Id}}', tag)}
@@ -183,6 +183,7 @@ def vm(source, output, metadata, temporary):
     docker('build', '-f', str(source / 'containers/controller/Dockerfile'), '-t', controller,
            '--build-arg', 'VERSION=' + identity, '--build-arg', 'REVISION=' + revision,
            '--build-arg', 'L2TP_IMAGE=' + images['l2tp']['id'], '--build-arg', 'XAUTH_IMAGE=' + images['xauth']['id'],
+           '--build-arg', 'IKEV2_IMAGE=' + images['ikev2']['id'],
            '--build-arg', 'APPLICATION_IMAGE=' + images['application']['id'], str(source))
     images['controller'] = {'tag': controller, 'id': docker('image', 'inspect', '--format', '{{.Id}}', controller)}
     for image in images.values():

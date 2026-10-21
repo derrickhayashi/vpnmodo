@@ -81,7 +81,7 @@ forwards bounded frames to the persistent service's private Unix socket. Closing
 stdin drains replies; closing a bridge leaves the service running. The service
 requires `system.hello` negotiation per connection and exposes `system.status`,
 `backend.list` and `backend.describe`. Profile management methods validate and provision protected VM storage;
-connection/operation methods use a persistent manager with both managed adapters.
+connection/operation methods use a persistent manager with the selected backend adapter.
 Request/response logging is disabled. Allowlisted lifecycle and backend events
 are stored separately in private, rotating JSONL files; `connection.logs` exposes
 bounded per-profile queries and status reports `logging_ready`. See
@@ -104,7 +104,7 @@ disposable nested Docker daemon. It generates
 ephemeral SSH keys outside the checkout, pins its own server key, rejects unknown
 keys, creates the controller through actual SSH/Compose, checks private mounts and
 permissions, repairs a stopped controller, recreates it with state retained, and
-checks an unrelated synthetic legacy container is unchanged. It removes its
+checks an unrelated synthetic container is unchanged. It removes its
 resources. Do not run that smoke test on a customer or shared deployment host.
 
 The supplied `compose.yaml` is a manual equivalent for an explicitly prepared

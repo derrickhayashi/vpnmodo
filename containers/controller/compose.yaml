@@ -11,6 +11,7 @@ services:
       io.vpnmodo.component: controller
     environment:
       VPNMODO_STATE_DIR: ${VPNMODO_DATA_ROOT:?Set the private host data root}/controller-state
+      VPNMODO_IKEV2_IMAGE: ${VPNMODO_IKEV2_IMAGE:-vpnmodo-ikev2:dev}
       VPNMODO_L2TP_IMAGE: ${VPNMODO_L2TP_IMAGE:-vpnmodo-l2tp:dev}
       VPNMODO_APPLICATION_IMAGE: ${VPNMODO_APPLICATION_IMAGE:-alpine:3.22}
     volumes:

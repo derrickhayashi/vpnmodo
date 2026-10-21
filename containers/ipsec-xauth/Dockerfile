@@ -14,7 +14,7 @@ COPY --from=builder /etc/strongswan.d /etc/strongswan.d
 ENV PATH="/opt/strongswan/sbin:/opt/strongswan/bin:${PATH}"
 COPY managed/ /usr/local/bin/
 RUN chmod 755 /usr/local/bin/vpn-*
-ENTRYPOINT ["charon-cmd"]
+ENTRYPOINT ["/usr/local/bin/vpn-managed-xauth"]
 
 ARG VERSION=dev
 ARG REVISION=unknown

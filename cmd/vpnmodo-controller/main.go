@@ -54,7 +54,7 @@ func run(args []string) error {
 		if !filepath.IsAbs(*state) {
 			return controller.ErrService
 		}
-		server, err := controller.Listen(controller.Config{Socket: *socket, StateDir: *state, DockerSocket: *docker, Version: version, EnableManagedVPN: true, EnableXAuth: true, XAuthImage: os.Getenv("VPNMODO_XAUTH_IMAGE"), L2TPImage: os.Getenv("VPNMODO_L2TP_IMAGE"), ApplicationImage: os.Getenv("VPNMODO_APPLICATION_IMAGE")})
+		server, err := controller.Listen(controller.Config{Socket: *socket, StateDir: *state, DockerSocket: *docker, Version: version, EnableManagedVPN: true, EnableXAuth: true, EnableIKEv2: true, IKEv2Image: os.Getenv("VPNMODO_IKEV2_IMAGE"), XAuthImage: os.Getenv("VPNMODO_XAUTH_IMAGE"), L2TPImage: os.Getenv("VPNMODO_L2TP_IMAGE"), ApplicationImage: os.Getenv("VPNMODO_APPLICATION_IMAGE")})
 		if err != nil {
 			return err
 		}

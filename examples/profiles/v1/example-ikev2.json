@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "name": "example-ikev2",
+  "backend": {
+    "type": "ipsec-ikev2",
+    "config": {
+      "server": "vpn.example.test",
+      "server_identity": "vpn.example.test",
+      "client_identity": "client@example.test",
+      "eap_identity": "synthetic-user",
+      "dns": ["198.51.100.53"],
+      "ike_proposals": ["aes256-sha256-modp2048"],
+      "esp_proposals": ["aes256-sha256"]
+    }
+  },
+  "health": {"host": "private.example", "port": 8080}
+}

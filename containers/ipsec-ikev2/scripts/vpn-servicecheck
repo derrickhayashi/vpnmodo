@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+vpn-tunnelcheck
+nc -z -w 4 "$VPN_HEALTH_HOST" "$VPN_HEALTH_PORT"

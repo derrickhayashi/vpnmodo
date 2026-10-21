@@ -1,8 +1,9 @@
 # Build from source and run tests
 
 For normal installation, use the [prebuilt CLI](../README.md#installation).
-Building from source requires Go 1.27.1. Python tests use `uv` to provide their
-Ansible, Jinja2 and YAML dependencies. Gitleaks is used for secret scanning.
+Building from source requires Go 1.27.1. Python regression tests use the
+standard library; native Expect is required for the XAuth prompt tests.
+Gitleaks is used for secret scanning.
 
 ## Build the CLI
 
@@ -23,7 +24,7 @@ source archives and image bundles, see [release artifacts](releases.md).
 ```sh
 go test -race ./...
 go vet ./...
-uv run --no-project --with pyyaml --with jinja2 --with ansible-core python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 scripts/check-secrets
 ```
 
@@ -57,5 +58,15 @@ and service endpoints. The VM still supplies the kernel and must support
 IPsec/XFRM and PPP.
 
 The lab covers controller operations, L2TP, XAuth, packet enforcement, service
-forwarding and PMTU behavior. See [release validation](release-validation.md)
-for recorded results and [known issues](known-issues.md) for unresolved failures.
+forwarding and PMTU behavior. See [known issues](known-issues.md) for failure
+symptoms and [supported platforms](supported-platforms.md) for limitations.
+
+For IKEv2, run `tests/ikev2-lab/run` inside the isolated lab after transferring
+reviewed source. Set `VPNMODO_IKEV2_TEST_CONTROLLER_IMAGE` to a locally built
+production controller image to include the controller integration check. This
+check needs the explicitly authorized disposable daemon socket and native Linux
+Docker volume storage. It covers profile import, application attachment,
+controller recreation and teardown through JSON-RPC; it does not replace SSH
+transport acceptance. Runtime keys and synthetic credentials are generated in
+temporary resources and removed by the harness. Keep run results in PRs or
+issues, and retain raw evidence outside the checkout.

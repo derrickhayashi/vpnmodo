@@ -122,19 +122,19 @@ def begin(cli, directory, state_root, services_only=False):
         print("PASS: real IKEv1/IPsec transport, L2TP/PPP and private TCP access; healthy reuse and isolated credential mounts", flush=True)
         if services_only:
             return service_stage(lab, cli, directory)
-        watchdog = "vpnmodo-foreign-watchdog-" + uuid.uuid4().hex[:12]
-        command(["docker", "create", "--name", watchdog, "--network", "none", "--label", "com.docker.compose.project=" + PROJECT, "--label", "com.docker.compose.service=watchdog", "alpine:3.22", "sleep", "infinity"])
-        untouched = command(["docker", "inspect", watchdog]).stdout
+        foreign_service = "vpnmodo-foreign-service-" + uuid.uuid4().hex[:12]
+        command(["docker", "create", "--name", foreign_service, "--network", "none", "--label", "com.docker.compose.project=" + PROJECT, "--label", "com.docker.compose.service=observer", "alpine:3.22", "sleep", "infinity"])
+        untouched = command(["docker", "inspect", foreign_service]).stdout
         try:
             refused = cli("connection", "ensure", NAME, "--wait", "--json", required=False)
             assert refused.returncode != 0
             assert lab.ids()["vpn"]["Id"] == original
-            assert command(["docker", "inspect", watchdog]).stdout == untouched
+            assert command(["docker", "inspect", foreign_service]).stdout == untouched
         finally:
-            command(["docker", "rm", watchdog])
+            command(["docker", "rm", foreign_service])
         last_json(cli("connection", "ensure", NAME, "--wait", "--json"))
         assert lab.ids()["vpn"]["Id"] == original
-        print("PASS: a competing legacy watchdog identity refuses managed actions without altering either deployment", flush=True)
+        print("PASS: an unknown service causes refusal of managed actions without altering either deployment", flush=True)
         lab.control("service-stop")
         lab.wait(lambda c: c.get("recovery", {}).get("health") == "service_unavailable")
         assert lab.ids()["vpn"]["Id"] == original

@@ -12,6 +12,7 @@ import (
 
 const backendLabel = "io.vpnmodo.backend"
 const revisionLabel = "io.vpnmodo.revision"
+const DefaultIKEv2Image = "vpnmodo-ikev2:dev"
 const DefaultXAuthImage = "vpnmodo-xauth:dev"
 const DefaultImage = "vpnmodo-l2tp:dev"
 const DefaultApplicationImage = "alpine:3.22"
@@ -23,6 +24,7 @@ type deployment struct {
 	Token            string          `json:"token"`
 	VPNImage         string          `json:"vpn_image"`
 	ApplicationImage string          `json:"application_image"`
+	GatewayIPv4      string          `json:"gateway_ipv4,omitempty"`
 }
 
 func (d deployment) labels() map[string]string {
@@ -36,6 +38,10 @@ func manifest(d deployment, root string) ([]byte, error) {
 	c := profile.L2TPConfig{}
 	if d.Profile.Backend.Type == profile.L2TP {
 		c = profile.EffectiveL2TPConfig(*d.Profile.Backend.L2TP)
+	} else if d.Profile.Backend.Type == profile.IKEv2 {
+		x := profile.EffectiveIKEv2Config(*d.Profile.Backend.IKEv2)
+		force := true
+		c = profile.L2TPConfig{Server: d.GatewayIPv4, DNS: x.DNS, IKEProposals: x.IKEProposals, ESPProposals: x.ESPProposals, ForceEncapsulation: &force}
 	} else {
 		x := profile.EffectiveXAuthConfig(*d.Profile.Backend.XAuth)
 		force := true
@@ -45,20 +51,28 @@ func manifest(d deployment, root string) ([]byte, error) {
 	if *c.ForceEncapsulation {
 		force = "yes"
 	}
-	env := map[string]string{"VPN_SERVER": c.Server, "VPN_HEALTH_HOST": d.Profile.Health.Host, "VPN_HEALTH_PORT": strconv.Itoa(d.Profile.Health.Port), "VPN_DNS": strings.Join(c.DNS, ","), "VPN_FORCE_ENCAPS": force, "VPN_IKE_PROPOSALS": strings.Join(c.IKEProposals, ","), "VPN_ESP_PROPOSALS": strings.Join(c.ESPProposals, ","), "VPN_RECOVERY_OWNER": "controller", "VPN_DIAGNOSTIC_DIR": "/var/log/vpnmodo"}
+	env := map[string]string{"VPN_SERVER": c.Server, "VPN_HEALTH_HOST": d.Profile.Health.Host, "VPN_HEALTH_PORT": strconv.Itoa(d.Profile.Health.Port), "VPN_DNS": strings.Join(c.DNS, ","), "VPN_FORCE_ENCAPS": force, "VPN_IKE_PROPOSALS": strings.Join(c.IKEProposals, ","), "VPN_ESP_PROPOSALS": strings.Join(c.ESPProposals, ","), "VPN_DIAGNOSTIC_DIR": "/var/log/vpnmodo"}
+	keys := []string{"username", "password", "psk"}
+	if d.Profile.Backend.Type == profile.IKEv2 {
+		keys = []string{"username", "password", "ca_cert"}
+		x := d.Profile.Backend.IKEv2
+		env["VPN_SERVER_IDENTITY"], env["VPN_CLIENT_IDENTITY"], env["VPN_EAP_IDENTITY"] = x.ServerIdentity, x.ClientIdentity, x.EAPIdentity
+	}
+	secretNames := []string{}
 	secrets := map[string]any{}
-	for _, key := range []string{"username", "password", "psk"} {
+	for _, key := range keys {
+		secretNames = append(secretNames, "vpn_"+key)
 		env["VPN_"+strings.ToUpper(key)+"_FILE"] = "/run/secrets/vpn_" + key
 		secrets["vpn_"+key] = map[string]string{"file": filepath.Join(root, "credentials", d.Token, key)}
 	}
 	model := map[string]any{"name": id.Project, "services": map[string]any{
-		"vpn":         map[string]any{"image": d.VPNImage, "labels": d.labels(), "cap_add": []string{"NET_ADMIN", "NET_RAW"}, "devices": []string{"/dev/ppp:/dev/ppp"}, "sysctls": map[string]string{"net.ipv6.conf.all.disable_ipv6": "1", "net.ipv6.conf.default.disable_ipv6": "1"}, "environment": env, "secrets": []string{"vpn_username", "vpn_password", "vpn_psk"}, "restart": "no", "tmpfs": []string{"/run:rw,nosuid,nodev,mode=0755"}, "logging": map[string]any{"driver": "none"}, "healthcheck": map[string]any{"test": []string{"CMD", "/usr/local/bin/vpn-tunnelcheck"}, "interval": "10s", "timeout": "5s", "retries": 2, "start_period": "150s"}},
+		"vpn":         map[string]any{"image": d.VPNImage, "labels": d.labels(), "cap_add": []string{"NET_ADMIN", "NET_RAW"}, "devices": []string{"/dev/ppp:/dev/ppp"}, "sysctls": map[string]string{"net.ipv6.conf.all.disable_ipv6": "1", "net.ipv6.conf.default.disable_ipv6": "1"}, "environment": env, "secrets": secretNames, "restart": "no", "tmpfs": []string{"/run:rw,nosuid,nodev,mode=0755"}, "logging": map[string]any{"driver": "none"}, "healthcheck": map[string]any{"test": []string{"CMD", "/usr/local/bin/vpn-tunnelcheck"}, "interval": "10s", "timeout": "5s", "retries": 2, "start_period": "150s"}},
 		"application": map[string]any{"image": d.ApplicationImage, "labels": d.labels(), "network_mode": "service:vpn", "user": strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), "volumes": []any{map[string]any{"type": "bind", "source": filepath.Join(root, "resolv.conf"), "target": "/etc/resolv.conf", "read_only": true, "bind": map[string]bool{"create_host_path": false}}}, "restart": "no", "read_only": true, "cap_drop": []string{"ALL"}, "security_opt": []string{"no-new-privileges:true"}, "logging": map[string]any{"driver": "none"}, "command": []string{"sleep", "infinity"}},
 	}, "secrets": secrets, "networks": map[string]any{"default": map[string]any{"labels": d.labels()}}}
 	services := model["services"].(map[string]any)
 	diagnosticMount := map[string]any{"type": "bind", "source": filepath.Join(root, "diagnostics"), "target": "/var/log/vpnmodo", "bind": map[string]bool{"create_host_path": false}}
 	services["vpn"].(map[string]any)["volumes"] = []any{diagnosticMount}
-	if d.Profile.Backend.Type == profile.XAuth {
+	if d.Profile.Backend.Type == profile.XAuth || d.Profile.Backend.Type == profile.IKEv2 {
 		services := model["services"].(map[string]any)
 		vpn := services["vpn"].(map[string]any)
 		delete(vpn, "devices")
@@ -73,6 +87,10 @@ func manifest(d deployment, root string) ([]byte, error) {
 		vpn["tmpfs"] = []string{"/run:rw,nosuid,nodev,mode=0755", "/tmp:rw,nosuid,nodev,noexec,mode=1777"}
 		// IKE bypass is root-only; workloads always use an unprivileged UID.
 		services["application"].(map[string]any)["user"] = "65534:65534"
+	}
+	if d.Profile.Backend.Type == profile.IKEv2 {
+		services["vpn"].(map[string]any)["entrypoint"] = []string{"/usr/local/bin/vpn-managed-ikev2"}
+		services["vpn"].(map[string]any)["tmpfs"] = []string{"/run:rw,nosuid,nodev,mode=0755", "/tmp:rw,nosuid,nodev,noexec,mode=1777", "/etc/swanctl:rw,nosuid,nodev,noexec,mode=0700"}
 	}
 	// Compose interpolates dollar signs even in JSON. All manifest strings are data.
 	return json.Marshal(escape(model))

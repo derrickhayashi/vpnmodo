@@ -235,7 +235,7 @@ func TestManagedLifecycleAndCredentialDisposal(t *testing.T) {
 	}
 }
 func TestOwnershipConflictsHaveNoSideEffects(t *testing.T) {
-	for _, scenario := range []string{"watchdog", "foreign-label", "wrong-project", "wrong-image", "missing-record", "foreign-network"} {
+	for _, scenario := range []string{"unknown-service", "foreign-label", "wrong-project", "wrong-image", "missing-record", "foreign-network"} {
 		t.Run(scenario, func(t *testing.T) {
 			a, f, _, p := setup(t)
 			ctx := context.Background()
@@ -247,10 +247,10 @@ func TestOwnershipConflictsHaveNoSideEffects(t *testing.T) {
 				original = c
 			}
 			switch scenario {
-			case "watchdog":
+			case "unknown-service":
 				c := original
 				c.ID = strings.Repeat("c", 64)
-				c.Config.Labels = map[string]string{"com.docker.compose.project": "vpnmodo-example", "com.docker.compose.service": "watchdog"}
+				c.Config.Labels = map[string]string{"com.docker.compose.project": "vpnmodo-example", "com.docker.compose.service": "unknown-service"}
 				f.containers[c.ID] = c
 			case "foreign-label":
 				original.Config.Labels[profile.ManagerLabel] = "foreign"
@@ -352,7 +352,7 @@ func TestManifestEscapesInterpolationAndConstrainsRuntime(t *testing.T) {
 		t.Fatal("unexpected published ports")
 	}
 	if len(model.Services) != 2 {
-		t.Fatal("unexpected watchdog")
+		t.Fatal("unexpected service")
 	}
 }
 func TestUnsupportedBackendAndCancelledCallsCannotMutate(t *testing.T) {

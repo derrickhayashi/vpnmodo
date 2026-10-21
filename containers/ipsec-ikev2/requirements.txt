@@ -1,0 +1,2 @@
+# Official strongSwan VICI binding; protocol-compatible with Ubuntu 5.9.x.
+vici==5.9.11 --hash=sha256:097b0a1a977786c04322c025aa45b2b7fd5f139204b5000c87974139ca99310e

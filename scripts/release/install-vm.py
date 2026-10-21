@@ -150,7 +150,7 @@ def verify(bundle):
     if not isinstance(data, dict):
         raise InstallError('invalid registry release manifest')
     images = data.get('images')
-    if not isinstance(images, dict) or set(images) != ROLES:
+    if not isinstance(images, dict) or set(images) not in (ROLES, ROLES | {'ikev2'}):
         raise InstallError('release image set is incomplete')
     for role, image in images.items():
         for key in ('id', 'config_digest', 'manifest_digest'):
@@ -188,7 +188,7 @@ def verify(bundle):
         index = json.loads(read_small(tar, 'index.json'))
         actual = {(d['digest'], d.get('annotations', {}).get('io.containerd.image.name')) for d in index['manifests']}
         expected = {(i['manifest_digest'], 'docker.io/' + i['ref']) for i in images.values()}
-        if found != ROLES or len(index['manifests']) != len(images) or actual != expected:
+        if found != set(images) or len(index['manifests']) != len(images) or actual != expected:
             raise InstallError('OCI image index does not match release')
     return data
 
@@ -231,7 +231,7 @@ def install_registry(manifest):
         raise InstallError('registry release manifest is too large')
     data = json.loads(manifest.read_text())
     images = data.get('images')
-    if data.get('schema_version') != 1 or data.get('os') != 'linux' or data.get('arch') not in ('arm64', 'amd64') or not isinstance(images, dict) or set(images) != ROLES:
+    if data.get('schema_version') != 1 or data.get('os') != 'linux' or data.get('arch') not in ('arm64', 'amd64') or not isinstance(images, dict) or set(images) not in (ROLES, ROLES | {'ikev2'}):
         raise InstallError('invalid registry release manifest')
     if not isinstance(data.get('binary_version'), str) or not data['binary_version']:
         raise InstallError('missing registry release version')
