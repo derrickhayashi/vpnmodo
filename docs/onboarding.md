@@ -19,6 +19,12 @@ belongs in a separate optional JSON file containing GitHub `username` and `token
 it is never part of the VPN profile. Public images need no auth file. See the complete JSON examples in the
 [README](../README.md#vpn-configuration).
 
+Both examples show optional `backend.config.ike_proposals` and
+`backend.config.esp_proposals` arrays. Set them to your gateway's approved lists
+before `profile create`; there are no separate proposal CLI flags. See
+[proposal settings](profiles.md#ike-and-esp-proposals) for each backend's
+defaults, syntax, ordering and the L2TP engine-default behavior.
+
 ```sh
 vpnmodo setup --registry-auth "$HOME/vpnmodo-private/registry-auth.json"
 vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
@@ -48,17 +54,26 @@ First inspect the current revision:
 vpnmodo profile inspect work
 ```
 
-Edit your private profile JSON while preserving its `name`, then use the returned
-revision number in place of `N`:
+Edit your private profile JSON while preserving its `name` and backend type,
+then use the returned revision number in place of `N`. To change proposal
+settings, edit `backend.config.ike_proposals` and/or `esp_proposals` in that file.
+Update sends the complete connection configuration, not a partial patch; keep
+the server, health endpoint and any other settings you still need. Removing a
+proposal field or setting it to `[]` restores that list's backend defaults.
 
 ```sh
 vpnmodo down work
 vpnmodo profile update work --file "$HOME/vpnmodo-private/work.json" --revision N
 vpnmodo profile inspect work
+vpnmodo up work
 ```
 
-Profile update changes connection settings only. To change credentials, edit the
-same JSON, inspect again and pass the **current** revision to the explicit
+Profile update changes connection settings only; a `credentials` object in the
+input is validated but does not rotate the saved credentials. It also does not
+change a running tunnel: disconnect before updating, then explicitly connect to
+use the new proposals (with fresh MFA for XAuth). To change credentials,
+disconnect again if connected, edit the same JSON, inspect again and pass the
+**current** revision to the explicit
 rotation command. It reads the file without prompting; connect afterwards:
 
 ```sh

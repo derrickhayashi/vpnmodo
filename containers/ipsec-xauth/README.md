@@ -4,6 +4,16 @@ This backend establishes an IKEv1 Aggressive Mode PSK/XAuth tunnel with
 interactive emailed MFA. Select it with `VPN_BACKEND=ipsec-xauth` in a named
 profile. See [profile setup and commands](../../docs/profiles.md).
 
+For managed profiles, select `backend.type: "ipsec-xauth"` in the
+[complete JSON example](../../README.md#vpn-configuration). Optional
+`backend.config.ike_proposals` and `esp_proposals` arrays override the profile
+defaults. See [proposal settings](../../docs/profiles.md#ike-and-esp-proposals)
+for defaults, ordering, supported syntax and the pinned `charon-cmd` behavior:
+it uses the supplied lists without appending engine defaults and does not
+accept the `ipsec.conf` trailing `!`. The legacy equivalents are comma-separated
+`VPN_IKE_PROPOSALS` and `VPN_ESP_PROPOSALS` values in `profile.env`.
+This backend uses IKEv1; IKEv2 support is separate planned backend work.
+
 `Dockerfile` builds strongSwan 5.9.14 on Alpine 3.22. Local patches handle
 `XAUTH_PASSCODE` through the PIN prompt and honor `half_open_timeout` in
 Aggressive Mode. `connect.exp` drives one authentication attempt, redacts the

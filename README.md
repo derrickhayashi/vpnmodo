@@ -93,7 +93,9 @@ VPN, such as a private SSH server; it is used to check tunnel readiness.
     "config": {
       "server": "vpn.example.com",
       "dns": ["192.0.2.53"],
-      "force_encapsulation": true
+      "force_encapsulation": true,
+      "ike_proposals": ["aes256-sha256-modp2048", "aes256-sha1-modp2048"],
+      "esp_proposals": ["aes256-sha256", "aes256-sha1"]
     }
   },
   "health": {"host": "192.0.2.10", "port": 22},
@@ -116,7 +118,9 @@ supported emailed-code MFA flow.
     "type": "ipsec-xauth",
     "config": {
       "server": "203.0.113.10",
-      "dns": ["192.0.2.53"]
+      "dns": ["192.0.2.53"],
+      "ike_proposals": ["aes128-sha1-modp1536", "aes256-sha256-modp1536"],
+      "esp_proposals": ["aes128-sha1-modp1536", "aes256-sha1-modp1536"]
     }
   },
   "health": {"host": "192.0.2.10", "port": 22},
@@ -128,7 +132,16 @@ supported emailed-code MFA flow.
 }
 ```
 
-Then, on the **Mac**:
+The optional `ike_proposals` and `esp_proposals` arrays select the algorithms
+offered for IKE negotiation and ESP data protection. Use your gateway's approved
+settings; these examples illustrate configuration, not a recommended security
+policy. Omit either array to use that backend's defaults. See
+[proposal settings](docs/profiles.md#ike-and-esp-proposals) for the defaults,
+syntax, ordering and additional strongSwan defaults offered by L2TP. Both of
+these backends use IKEv1; proposal settings do not enable the separately planned
+IKEv2 backend.
+
+Then, on the **Mac**, import the settings and credentials together:
 
 ```sh
 vpnmodo profile create work \
