@@ -92,7 +92,7 @@ type container struct {
 
 // Query the whole Compose project, including unlabeled/foreign services, and all
 // uses of this profile label. Filtering by managed labels alone could hide a
-// competing watchdog. No mutation adopts a container discovered this way.
+// conflicting resource. No mutation adopts a container discovered this way.
 func (a *Adapter) owned(ctx context.Context, p profile.Profile) (*deployment, map[string]container, error) {
 	d, err := a.saved(p)
 	if err != nil {

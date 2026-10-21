@@ -1,53 +1,51 @@
 # IPsec/XAuth backend
 
-This backend establishes an IKEv1 Aggressive Mode PSK/XAuth tunnel with
-interactive emailed MFA. Select it with `VPN_BACKEND=ipsec-xauth` in a named
-profile. See [profile setup and commands](../../docs/profiles.md).
+Select `backend.type: "ipsec-xauth"` in a vpnmodo JSON profile. This backend
+uses IKEv1 Aggressive Mode with PSK/XAuth and interactive emailed MFA. See the
+[profile example](../../examples/profiles/v1/example-xauth.json) and
+[profile commands](../../docs/onboarding.md).
 
-For managed profiles, select `backend.type: "ipsec-xauth"` in the
-[complete JSON example](../../README.md#vpn-configuration). Optional
-`backend.config.ike_proposals` and `esp_proposals` arrays override the profile
-defaults. See [proposal settings](../../docs/profiles.md#ike-and-esp-proposals)
-for defaults, ordering, supported syntax and the pinned `charon-cmd` behavior:
-it uses the supplied lists without appending engine defaults and does not
-accept the `ipsec.conf` trailing `!`. The legacy equivalents are comma-separated
-`VPN_IKE_PROPOSALS` and `VPN_ESP_PROPOSALS` values in `profile.env`.
-This backend uses IKEv1; IKEv2 support is separate planned backend work.
+`backend.config.ike_proposals` and `esp_proposals` override the
+[proposal defaults](../../docs/profiles.md#ike-and-esp-proposals). The pinned
+`charon-cmd` uses the supplied lists without appending engine defaults and does
+not accept the `ipsec.conf` trailing `!`. For EAP-MSCHAPv2 without emailed MFA,
+see the separate [IKEv2 backend](../ipsec-ikev2/README.md).
 
-`Dockerfile` builds strongSwan 5.9.14 on Alpine 3.22. Local patches handle
-`XAUTH_PASSCODE` through the PIN prompt and honor `half_open_timeout` in
-Aggressive Mode. `connect.exp` drives one authentication attempt, redacts the
-password and PSK from diagnostic output, and disables the startup timeout once
-the CHILD_SA is established. These are local changes to strongSwan.
+## Runtime and authentication
 
-`vpn` controls Compose and validates TCP connectivity from both the VPN and
-application containers. Use `scripts/vpn` at the collection root to supply its
-profile configuration. Credentials are mounted read-only; each instance owns
-its own MFA file, lock and sanitized log directory. The healthcheck detects an
-ESP policy, and the controller additionally tests the configured TCP endpoint.
+The image builds strongSwan 5.9.14 on Alpine 3.22. Local patches support
+`XAUTH_PASSCODE`, protect credential delivery, mark encrypted traffic for the
+namespace firewall and disable unattended IKEv1 reauthentication.
+`vpn-managed-xauth` configures enforcement and starts the Expect adapter.
+The controller supplies protected credential mounts and delivers each MFA code
+through stdin to a private temporary file. Raw client transcripts are discarded.
 
-This backend has no traffic kill switch after tunnel loss and does not support
-unattended MFA recovery. Kernel IPsec/XFRM support and NET_ADMIN are required.
-The shared watchdog runs in manual mode: it reports tunnel or private TCP
-endpoint failure without recreating either sibling. Reconnect through the
-launcher with a fresh emailed code. Do not assume PPP/DNS setup from L2TP.
+Use `vpnmodo up PROFILE` to connect and answer the hidden MFA prompt. The
+controller verifies tunnel enforcement and a private TCP endpoint before
+attaching the unprivileged application container. After tunnel loss, run an
+explicit ensure with a fresh code; XAuth does not start unattended MFA logins.
+See [authentication and enforcement](../../docs/design/006-managed-xauth.md)
+for the state machine, DNS behavior and recovery rules.
 
-Both backends use `Dockerfile`, image-only `compose.yaml`, and an explicit
-`compose.build.yaml` override for local builds. The launcher builds with that
-override before runtime deployment.
+## Build
 
-### Managed XAuth safe failure diagnostics
+From the repository root, on a native Linux Docker builder:
 
-Managed attempts suppress transcripts and never retry authentication. Fixed
-process exit reasons can be recovered from Docker lifecycle events after cleanup:
+```sh
+docker build -t vpnmodo-xauth:dev containers/ipsec-xauth
+```
+
+Activate backend images through the controller setup or upgrade workflow.
+Building an image does not replace an active VPN session.
+
+## Failure diagnostics
+
+Use `vpnmodo logs PROFILE` and `vpnmodo doctor PROFILE`. Fixed exit reasons are:
 20 repeated/unexpected PSK prompt; 21 password prompt; 22 PIN prompt;
 23 initial login timeout; 24 MFA input timeout; 25 timeout after MFA submission;
 26 client exit before submission; 27 client exit after submission;
 28 invalid MFA input; 29 invalid mounted credentials;
 30 establishment before required MFA; 31 established client exit.
-Exit 2 remains the generic authentication guard. An exit reason identifies a
-stage, not proof that a user entered an incorrect code. Repeated prompts or
-client exits require diagnosis before another explicit attempt with fresh MFA.
-A concurrent health-check exec may exit 137 when the VPN process exits; the
-controller reads the owned VPN container's status to preserve authentication
-failure classification. No credential or raw client output is retained.
+Exit 2 is a generic authentication failure. A reason identifies a stage; it
+does not prove the code was incorrect. Diagnose repeated prompts or client exits
+before starting another attempt. See [known issues](../../docs/known-issues.md).

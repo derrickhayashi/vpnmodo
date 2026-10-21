@@ -76,7 +76,7 @@ the MFA window to 45 seconds; production keeps its normal deadline. The quiet
 session interval exceeds 90 seconds while controller probes are paused.
 
 A separate packet regression creates fresh kernel ESP/NAT-T peers across a
-1280-byte routed bottleneck. It compares the legacy unfiltered path, a managed
+1280-byte routed bottleneck. It compares the unfiltered control path, a managed
 filter missing PMTU feedback, the locked-route workaround, and the corrected
 filter with and without a route MTU override. Each working path must transfer
 256 KiB in both directions. Counter checks require conntrack-related ICMP
@@ -125,27 +125,13 @@ Production images and logs retain their existing behavior.
 
 The packaged production-image onboarding subset and compatible controller
 upgrade rehearsal are described in the [release guide](../../docs/releases.md).
-Its [validation record](../../docs/release-validation.md) distinguishes tested
-architectures from cross-builds and known limitations. The full default
-backend suite is unchanged.
+Platform limits are described in [supported platforms](../../docs/supported-platforms.md).
 
-## Results and regressions
+## Interpreting protocol checks
 
-The [release validation record](../../docs/release-validation.md) lists tested
-revisions, platforms, packet observations and remaining limitations. The
-[known issues guide](../../docs/known-issues.md) describes unresolved failures
-and user recovery steps, including intermittent L2TP replacement startup and
-XAuth session state loss.
-
-The regression details below explain what the fixtures check and how to interpret
-capture results.
-
-A foreground idle sleep deferred the VPN shell's TERM handler beyond Docker's
-two-second stop limit. The container could be force-killed before telling the
-peer to close its session. The idle wait is now interruptible. The regression
-stops a real VPN just after a new sleep starts, requires a clean exit and peer
-session cleanup within the existing limit, then reconnects three times.
-Neither the service-probe timeout nor the recovery policy was relaxed.
+The shutdown check stops a real L2TP VPN just after an idle sleep starts,
+requires a clean exit and peer cleanup within Docker's stop limit, then
+reconnects three times. This catches a foreground wait that delays TERM.
 
 The XAuth observer captures the host side of the VPN veth in the outer lab's
 stable namespace, before bridge routing. Positive controls verify it sees both
@@ -155,10 +141,10 @@ reference. Avoid external nsenter captures in a dynamic VPN namespace: they can
 retain a retired namespace and change reconnect behavior. Keep all captures and
 runtime diagnostics outside the checkout.
 
-The focused PMTU regression passes on Ubuntu 24.04 ARM64: removing the ICMP
-exception causes an eight-second transfer timeout and drops all 16 observed
-fragmentation-needed errors. The correction accepts the related feedback and
-completes 256 KiB each way without a route MTU or MSS override. The locked-route
-workaround also passes. Unrelated ICMP and every protected plaintext/post-policy
-probe remain blocked. This packet fixture does not authenticate to a real VPN or
-establish that a full protocol/lifetime suite passed at this revision.
+The focused PMTU fixture sends traffic across a routed 1280-byte bottleneck.
+It compares the restricted filter with a control that drops fragmentation-needed
+feedback and checks that the observer can detect plaintext when enforcement is
+deliberately bypassed. Related ICMP must permit large transfers; unrelated ICMP
+and protected plaintext probes must remain blocked. This fixture does not
+requalify authentication or session lifetime. Keep results in the PR or issue
+that requested the run.

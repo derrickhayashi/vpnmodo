@@ -139,22 +139,3 @@ for adapters implementing the recovery interface. The [L2TP adapter](005-managed
 Docker ownership enforcement. XAuth also monitors health and repairs a detached
 application, but tunnel loss requires explicit fresh authentication. Its kernel
 filter protects traffic independently of monitoring.
-
-## Validation
-
-Race tests cover concurrent joins, independent profiles, verified-session reuse,
-disconnect superseding old work, cancellation without session teardown, MFA replay,
-expiry/repeated prompts, deadlines, bounded observers/history, restart, and journal
-failures before/after publication and after a new connection starts. RPC tests
-cover reconnect, ordered snapshots/notifications and disabled production backends.
-
-The [local Ubuntu lab](../../tests/local-lab/README.md) first validates the
-production controller, then builds a separate synthetic test-binary image in a
-binary-only Docker context. It verifies operations after the initiating SSH exits, concurrent callers, CLI watch,
-MFA submission/replay, cancellation, controller restart, established-session reuse,
-interrupted MFA without retry, persisted disconnect intent and secret-free journal
-bytes. That synthetic suite never logs into a VPN or changes a customer
-deployment. Separate real L2TP and XAuth suites provide protocol and packet
-evidence; synthetic success alone does not establish either.
-
-Reference: [bbolt v1.5.0](https://pkg.go.dev/go.etcd.io/bbolt@v1.5.0).

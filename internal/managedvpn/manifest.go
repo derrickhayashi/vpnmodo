@@ -51,7 +51,7 @@ func manifest(d deployment, root string) ([]byte, error) {
 	if *c.ForceEncapsulation {
 		force = "yes"
 	}
-	env := map[string]string{"VPN_SERVER": c.Server, "VPN_HEALTH_HOST": d.Profile.Health.Host, "VPN_HEALTH_PORT": strconv.Itoa(d.Profile.Health.Port), "VPN_DNS": strings.Join(c.DNS, ","), "VPN_FORCE_ENCAPS": force, "VPN_IKE_PROPOSALS": strings.Join(c.IKEProposals, ","), "VPN_ESP_PROPOSALS": strings.Join(c.ESPProposals, ","), "VPN_RECOVERY_OWNER": "controller", "VPN_DIAGNOSTIC_DIR": "/var/log/vpnmodo"}
+	env := map[string]string{"VPN_SERVER": c.Server, "VPN_HEALTH_HOST": d.Profile.Health.Host, "VPN_HEALTH_PORT": strconv.Itoa(d.Profile.Health.Port), "VPN_DNS": strings.Join(c.DNS, ","), "VPN_FORCE_ENCAPS": force, "VPN_IKE_PROPOSALS": strings.Join(c.IKEProposals, ","), "VPN_ESP_PROPOSALS": strings.Join(c.ESPProposals, ","), "VPN_DIAGNOSTIC_DIR": "/var/log/vpnmodo"}
 	keys := []string{"username", "password", "psk"}
 	if d.Profile.Backend.Type == profile.IKEv2 {
 		keys = []string{"username", "password", "ca_cert"}

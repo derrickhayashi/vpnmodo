@@ -18,7 +18,7 @@
 +	}
 @@ -589,0 +604,17 @@
 +	/* Managed usernames are credentials: read the protected mount, never argv.
-+	 * The legacy CLI and its defaults remain unchanged. */
++	 * The upstream option parser remains outside controller mode. */
 +	if (getenv("VPNMODO_MANAGED_XAUTH"))
 +	{
 +		char username[4097];

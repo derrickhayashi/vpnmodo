@@ -69,28 +69,6 @@ blocked until explicit ensure.
 
 ## Recovery ownership boundary
 
-Every adapter action verifies managed project/profile labels and rejects competing
-recovery owners. Creating a managed profile does not adopt legacy containers.
-
-The current standalone watchdog checks `io.vpnmodo.managed-by` on its selected VPN
-before any health-driven recovery or namespace repair. The value `vpnmodo` causes
-a stable controller-owned report and no mutations. Older installed watchdog images
-do not acquire this guard automatically. Before switching an existing deployment
-to controller management, stop its old recovery owner to avoid competing
-reconnects. Existing standalone behavior remains available.
-
-## Validation and scope
-
-Go race tests cover classification, healthy reuse, cooldown, retry exhaustion,
-application-only repair, ordering, cancellation/disconnect races, bounded probing,
-restart preservation and journal failures before/after publication. Watchdog
-regressions execute the actual shell with synthetic Docker results.
-
-The isolated Ubuntu SSH workflow exercises the persistent scheduler through CLI
-commands and recreates the controller between attempts. Its separate test binary
-uses private synthetic runtime files, with short test-only intervals, to assert
-bounded retries, application repair without reauthentication, stopped forwarding,
-intent preservation, persisted cooldown/budget and restart without login. This is
-controller-policy evidence. It does not establish L2TP interoperability or XAuth
-packet isolation, and is supplemented by the real L2TP interoperability and recovery lab described
-in the adapter design.
+Every adapter action verifies the saved project/profile/backend/revision/image
+identity. Only the controller manages reconnects and application namespace
+repair. Unknown services and conflicting ownership cause refusal before mutation.

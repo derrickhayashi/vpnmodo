@@ -1,13 +1,13 @@
 #!/bin/sh
 set -eu
 
-if [ "${VPN_RECOVERY_OWNER:-standalone}" = controller ] && [ -n "${VPN_DIAGNOSTIC_DIR:-}" ]; then
- mkdir -p /run/vpn
- mkfifo /run/vpn/diagnostic-pipe
- vpn-diagnostic-filter < /run/vpn/diagnostic-pipe >/dev/null 2>&1 &
- exec > /run/vpn/diagnostic-pipe 2>&1
- # charon otherwise logs to syslog, which is absent in this container.
- cat > /etc/strongswan.d/charon-vpnmodo-logging.conf <<'CONFIG'
+: "${VPN_DIAGNOSTIC_DIR:?Set the controller diagnostic directory}"
+mkdir -p /run/vpn
+mkfifo /run/vpn/diagnostic-pipe
+vpn-diagnostic-filter < /run/vpn/diagnostic-pipe >/dev/null 2>&1 &
+exec > /run/vpn/diagnostic-pipe 2>&1
+# charon otherwise logs to syslog, which is absent in this container.
+cat > /etc/strongswan.d/charon-vpnmodo-logging.conf <<'CONFIG'
 charon {
  filelog {
   stdout {
@@ -21,7 +21,6 @@ charon {
  }
 }
 CONFIG
-fi
 
 log() {
     printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"
@@ -78,22 +77,9 @@ cleanup() {
     [ -z "${DNSMASQ_PID:-}" ] || kill "$DNSMASQ_PID" 2>/dev/null || true
     [ -z "${XL2TPD_PID:-}" ] || kill "$XL2TPD_PID" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
-KEYINGTRIES=%forever
-DPDACTION=restart
-CLOSEACTION=restart
-REDIAL=yes
-PPP_IP_DEFAULT=
-if [ "${VPN_RECOVERY_OWNER:-standalone}" = controller ]; then
-    # Controller-owned profiles have no competing Docker/IKE/L2TP restart loop.
-    KEYINGTRIES=1
-    DPDACTION=clear
-    CLOSEACTION=none
-    REDIAL=no
-    PPP_IP_DEFAULT=noipdefault
-    trap cleanup EXIT
-    trap 'exit 0' INT TERM
-fi
+# The controller owns reconnects and cancellation.
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 
 : "${VPN_SERVER:?VPN_SERVER is required}"
 VPN_USERNAME=$(read_secret VPN_USERNAME)
@@ -154,10 +140,10 @@ conn l2tp-psk
     ike=$VPN_IKE_PROPOSALS
     esp=$VPN_ESP_PROPOSALS
     forceencaps=$VPN_FORCE_ENCAPS
-    keyingtries=$KEYINGTRIES
-    dpdaction=$DPDACTION
+    keyingtries=1
+    dpdaction=clear
     dpddelay=30s
-    closeaction=$CLOSEACTION
+    closeaction=none
     auto=add
 EOF
 
@@ -173,14 +159,14 @@ port = 1701
 lns = $VPN_SERVER_IP
 pppoptfile = /etc/ppp/options.l2tpd.client
 length bit = yes
-redial = $REDIAL
+redial = no
 redial timeout = 5
 max redials = 6
 EOF
 
 cat > /etc/ppp/options.l2tpd.client <<EOF
 name "$VPN_USERNAME_ESCAPED"
-$PPP_IP_DEFAULT
+noipdefault
 noauth
 refuse-eap
 logfd 2
@@ -209,11 +195,7 @@ conf-file=/run/vpn/dns-servers.conf
 EOF
 
 log "Starting IPsec connection to $VPN_SERVER_IP"
-if [ "${VPN_RECOVERY_OWNER:-standalone}" = controller ] && [ -n "${VPN_DIAGNOSTIC_DIR:-}" ]; then
- ipsec start --nofork &
-else
- ipsec start
-fi
+ipsec start --nofork &
 attempt=0
 until ipsec up l2tp-psk; do
     attempt=$((attempt + 1))
@@ -233,9 +215,6 @@ ip route replace "$VPN_SERVER_IP/32" via "$ORIGINAL_GATEWAY" dev "$ORIGINAL_DEVI
 iptables -F OUTPUT
 iptables -P OUTPUT DROP
 iptables -A OUTPUT -o lo -j ACCEPT
-if [ "${VPN_RECOVERY_OWNER:-standalone}" != controller ]; then
-    iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-fi
 iptables -A OUTPUT -o ppp0 -j ACCEPT
 iptables -A OUTPUT -o "$ORIGINAL_DEVICE" -d "$VPN_SERVER_IP" -p udp --dport 500 -j ACCEPT
 iptables -A OUTPUT -o "$ORIGINAL_DEVICE" -d "$VPN_SERVER_IP" -p udp --dport 4500 -j ACCEPT

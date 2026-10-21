@@ -24,8 +24,7 @@ docker build -t vpnmodo-controller:dev -f containers/controller/Dockerfile .
 Activate that controller through the existing explicit host setup/replacement
 workflow; rebuilding an image does not replace a running controller. The VM
 requires kernel XFRM/IPsec, IPv4 policy routing, iptables policy/owner/mark
-matches and IPv6 filtering. PPP is unnecessary for this backend. No extra hosted
-CI or paid infrastructure is required.
+matches and IPv6 filtering. PPP is unnecessary for this backend.
 
 The [synthetic profile](../examples/profiles/v1/example-ikev2.json) is nonsecret.
 To make a combined import file, keep a private input JSON and CA PEM outside the
@@ -161,15 +160,16 @@ bounded attempt or starts fresh after cleanup. The vault remains private between
 connections; per-attempt secret files and swanctl configuration use protected
 mounts/tmpfs. Raw charon/swanctl transcripts never enter Docker logs or RPC.
 
-## Troubleshooting and validation
+## Troubleshooting
 
 Use `vpnmodo connection logs example-ikev2` and the normal operation/doctor
 commands. Fixed diagnostic reasons include `authentication_failed`,
 `certificate_untrusted`, `certificate_expired`, `server_identity_mismatch`,
 `proposal_mismatch`, `handshake_timeout`, `tunnel_state_lost` and `client_exit`.
 Certificate reasons can overlap when strongSwan reports several validation
-failures. This Ubuntu build reports the expired-certificate fixture as
-`certificate_untrusted`; inspect certificate validity as well as the CA chain. A gateway may reject the requested server identity with a generic
+failures. Expired certificates can produce `certificate_untrusted`; inspect
+certificate validity as well as the CA chain. A gateway may reject the requested
+server identity with a generic
 AUTHENTICATION_FAILED response before sending its certificate; that produces
 `authentication_failed`, so check the expected server identity as well as EAP
 credentials. Check CA chain/validity and the expected IKE identity; do not bypass
@@ -177,54 +177,17 @@ verification. Timeouts also cover unreachable gateways and missing UDP mappings.
 `client_exit` covers startup/plugin/configuration failures without exposing raw
 input. A healthy SA with a failed private TCP probe leaves applications detached.
 
-The [synthetic Linux suite](../tests/ikev2_acceptance.py) and
-[lab runner](../tests/ikev2-lab/run) exercise real EAP, proposal constraints,
-certificate failures, application TCP/DNS, rekey, cancellation and packet loss.
-Run only in an existing authorized isolated Linux Docker environment. The
-existing [local lab](../tests/local-lab/README.md) supplies a separate daemon;
-run `tests/ikev2-lab/run` there after transferring reviewed source. No new CI
-workflow is enabled. Runtime CA/server keys are generated inside the disposable
-gateway and removed with its resources.
+## Limitations
 
-### Local evidence — 2026-10-21
+IKEv2 currently supports IPv4, EAP-MSCHAPv2 credentials and one gateway address
+per attempt. Client certificates, PSK-only authentication, additional EAP/MFA
+methods, IPv6 and MOBIKE are unavailable.
 
-Native ARM64 images were built and exercised on the laptop's existing Linux
-Docker engine (LinuxKit 7.0.14). The backend uses Ubuntu 24.04 strongSwan
-5.9.13-2ubuntu4.24.04.5 and checksum-pinned upstream Python VICI 5.9.11.
-No images or releases were published. Test state, ephemeral keys and containers
-were removed. The synthetic test CA in `internal/profile/testdata` contains only
-a public certificate; its private key was discarded when generated.
+Use native Linux storage for controller state. Docker Desktop host bind mounts
+can project file ownership in a way that prevents the controller from accepting
+private state. Do not loosen ownership checks to work around this.
 
-| Check | Actual result |
-| --- | --- |
-| Go race regression and vet | Pass, including IKEv2 schema, credentials, import, vault, manifests, DNS bootstrap isolation, cancellation, restart, recovery and permanent-failure handling |
-| Python regressions | All 94 tests pass, including existing launchers, role, packaging and upgrade checks |
-| Source secret scans and whitespace review | Pass |
-| Backend and production controller image builds | Pass on native Linux ARM64 |
-| Real EAP-MSCHAPv2 with separate IKE/EAP identities | Pass with CA-verified synthetic gateway |
-| Explicit IKE/ESP negotiation | Documented AES256 defaults and selected AES128/SHA256/MODP2048 IKE plus AES128/SHA256 ESP pass; incompatible explicit IKE and ESP policies each fail permanently |
-| Private traffic and DNS | TCP echo, health hostname lookup and private probe pass; plaintext packet observer sees no traffic |
-| CHILD_SA rekey | New child identity and encrypted application traffic pass |
-| Fail-closed loss | No TCP/DNS leakage with all backend userspace stopped and XFRM state/policy removed; an intentional firewall bypass makes the same observer detect packets |
-| Pre-authentication and cancellation | No plaintext leakage before authentication; bounded backend stop passes |
-| Authentication/trust rejection | Wrong password, untrusted CA, expired server certificate and wrong server identity fail permanently with fixed diagnostics and disabled Docker logs |
-| Fresh unattended connection | Pass after namespace teardown |
-| Production controller integration | Import, verification, private probe and unprivileged application attachment pass through the production JSON-RPC bridge |
-| Controller recreation | Same VPN and application container IDs retained and re-verified; explicit disconnect removes runtime credentials; subsequent ensure creates a fresh namespace |
-
-The production-controller check is
-[`tests/ikev2_controller_acceptance.py`](../tests/ikev2_controller_acceptance.py).
-It uses a unique controller/profile and its own native Linux Docker volume. On
-Docker Desktop, a macOS bind mount projected different file ownership after the
-root backend accessed it, and the controller correctly refused that state.
-Use native Linux state storage. The test needs access to an explicitly
-authorized disposable daemon socket; it does not use or replace the installed
-controller. Its bridge checks do not requalify SSH transport.
-
-Outstanding qualification: native AMD64, cross-version runtime upgrades, IKE SA
-rekey/reauthentication, long-duration soak, PMTU/large-transfer behavior, every
-supported crypto transform, external gateway-hostname DNS followed by a complete
-handshake, and live L2TP/XAuth protocol reruns. Gateway bootstrap resolution and
-controller cancellation/recovery failure budgets have focused Go coverage;
-private VPN DNS/routing and backend cancellation have live protocol coverage.
-These gaps are not passing tests. This change does not expand hosted CI.
+Native AMD64, cross-version runtime upgrades, IKE SA rekey/reauthentication,
+long-running sessions, PMTU/large transfers, every accepted crypto transform,
+and a complete connection through external gateway-hostname resolution are not
+yet qualified. See [development](development.md) for local test instructions.

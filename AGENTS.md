@@ -21,8 +21,17 @@ documentation suitable for public distribution, regardless of repository visibil
   authorized Linux environment; no GitLab build pipeline is planned. Do not
   treat missing hosted CI or protocol results as passing tests.
 - New product/CLI name: `vpnmodo`; controller executable/image/service:
-  `vpnmodo-controller`. Keep existing legacy launcher commands operational.
+  `vpnmodo-controller`. User workflows use the Go CLI and controller; do not
+  restore the retired standalone launchers or their compatibility paths.
 - Workstation and VM each belong to one user. The control layer uses Go
   and JSON-RPC over SSH; existing backend behavior remains the migration base.
+
+# Documentation
+
+Keep documentation user-facing: explain how to use vpnmodo, how it works, and
+its supported behavior and limitations. Put dated test runs, acceptance evidence,
+implementation progress and agent work journals in PR descriptions or issue
+updates, not product documentation. Developer guides may explain how to build
+and run tests without becoming a record of individual runs.
 
 See `docs/development.md` for local build and test commands.

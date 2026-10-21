@@ -8,7 +8,8 @@ Then use [README usage](../README.md#usage) to connect and access private servic
 
 Create a profile with `vpnmodo profile create NAME --file PROFILE.json`. It uses
 the managed VM and reads `credentials.username`, `credentials.password` and
-`credentials.psk` from that same file for both supported VPN types.
+`credentials.psk` from that same file for L2TP/XAuth. IKEv2 instead requires
+`credentials.ca_cert`; see the [IKEv2 profile and trust guide](ikev2.md).
 VM selection and manual host registration are not part of the CLI.
 
 ## One input file per VPN

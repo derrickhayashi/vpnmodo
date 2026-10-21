@@ -12,11 +12,9 @@ Lima VM created by `vpnmodo setup`. The workstation runs `vpnmodo`; the VM runs
 `vpnmodo-controller` in a container. Prebuilt CLI installation requires neither
 Go nor Docker Desktop on the Mac.
 
-Managed profiles support L2TP/IPsec and IPsec/XAuth with emailed-code MFA.
-The older `scripts/vpn` launcher remains available for existing standalone
-deployments. Native Intel
-runtime qualification is not included in the current
-[validation record](../release-validation.md).
+Profiles support L2TP/IPsec, IPsec/XAuth with emailed-code MFA, and
+[IKEv2 with EAP-MSCHAPv2](../ikev2.md). See
+[supported platforms and limitations](../supported-platforms.md).
 
 ## Profile ownership and schema
 
@@ -33,8 +31,9 @@ addresses before use.
 | --- | --- | --- |
 | `l2tp-ipsec` | IPv4 address or ASCII DNS hostname | Optional IPv4 VPN DNS servers; a stable TCP endpoint checks readiness |
 | `ipsec-xauth` | IPv4 address | A hostname health target requires explicit IPv4 VPN DNS servers; otherwise use an IPv4 health target |
+| `ipsec-ikev2` | IPv4 address or ASCII DNS hostname | IPv4 virtual IP and explicit VPN DNS; hostname health checks require configured DNS |
 
-Both backends accept IKE/ESP proposal lists. An absent or empty list selects the
+All backends accept IKE/ESP proposal lists. An absent or empty list selects the
 backend defaults. L2TP `force_encapsulation` defaults to true. Proposal syntax is
 validated before connection; successful negotiation still depends on the gateway.
 
@@ -42,9 +41,11 @@ Unknown or duplicate keys, wrong key case, null values, mixed-backend attributes
 and unsupported schema versions are rejected. Input is UTF-8, at most 64 KiB,
 with nesting depth at most 32. Configuration errors omit raw input values.
 
-The CLI input file also contains `credentials.username`, `credentials.password`
-and `credentials.psk`. Each value is nonempty, at most 4096 UTF-8 bytes, and cannot
-contain NUL, CR or LF. The CLI reads an owner-only file without credential prompts
+The CLI input file includes `credentials.username` and `credentials.password`,
+plus `credentials.psk` for L2TP/XAuth or `credentials.ca_cert` for IKEv2.
+Username, password and PSK values are nonempty, at most 4096 UTF-8 bytes, and
+cannot contain NUL, CR or LF. IKEv2 requires a validated PEM CA bundle; see the
+[trust requirements](../ikev2.md#install-and-import). The CLI reads the input file without credential prompts
 and sends credentials separately from profile settings over SSH. XAuth MFA is a
 separate connection-time step. See [credential storage](002-profile-storage.md)
 for permissions, rotation and deletion behavior.
@@ -66,12 +67,6 @@ io.vpnmodo.profile=example
 Container selection also verifies deployment records and backend/revision/image
 identity. A matching name alone is insufficient. Foreign or conflicting resources
 are refused rather than adopted automatically.
-
-Installing the controller leaves standalone launchers, manifests, watchdogs and
-sessions separate. When moving an existing deployment to a managed profile,
-stop its old recovery owner and session before connecting the new profile.
-Preserve the old configuration if rollback is needed; a rollback can require
-fresh MFA. Running parallel logins can interfere with gateway session policy.
 
 ## RPC framing, negotiation and method surface
 

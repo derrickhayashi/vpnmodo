@@ -17,8 +17,7 @@ and everyday commands, start with the [README](../README.md).
 
 The controller is a persistent Go service. Short-lived bridge processes relay
 requests to it. Closing an RPC session does not stop a connection operation.
-The managed path uses the controller to supervise the VPN; the standalone legacy
-launchers have their own [architecture](architecture.md).
+The controller supervises the VPN and coordinates application attachment and recovery.
 
 ```mermaid
 flowchart LR

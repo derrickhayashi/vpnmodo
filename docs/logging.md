@@ -1,7 +1,7 @@
 # VPN connection history and diagnostics
 
 The managed controller records lifecycle and health changes for every supported
-VPN backend: L2TP/IPsec and IPsec/XAuth. Logging starts with the updated controller;
+VPN backend: L2TP/IPsec, IPsec/XAuth and IKEv2. Logging starts with the updated controller;
 backend diagnostic events require updated backend images and a new explicit
 connection. Existing sessions are not automatically replaced to enable capture.
 
@@ -83,26 +83,3 @@ failed log files and keeps lifecycle/teardown available; logging errors do not
 undo a committed operation or prevent safe disconnect. After correcting storage,
 restart the controller to restore reporting. Replacing only the workstation CLI
 does not upgrade the controller or VPN images.
-
-Legacy Compose profiles retain their existing
-[watchdog Docker logging](../watchdog/README.md); `vpnmodo logs` addresses managed
-controller profiles.
-
-## Validation
-
-Go tests cover private storage, persistence, pagination, rotation, expiry,
-crash-tail recovery, concurrent writes, lifecycle/health changes, failed logging
-during teardown, backend collection and RPC validation. Synthetic shell/Expect
-tests replay backend diagnostics and verify that only fixed codes survive.
-These tests do not establish live gateway diagnostic coverage or replace Linux
-protocol acceptance with rebuilt backend images.
-
-
-The optional image smoke test uses local test images and disables container
-networking:
-
-```sh
-docker build -t vpnmodo-l2tp:logging-test containers/l2tp-ipsec
-docker build -t vpnmodo-xauth:logging-test containers/ipsec-xauth
-sh tests/smoke_logging_images.sh vpnmodo-l2tp:logging-test vpnmodo-xauth:logging-test
-```

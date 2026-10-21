@@ -36,7 +36,7 @@ Each profile uses project `vpnmodo-<name>`, the manager/profile identity labels,
 backend and profile-revision labels, and only `vpn`/`application` services. Every
 adapter method reads its private deployment record, queries the entire Compose
 project plus every use of that profile label, and validates each container. A
-watchdog, unknown service, conflicting labels/image, duplicate service, or
+unknown service, conflicting labels/image, duplicate service, or
 container without a saved deployment record causes refusal before mutation.
 Existing default networks must also carry the managed identity/backend labels.
 A name alone never confers ownership. These checks prevent accidental adoption;
@@ -47,7 +47,7 @@ application-only manifest pinned to the verified VPN container ID, with no VPN
 service definition or service dependency. Compose cannot replace or start a VPN
 while repairing its workload, including when an external Compose version created
 the healthy replacement. No orphan removal is used. Teardown removes exact owned IDs, application first, then VPN;
-it never runs a broad `down`, wildcard removal or automatic legacy cutover.
+it never runs a broad `down`, wildcard removal or automatic resource adoption.
 Deletion removes the owned network only if Docker permits it without disturbing
 active users. A failed deletion retains the profile for explicit repair/retry.
 
@@ -70,7 +70,7 @@ Managed PPP requests its address from the gateway (`noipdefault`) instead of
 proposing the container's ordinary interface address, avoiding overlapping outer
 and PPP routes with permissive peers. See the
 [pppd options reference](https://ppp.samba.org/pppd.html).
-Standalone defaults remain available. A clean externally stopped VPN/application
+A clean externally stopped VPN/application
 is treated as intentionally stopped and requires explicit ensure. A missing
 previously managed VPN is tunnel loss; persisted desired-disconnected intent
 prevents its revival. Recovery uses the policy from
@@ -103,25 +103,5 @@ claim is made for filesystem/Docker storage or backups. The VM user, root and
 Docker administrators remain trusted with credential access.
 
 The backend writes generated strongSwan/PPP files privately inside the container.
-Its `/run` state is tmpfs. Controller-mode filtering omits the legacy broad
-established-flow egress exception; traffic may leave through PPP or narrowly
-specified gateway IPsec/IKE exceptions. This is an L2TP improvement, not evidence
-for the separately required XAuth fail-closed acceptance matrix.
-
-## Validation
-
-Go tests exercise full managed creation/reuse/disposal, manifest isolation,
-Compose interpolation, cancellation, health classification and ownership
-conflicts across every adapter action. The [local Linux lab](../../tests/local-lab/README.md) runs a synthetic
-strongSwan L2TP gateway, actual
-IPsec/PPP and private TCP checks through verified SSH, then tests endpoint outage,
-namespace replacement, recovery, failure quiescence, intentional stop, controller
-recreation and cleanup. A regression synchronizes shutdown with a newly started
-idle sleep, checks clean termination and peer session removal within the existing
-stop limit, and establishes three new sessions. Short policy timings exist only
-in the Go test binary;
-production profiles/flags cannot enable synthetic adapters or shorten policy.
-The gateway uses fixed synthetic credentials and documentation addresses only.
-This demonstrates laboratory interoperability, not customer gateway certification
-or XAuth packet isolation. See [release validation](../release-validation.md) for
-the tested platforms and remaining limitations.
+Its `/run` state is tmpfs. Traffic may leave through PPP or narrowly specified
+gateway IPsec/IKE exceptions. There is no broad established-flow egress exception.
