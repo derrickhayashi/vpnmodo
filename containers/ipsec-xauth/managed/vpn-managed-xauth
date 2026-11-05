@@ -33,7 +33,10 @@ if [ -n "${VPN_MTU:-}" ]; then
     cat >> /run/vpn/strongswan.conf <<CONFIG
 charon-cmd {
     plugins {
+        # IKE and encrypted ESP retain the main table's transport sizing.
+        socket-default { fwmark = 0x76706e6d }
         kernel-netlink {
+            fwmark = !0x76706e6d
             mtu = $VPN_MTU
             mss = $((VPN_MTU - 40))
         }

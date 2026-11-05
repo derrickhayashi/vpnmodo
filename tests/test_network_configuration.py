@@ -58,6 +58,8 @@ class NetworkConfiguration(unittest.TestCase):
                 self.assertIn('mtu = ' + mtu + '\n', config)
                 self.assertIn('mss = ' + str(int(mtu) - 40) + '\n', config)
                 self.assertIn('charon-cmd {', config)
+                self.assertIn('socket-default { fwmark = 0x76706e6d }', config)
+                self.assertIn('fwmark = !0x76706e6d', config)
         code, config = self.xauth_startup(None)
         self.assertEqual(code, 0)
         self.assertNotIn('mtu =', config)
