@@ -24,6 +24,26 @@ charon-cmd {
     port_nat_t = 4500
 }
 CONFIG
+# Set route metrics at their owner: new/reinstalled CHILD routes inherit these
+# values, including after rekey. The outer gateway route is left alone.
+if [ -n "${VPN_MTU:-}" ]; then
+    case "$VPN_MTU" in 0*|*[!0-9]*) exit 1;; esac
+    [ "${#VPN_MTU}" -le 4 ] || exit 1
+    [ "$VPN_MTU" -ge 576 ] && [ "$VPN_MTU" -le 1500 ] || exit 1
+    cat >> /run/vpn/strongswan.conf <<CONFIG
+charon-cmd {
+    plugins {
+        # IKE and encrypted ESP retain the main table's transport sizing.
+        socket-default { fwmark = 0x76706e6d }
+        kernel-netlink {
+            fwmark = !0x76706e6d
+            mtu = $VPN_MTU
+            mss = $((VPN_MTU - 40))
+        }
+    }
+}
+CONFIG
+fi
 export STRONGSWAN_CONF=/run/vpn/strongswan.conf
 export VPNMODO_MANAGED_XAUTH=1
 # All strongSwan diagnostics and PTY contents stay out of Docker logs/protocol.

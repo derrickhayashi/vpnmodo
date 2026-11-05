@@ -75,6 +75,9 @@ outside Git. Registry credentials are not part of a VPN profile.
 
 ## VPN configuration
 
+For a profile-wide packet-size limit with automatic TCP MSS, see
+[VPN packet size (MTU)](docs/profiles.md#vpn-packet-size-mtu).
+
 On the **Mac**, create a directory outside any Git checkout:
 
 ```sh

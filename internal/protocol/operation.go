@@ -124,6 +124,8 @@ func OperationFromRecord(r operation.Record) Operation {
 			code = CodeCredentials
 		case operation.MFAExpired:
 			code = CodeMFAExpired
+		case operation.NetworkSettingsFailed:
+			code = CodeNetworkSettings
 		case operation.AuthenticationFailed:
 			code = CodeAuthentication
 		}

@@ -104,6 +104,7 @@ class ControllerLab(BackendLab):
         docker('network', 'connect', self.managed_network, self.gateway)
         peer = json.loads(docker('inspect', self.gateway).stdout)[0]['NetworkSettings']['Networks'][self.managed_network]['IPAddress']
         p = {'schema_version': 1, 'name': self.profile, 'backend': {'type': 'ipsec-ikev2', 'config': {'server': peer, 'server_identity': 'vpn.example.test', 'client_identity': 'client@example.test', 'eap_identity': 'synthetic-user', 'dns': ['198.51.100.1'], 'ike_proposals': ['aes128-sha256-modp2048'], 'esp_proposals': ['aes128-sha256']}}, 'health': {'host': 'private.example', 'port': 8080}}
+        p['network'] = {'mtu': 1300}
         self.rpc('profile.create', {'profile': p, 'credentials': {'username': 'synthetic-user', 'password': 'synthetic-password', 'ca_cert': (self.root / 'ca_cert').read_text()}})
         self.profile_created = True
 

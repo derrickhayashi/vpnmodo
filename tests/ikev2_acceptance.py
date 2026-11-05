@@ -69,7 +69,7 @@ class BackendLab:
         args = ['--network', self.network, '--cap-add', 'NET_ADMIN', '--cap-add', 'NET_RAW', '--read-only', '--security-opt', 'no-new-privileges:true', '--init', '--sysctl', 'net.ipv6.conf.all.disable_ipv6=1', '--sysctl', 'net.ipv6.conf.default.disable_ipv6=1']
         for path in ('/run:rw,nosuid,nodev,mode=0755', '/tmp:rw,nosuid,nodev,noexec,mode=1777', '/etc/swanctl:rw,nosuid,nodev,noexec,mode=0700'):
             args += ['--tmpfs', path]
-        env = {'VPN_SERVER': peer or self.peer, 'VPN_SERVER_IDENTITY': identity, 'VPN_CLIENT_IDENTITY': 'client@example.test', 'VPN_EAP_IDENTITY': 'synthetic-user', 'VPN_DNS': '198.51.100.1', 'VPN_HEALTH_HOST': 'private.example', 'VPN_HEALTH_PORT': '8080', 'VPN_IKE_PROPOSALS': ike, 'VPN_ESP_PROPOSALS': esp}
+        env = {'VPN_MTU': '1300', 'VPN_SERVER': peer or self.peer, 'VPN_SERVER_IDENTITY': identity, 'VPN_CLIENT_IDENTITY': 'client@example.test', 'VPN_EAP_IDENTITY': 'synthetic-user', 'VPN_DNS': '198.51.100.1', 'VPN_HEALTH_HOST': 'private.example', 'VPN_HEALTH_PORT': '8080', 'VPN_IKE_PROPOSALS': ike, 'VPN_ESP_PROPOSALS': esp}
         for key, value in env.items():
             args += ['-e', key + '=' + value]
         for name, source in (('username', 'username'), ('password', 'password'), ('ca_cert', trust)):
@@ -105,6 +105,8 @@ class BackendLab:
         wait(check)
 
     def traffic(self):
+        from network_acceptance import assert_ipsec_network
+        assert_ipsec_network(self.client)
         # Same UID/capability boundary as the managed application. No secrets or
         # daemon filesystem are mounted in the workload.
         payload = b'vpnmodo-synthetic-echo\n' * 1024

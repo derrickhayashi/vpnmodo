@@ -80,6 +80,19 @@ func (m *Manager) Runtime(ctx context.Context, name string) (operation.RuntimeVi
 			prerequisites = checker.Prerequisites(ctx, p.Profile)
 		}
 		result = operation.RuntimeView{Connection: c, Health: health, ApplicationID: id, TunnelReady: tunnel, PrivateEndpointReady: endpoint, ProfileRevision: p.Revision, CredentialsPresent: p.CredentialsPresent, PrerequisitesReady: prerequisites}
+		if p.Profile.Network != nil {
+			result.Network = &operation.NetworkStatus{ConfiguredMTU: p.Profile.Network.MTU, DerivedMSS: p.Profile.Network.MSS(), Code: "network_settings_unverified"}
+			if checker, ok := m.options.Adapter.(interface {
+				Network(context.Context, profile.Profile) *operation.NetworkStatus
+			}); ok && tunnel && health != operation.HealthOwnerConflict {
+				if checked := checker.Network(ctx, p.Profile); checked != nil {
+					result.Network = checked
+				}
+			}
+			if !result.Network.Verified {
+				result.ApplicationID = ""
+			}
+		}
 		return nil
 	})
 	return result, err
