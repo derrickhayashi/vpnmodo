@@ -58,6 +58,15 @@ def proposals(key, pattern):
     return ','.join(values)
 
 
+def network_configuration():
+    mtu = os.environ.get('VPN_MTU')
+    if mtu is None:
+        return ''
+    if not re.fullmatch(r'[1-9][0-9]{2,3}', mtu) or not 576 <= int(mtu) <= 1500:
+        raise ValueError('network')
+    return f'charon {{ plugins {{ kernel-netlink {{\n mtu = {mtu}\n mss = {int(mtu) - 40}\n}} }} }}\n'
+
+
 def configuration():
     peer = str(ipaddress.IPv4Address(os.environ['VPN_SERVER']))
     server_id = os.environ['VPN_SERVER_IDENTITY']
@@ -188,6 +197,10 @@ def main():
     RUN.mkdir(mode=0o700, parents=True, exist_ok=True)
     command('/usr/local/bin/vpn-enforce')
     (CONF / 'swanctl.conf').write_text(configuration())
+    # Load the protected runtime override after the image's daemon settings.
+    runtime_conf = RUN / 'strongswan.conf'
+    runtime_conf.write_text('include /etc/strongswan.conf\n' + network_configuration())
+    os.environ['STRONGSWAN_CONF'] = str(runtime_conf)
     dns = []
     for address in filter(None, os.environ.get('VPN_DNS', '').split(',')):
         dns.append('--server=' + str(ipaddress.IPv4Address(address)))

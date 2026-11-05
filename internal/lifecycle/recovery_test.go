@@ -195,7 +195,7 @@ func probeRecovery(t *testing.T, m *Manager, name string) operation.Connection {
 }
 
 func TestRecoveryClassifiesHealthWithoutUnnecessaryLogins(t *testing.T) {
-	for _, health := range []operation.HealthState{operation.HealthHealthy, operation.HealthStarting, operation.HealthServiceUnavailable, operation.HealthUnavailable, operation.HealthStopped, operation.HealthOwnerConflict, "untrusted-backend-output"} {
+	for _, health := range []operation.HealthState{operation.HealthNetworkMismatch, operation.HealthHealthy, operation.HealthStarting, operation.HealthServiceUnavailable, operation.HealthUnavailable, operation.HealthStopped, operation.HealthOwnerConflict, "untrusted-backend-output"} {
 		t.Run(string(health), func(t *testing.T) {
 			a := newRecoveryAdapter()
 			m := openRecoveryManager(t, filepath.Join(t.TempDir(), "state"), a, recoveryOptions())

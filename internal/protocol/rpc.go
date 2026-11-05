@@ -174,11 +174,12 @@ const (
 	CodeTimeout            ErrorCode = -32011
 	CodePersistence        ErrorCode = -32012
 	CodeAuthentication     ErrorCode = -32013
+	CodeNetworkSettings    ErrorCode = -32014
 )
 
 var errorMessages = map[ErrorCode]string{
 	CodeParse: "Invalid JSON", CodeInvalidRequest: "Invalid request", CodeMethod: "Method not found", CodeInvalidParams: "Invalid parameters", CodeInternal: "Internal error",
-	CodeVersion: "Incompatible API version", CodeHandshake: "Version negotiation required", CodeNotFound: "Resource not found", CodeBusy: "Operation in progress", CodeConflict: "Resource conflict", CodeCredentials: "Credentials unavailable or invalid", CodeMFAExpired: "MFA challenge expired", CodeInterrupted: "Operation interrupted; explicit retry required", CodeBackendUnavailable: "Backend unavailable", CodeProfileActive: "Profile active; disconnect before changing it", CodeTimeout: "Operation timed out", CodePersistence: "Operation persistence unavailable; restart and reconcile before retrying", CodeAuthentication: "Authentication failed",
+	CodeVersion: "Incompatible API version", CodeHandshake: "Version negotiation required", CodeNotFound: "Resource not found", CodeBusy: "Operation in progress", CodeConflict: "Resource conflict", CodeCredentials: "Credentials unavailable or invalid", CodeMFAExpired: "MFA challenge expired", CodeInterrupted: "Operation interrupted; explicit retry required", CodeBackendUnavailable: "Backend unavailable", CodeProfileActive: "Profile active; disconnect before changing it", CodeTimeout: "Operation timed out", CodePersistence: "Operation persistence unavailable; restart and reconcile before retrying", CodeAuthentication: "Authentication failed", CodeNetworkSettings: "VPN network settings could not be verified",
 }
 
 // RPCError is deliberately closed: no raw stderr, paths, or arbitrary error data.

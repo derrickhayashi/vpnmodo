@@ -18,16 +18,17 @@ import (
 )
 
 var (
-	ErrUnavailable    = errors.New("connection backend unavailable")
-	ErrCredentials    = errors.New("credentials unavailable or invalid")
-	ErrNotFound       = errors.New("operation not found")
-	ErrBusy           = errors.New("operation in progress")
-	ErrIntent         = errors.New("connection intent does not allow recovery")
-	ErrChallenge      = errors.New("invalid or consumed MFA challenge")
-	ErrExpired        = errors.New("MFA challenge expired")
-	ErrAuthentication = errors.New("authentication failed")
-	ErrPersistence    = operationstore.ErrStorage
-	ErrClosed         = errors.New("operation service stopping")
+	ErrNetworkSettings = errors.New("VPN network settings could not be verified")
+	ErrUnavailable     = errors.New("connection backend unavailable")
+	ErrCredentials     = errors.New("credentials unavailable or invalid")
+	ErrNotFound        = errors.New("operation not found")
+	ErrBusy            = errors.New("operation in progress")
+	ErrIntent          = errors.New("connection intent does not allow recovery")
+	ErrChallenge       = errors.New("invalid or consumed MFA challenge")
+	ErrExpired         = errors.New("MFA challenge expired")
+	ErrAuthentication  = errors.New("authentication failed")
+	ErrPersistence     = operationstore.ErrStorage
+	ErrClosed          = errors.New("operation service stopping")
 )
 
 // Adapter implementations must honor context cancellation, bound subprocesses,

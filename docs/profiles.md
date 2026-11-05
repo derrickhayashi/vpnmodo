@@ -6,6 +6,54 @@ with `vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"`.
 Keep this plaintext input file outside Git. To change an existing profile, use
 the [profile update workflow](onboarding.md#update-a-profile-or-rotate-credentials).
 
+## VPN packet size (MTU)
+
+Set an optional top-level `network` object in your private profile JSON when a
+VPN connects but larger transfers stall:
+
+```json
+"network": {
+  "mtu": 1300
+}
+```
+
+This is a fragment to add alongside `backend` and `health`, not a complete
+profile. MTU is the maximum inner IPv4 packet size in bytes, including its IP
+header. Supported values are integers from 576 through 1500. The value 1300 is
+an example, not a universal optimum. A smaller value can improve compatibility
+but adds packet overhead; choose a value verified on your VPN path.
+
+One setting covers all VPN traffic routes. You do not supply destinations or
+MSS: vpnmodo derives advertised IPv4 TCP MSS as MTU minus 40 (1260 for MTU 1300).
+This does not promise a measured path MTU, repair existing TCP connections, or
+make oversized UDP datagrams work. Path MTU discovery remains enabled.
+
+The profile retains the setting across reconnects, rekeys and container
+recreation. XAuth and IKEv2 apply MTU and advertised MSS to routes installed by
+strongSwan, including newly installed routes. The underlying gateway transport
+route is unaffected. L2TP configures PPP MTU/MRU so all routes through PPP inherit
+its limit and Linux derives MSS from it. If PPP negotiates a smaller MTU, status
+shows that smaller effective value.
+
+Omitting `network` retains backend defaults: PPP MTU/MRU 1400 for L2TP, and no
+explicit route MTU/MSS override for XAuth or IKEv2. An empty object, `null`, zero,
+explicit MSS and destination lists are rejected.
+
+To change the setting, disconnect, edit the private input file, and use the
+[profile update workflow](onboarding.md#update-a-profile-or-rotate-credentials)
+with the current revision. Reconnect afterwards. Removing `network` and updating
+the profile restores the backend defaults on the next connection. Updating the
+input file alone does not change the saved profile.
+
+`vpnmodo status work` and `vpnmodo doctor work` show configured MTU, derived MSS
+and verified effective values. Their JSON output includes a `network` object.
+Verification checks every VPN traffic route, rather than only the health target.
+Missing or inconsistent settings prevent readiness/application attachment and
+report a network settings failure separately from lost IPsec authentication.
+Routine diagnostics are read-only and do not measure the maximum usable MTU or
+initiate another login. Older runtime images that cannot apply the setting fail
+verification; use matching CLI/controller/backend releases.
+
 ## IKE and ESP proposals
 
 Both `ipsec-xauth` and `l2tp-ipsec` accept optional `ike_proposals` and

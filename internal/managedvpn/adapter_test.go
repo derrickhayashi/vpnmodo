@@ -19,6 +19,8 @@ import (
 )
 
 type fakeDocker struct {
+	networkRoutes   string
+	pppMTU          int
 	exitDuringProbe int
 	authState       string
 	codeAccepted    bool
@@ -67,6 +69,11 @@ func (f *fakeDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 	case "exec":
 		cmd := args[4:]
 		switch cmd[0] {
+		case "ip":
+			if len(cmd) > 2 && cmd[2] == "link" {
+				return json.Marshal([]map[string]int{{"mtu": f.pppMTU}})
+			}
+			return []byte(f.networkRoutes), nil
 		case "/usr/local/bin/vpn-auth-state":
 			return []byte(f.authState), nil
 		case "/usr/local/bin/vpn-tunnelcheck":

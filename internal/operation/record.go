@@ -8,16 +8,17 @@ import (
 type Failure string
 
 const (
-	Interrupted          Failure = "interrupted"
-	TimedOut             Failure = "timeout"
-	BackendFailed        Failure = "backend"
-	CredentialsFailed    Failure = "credentials"
-	MFAExpired           Failure = "mfa_expired"
-	AuthenticationFailed Failure = "authentication"
+	NetworkSettingsFailed Failure = "network_settings"
+	Interrupted           Failure = "interrupted"
+	TimedOut              Failure = "timeout"
+	BackendFailed         Failure = "backend"
+	CredentialsFailed     Failure = "credentials"
+	MFAExpired            Failure = "mfa_expired"
+	AuthenticationFailed  Failure = "authentication"
 )
 
 func (f Failure) Valid() bool {
-	return f == Interrupted || f == TimedOut || f == BackendFailed || f == CredentialsFailed || f == MFAExpired || f == AuthenticationFailed
+	return f == NetworkSettingsFailed || f == Interrupted || f == TimedOut || f == BackendFailed || f == CredentialsFailed || f == MFAExpired || f == AuthenticationFailed
 }
 
 // Record contains only allowlisted non-secret metadata, never adapter errors,

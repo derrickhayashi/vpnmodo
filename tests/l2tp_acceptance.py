@@ -64,6 +64,8 @@ class Lab:
         vpn = command(["docker", "exec", ids["vpn"]["Id"], "readlink", "/proc/self/ns/net"]).stdout
         app = command(["docker", "exec", ids["application"]["Id"], "readlink", "/proc/self/ns/net"]).stdout
         assert vpn == app and vpn.startswith(b"net:[")
+        links = json.loads(command(["docker", "exec", ids["vpn"]["Id"], "ip", "-j", "link", "show", "dev", "ppp0"]).stdout)
+        assert len(links) == 1 and 576 <= links[0]["mtu"] <= 1300, "profile MTU lost on PPP/reconnect"
 
 
 def begin(cli, directory, state_root, services_only=False):
@@ -86,6 +88,7 @@ def begin(cli, directory, state_root, services_only=False):
         listening = command(["docker", "exec", lab.gateway, "ss", "-lnt"]).stdout
         assert b":28080" in listening, "synthetic gateway TCP listener unavailable"
         definition = {"schema_version": 1, "name": NAME, "backend": {"type": "l2tp-ipsec", "config": {"server": "192.0.2.1", "dns": ["198.51.100.1"], "ike_proposals": ["aes256-sha256-modp2048!"], "esp_proposals": ["aes256-sha256!"]}}, "health": {"host": "198.51.100.1", "port": 28080}}
+        definition["network"] = {"mtu": 1300}
         source = directory / "l2tp-profile.json"
         credentials = {"username": "synthetic-user", "password": "synthetic-password", "psk": "synthetic-shared"}
         source.write_text(json.dumps(dict(definition, credentials=credentials)))

@@ -69,3 +69,11 @@ func TestChallengeBindingExpirationAndSecretDelivery(t *testing.T) {
 		t.Fatal("success with failure")
 	}
 }
+
+func TestNetworkSettingsFailureHasSpecificRPCError(t *testing.T) {
+	record := operation.Record{State: operation.Failed, Failure: operation.NetworkSettingsFailed}
+	result := OperationFromRecord(record)
+	if result.Failure == nil || result.Failure.Code != CodeNetworkSettings || !result.Failure.Valid() {
+		t.Fatal("network error classification lost", result.Failure)
+	}
+}

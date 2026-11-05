@@ -224,3 +224,16 @@ func TestIKEv2CombinedFileHasCAInsteadOfPSK(t *testing.T) {
 		t.Fatal("EAP profile accepted XAuth PSK")
 	}
 }
+
+func TestProfileFilePreservesNetworkConfiguration(t *testing.T) {
+	file, input := combinedProfile(t, "ipsec-xauth")
+	input["network"] = map[string]int{"mtu": 1300}
+	writeCombined(t, file, input)
+	parsed, err := readProfileFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := parsed.configuration(); p.Network == nil || p.Network.MTU != 1300 || p.Network.MSS() != 1260 {
+		t.Fatal("network settings lost")
+	}
+}

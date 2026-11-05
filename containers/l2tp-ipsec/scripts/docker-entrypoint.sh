@@ -1,6 +1,13 @@
 #!/bin/sh
 set -eu
 
+# PPP applies this limit to all traffic routes using its interface. Omission
+# keeps the historical 1400-byte MTU/MRU. Reject invalid direct container input.
+VPN_MTU=${VPN_MTU:-1400}
+case "$VPN_MTU" in 0*|*[!0-9]*) exit 1;; esac
+[ "${#VPN_MTU}" -le 4 ] || exit 1
+[ "$VPN_MTU" -ge 576 ] && [ "$VPN_MTU" -le 1500 ] || exit 1
+
 : "${VPN_DIAGNOSTIC_DIR:?Set the controller diagnostic directory}"
 mkdir -p /run/vpn
 mkfifo /run/vpn/diagnostic-pipe
@@ -172,8 +179,8 @@ refuse-eap
 logfd 2
 ipcp-accept-local
 ipcp-accept-remote
-mtu 1400
-mru 1400
+mtu $VPN_MTU
+mru $VPN_MTU
 nodefaultroute
 usepeerdns
 noccp

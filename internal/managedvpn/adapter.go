@@ -196,6 +196,9 @@ func (a *Adapter) Verify(ctx context.Context, p profile.Profile) error {
 	if ok, err := a.tunnel(ctx, cs["vpn"]); err != nil || !ok {
 		return ErrRuntime
 	}
+	if n := a.networkStatus(ctx, p, cs["vpn"]); n != nil && !n.Verified {
+		return lifecycle.ErrNetworkSettings
+	}
 	if _, err = a.exec(ctx, cs["vpn"], "/usr/local/bin/vpn-servicecheck"); err != nil {
 		return ErrRuntime
 	}
@@ -243,6 +246,9 @@ func (a *Adapter) Access(ctx context.Context, p profile.Profile) (operation.Heal
 			return operation.HealthStarting, "", nil
 		}
 		return operation.HealthTunnelDown, "", nil
+	}
+	if n := a.networkStatus(ctx, p, c); n != nil && !n.Verified {
+		return operation.HealthNetworkMismatch, "", nil
 	}
 	if _, err = a.exec(ctx, c, "/usr/local/bin/vpn-servicecheck"); err != nil {
 		return operation.HealthServiceUnavailable, "", nil

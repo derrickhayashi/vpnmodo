@@ -31,6 +31,7 @@ class Lab:
         self.network = False
         self.created = []
         self.profile_created = False
+        self.mtu = None
 
     def ids(self):
         result = {}
@@ -175,11 +176,15 @@ class Lab:
     def large_transfer(self, phase):
         cid = self.ids()["vpn"]["Id"]
         routes = json.loads(command(["docker", "exec", cid, "ip", "-j", "-4", "route", "show", "table", "220"]).stdout)
-        assert routes and all(
-            not ({"mtu", "advmss"} & set(route.get("metrics", {})))
-            and "mtu" not in route and "advmss" not in route
-            for route in routes
-        ), "unexpected route MTU/MSS override"
+        if self.mtu is None:
+            assert routes and all(
+                not ({"mtu", "advmss"} & set(route.get("metrics", {})))
+                and "mtu" not in route and "advmss" not in route
+                for route in routes
+            ), "unexpected route MTU/MSS override"
+        else:
+            from network_acceptance import assert_ipsec_network
+            assert_ipsec_network(cid, self.mtu)
         probe = """import socket
 payload=bytes(range(256))*1024
 with socket.create_connection(('198.51.100.1',28080),timeout=10) as peer:
@@ -196,7 +201,7 @@ with socket.create_connection(('198.51.100.1',28080),timeout=10) as peer:
                  "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt",
                  "no-new-privileges:true", "--read-only", "--entrypoint", "python3",
                  "vpnmodo-xauth-gateway:acceptance", "-c", probe])
-        print("PASS: XAuth 256 KiB each way without route overrides: " + phase, flush=True)
+        print("PASS: XAuth 256 KiB each way: " + phase, flush=True)
 
     def child_ids(self):
         listing = command(["docker", "exec", self.gateway, "swanctl", "--list-sas"]).stdout.decode()
@@ -473,8 +478,29 @@ def after_restart(cli, state_root, lab):
     lab.services = None
     lab.disconnect()
     assert not list((state_root / "deployments" / NAME / "credentials").glob("*/*"))
+    # Preserve the no-override baseline above, then exercise the user workflow
+    # on the same synthetic profile with a saved profile-wide limit.
+    source = lab.directory / "xauth-profile.json"
+    definition = json.loads(source.read_text())
+    definition["network"] = {"mtu": 1300}
+    source.write_text(json.dumps(definition))
+    last_json(cli("profile", "update", NAME, "--file", str(source), "--revision", "1", "--json"))
+    lab.mtu = 1300
+    lab.authenticate()
+    lab.large_transfer("saved profile MTU")
+    before = lab.child_ids()
+    command(["docker", "exec", lab.gateway, "swanctl", "--rekey", "--child", "lab"])
+    deadline = time.monotonic() + 30
+    while not lab.child_ids() - before:
+        assert time.monotonic() < deadline, "MTU rekey did not replace CHILD_SA"
+        time.sleep(0.3)
+    lab.large_transfer("profile MTU after rekey")
+    lab.disconnect()
+    lab.authenticate()
+    lab.large_transfer("profile MTU after container recreation")
+    lab.disconnect()
     lab.close()
     lab.network = False
-    cli("profile", "delete", NAME, "--revision", "1", "--json")
+    cli("profile", "delete", NAME, "--revision", "2", "--json")
     lab.profile_created = False
     print("PASS: controller recreation preserves XAuth without reauthentication; disconnect disposes runtime credentials", flush=True)

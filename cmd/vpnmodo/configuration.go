@@ -10,15 +10,16 @@ import (
 
 // The input file includes secrets; the controller profile and local reference do not.
 type profileFile struct {
-	SchemaVersion int                  `json:"schema_version"`
-	Name          string               `json:"name"`
-	Backend       profile.Backend      `json:"backend"`
-	Health        profile.TCPHealth    `json:"health"`
-	Credentials   *profile.Credentials `json:"credentials,omitempty"`
+	SchemaVersion int                    `json:"schema_version"`
+	Name          string                 `json:"name"`
+	Backend       profile.Backend        `json:"backend"`
+	Health        profile.TCPHealth      `json:"health"`
+	Network       *profile.NetworkConfig `json:"network,omitempty"`
+	Credentials   *profile.Credentials   `json:"credentials,omitempty"`
 }
 
 func (f profileFile) configuration() profile.Profile {
-	return profile.Profile{SchemaVersion: f.SchemaVersion, Name: f.Name, Backend: f.Backend, Health: f.Health}
+	return profile.Profile{SchemaVersion: f.SchemaVersion, Name: f.Name, Backend: f.Backend, Health: f.Health, Network: f.Network}
 }
 
 func readProfileFile(path string) (profileFile, error) {

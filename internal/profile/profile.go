@@ -34,11 +34,20 @@ var (
 )
 
 type Profile struct {
-	SchemaVersion int       `json:"schema_version"`
-	Name          string    `json:"name"`
-	Backend       Backend   `json:"backend"`
-	Health        TCPHealth `json:"health"`
+	SchemaVersion int            `json:"schema_version"`
+	Name          string         `json:"name"`
+	Backend       Backend        `json:"backend"`
+	Health        TCPHealth      `json:"health"`
+	Network       *NetworkConfig `json:"network,omitempty"`
 }
+
+// NetworkConfig limits inner IPv4 packets across every VPN traffic route.
+// MSS is derived, rather than a second user-controlled setting.
+type NetworkConfig struct {
+	MTU int `json:"mtu"`
+}
+
+func (n NetworkConfig) MSS() int { return n.MTU - 40 }
 
 type TCPHealth struct {
 	Host string `json:"host"`
@@ -88,6 +97,9 @@ func (p Profile) Validate() error {
 		return ErrProfileVersion
 	}
 	if !ValidName(p.Name) || !validHost(p.Health.Host) || p.Health.Port < 1 || p.Health.Port > 65535 {
+		return ErrProfile
+	}
+	if p.Network != nil && (p.Network.MTU < 576 || p.Network.MTU > 1500) {
 		return ErrProfile
 	}
 	if err := p.Backend.Validate(); err != nil {

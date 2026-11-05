@@ -7,6 +7,7 @@ import "time"
 type HealthState string
 
 const (
+	HealthNetworkMismatch    HealthState = "network_settings_mismatch"
 	HealthUnknown            HealthState = "unknown"
 	HealthHealthy            HealthState = "healthy"
 	HealthStarting           HealthState = "starting"
@@ -21,7 +22,7 @@ const (
 
 func (h HealthState) Valid() bool {
 	switch h {
-	case HealthUnknown, HealthHealthy, HealthStarting, HealthStopped, HealthTunnelDown, HealthServiceUnavailable, HealthDetached, HealthUnavailable, HealthOwnerConflict:
+	case HealthNetworkMismatch, HealthUnknown, HealthHealthy, HealthStarting, HealthStopped, HealthTunnelDown, HealthServiceUnavailable, HealthDetached, HealthUnavailable, HealthOwnerConflict:
 		return true
 	}
 	return false

@@ -26,20 +26,21 @@ type accessCheck struct {
 	OK    bool   `json:"ok"`
 }
 type accessReport struct {
-	LoggingReady       *bool                 `json:"logging_ready,omitempty"`
-	Connection         *operation.Connection `json:"connection,omitempty"`
-	ControllerVersion  string                `json:"controller_version,omitempty"`
-	ProfileRevision    uint64                `json:"profile_revision,omitempty"`
-	CredentialsPresent bool                  `json:"credentials_present"`
-	Type               string                `json:"type"`
-	Alias              string                `json:"alias"`
-	Outcome            string                `json:"outcome"`
-	VPNReady           bool                  `json:"vpn_ready"`
-	Ready              bool                  `json:"ready"`
-	Checks             []accessCheck         `json:"checks"`
-	Services           []access.Result       `json:"services"`
-	OperationID        string                `json:"operation_id,omitempty"`
-	Error              string                `json:"error,omitempty"`
+	Network            *operation.NetworkStatus `json:"network,omitempty"`
+	LoggingReady       *bool                    `json:"logging_ready,omitempty"`
+	Connection         *operation.Connection    `json:"connection,omitempty"`
+	ControllerVersion  string                   `json:"controller_version,omitempty"`
+	ProfileRevision    uint64                   `json:"profile_revision,omitempty"`
+	CredentialsPresent bool                     `json:"credentials_present"`
+	Type               string                   `json:"type"`
+	Alias              string                   `json:"alias"`
+	Outcome            string                   `json:"outcome"`
+	VPNReady           bool                     `json:"vpn_ready"`
+	Ready              bool                     `json:"ready"`
+	Checks             []accessCheck            `json:"checks"`
+	Services           []access.Result          `json:"services"`
+	OperationID        string                   `json:"operation_id,omitempty"`
+	Error              string                   `json:"error,omitempty"`
 }
 
 var errAccess = errors.New("service access incomplete; see reported checks")
@@ -73,6 +74,12 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		detailed := command == "doctor" || command == "status"
 		if detailed && r.ControllerVersion != "" {
 			fmt.Fprintf(out, "  controller version: %s\n", r.ControllerVersion)
+		}
+		if detailed && r.Network != nil {
+			fmt.Fprintf(out, "  network: configured MTU %d; derived MSS %d; %s\n", r.Network.ConfiguredMTU, r.Network.DerivedMSS, strings.ReplaceAll(r.Network.Code, "_", " "))
+			if r.Network.Verified {
+				fmt.Fprintf(out, "  network: effective MTU %d; effective MSS %d\n", r.Network.EffectiveMTU, r.Network.EffectiveMSS)
+			}
 		}
 		if detailed && r.LoggingReady != nil {
 			state := "available"
@@ -321,6 +328,10 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	}
 	r.LoggingReady = &view.Controller.LoggingReady
 	r.Connection = &view.Runtime.Connection
+	r.Network = view.Runtime.Network
+	if r.Network != nil {
+		r.Checks = append(r.Checks, accessCheck{"network", r.Network.Code, r.Network.Verified})
+	}
 	r.ProfileRevision = view.Runtime.ProfileRevision
 	r.CredentialsPresent = view.Runtime.CredentialsPresent
 	r.Checks = append(r.Checks, accessCheck{"credentials", "credentials_present", r.CredentialsPresent}, accessCheck{"runtime_prerequisites", "images_and_compose", view.Runtime.PrerequisitesReady}, accessCheck{"deployment", string(view.Runtime.Health), view.Runtime.Health != operation.HealthOwnerConflict})
@@ -330,7 +341,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	appOK := health == operation.HealthHealthy && view.Runtime.ApplicationID != ""
 	code := string(health)
 	r.Checks = append(r.Checks, accessCheck{"vpn", code, tunnelOK}, accessCheck{"private_health_endpoint", code, serviceOK}, accessCheck{"application", code, appOK})
-	r.VPNReady = tunnelOK && serviceOK && appOK
+	r.VPNReady = tunnelOK && serviceOK && appOK && (r.Network == nil || r.Network.Verified)
 	if !r.VPNReady {
 		if len(r.Services) > 0 {
 			r.Outcome = "partial"
