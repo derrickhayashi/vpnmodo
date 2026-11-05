@@ -34,10 +34,16 @@ an old MFA code. Other post-MFA exits can have different causes.
 process still appears to be running. The controller reports a disconnected or
 authentication-required state and removes the vpntools container.
 
-The cause remains unconfirmed. Updating the delayed-MFA handshake timeout does
-not establish a fix for this separate session-lifetime problem. Kernel filtering
-blocks unprotected application traffic; the controller does not silently retry
-XAuth authentication.
+A managed-client bug advertised a 600-second IKEv1 lifetime when disabling local
+renewal, allowing the gateway to close the session ten minutes after negotiation
+started. The corrected client preserves the original 36,600-second advertised
+lifetime while keeping automatic fresh MFA disabled. Update both the CLI and
+managed runtime to receive the correction; replacing only the CLI leaves the
+existing VPN image unchanged.
+
+Other causes of session loss remain unconfirmed. Updating the delayed-MFA
+handshake timeout addresses a separate issue. Kernel filtering blocks unprotected
+application traffic; the controller does not silently retry XAuth authentication.
 
 Check `vpnmodo status work`, `vpnmodo doctor work` and recent logs. After the
 previous operation ends, use `vpnmodo up work` and a fresh code to reconnect.

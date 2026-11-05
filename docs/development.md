@@ -51,6 +51,19 @@ published to GHCR; protocol tests run in the local Linux lab.
 
 ## Run protocol tests on Linux
 
+After building an XAuth image, check the advertised IKEv1 lifetime with:
+
+```sh
+docker build -t vpnmodo-xauth:lifetime-test containers/ipsec-xauth
+sh tests/smoke_xauth_lifetime.sh vpnmodo-xauth:lifetime-test
+```
+
+This packet-level regression captures the initial proposal on loopback inside
+disposable containers with external networking disabled. Both default and
+managed modes must advertise 36,600 seconds. It uses synthetic credentials and
+does not contact a VPN gateway. Passing this check does not establish long-session
+or reauthentication behavior against a real gateway.
+
 The [isolated Ubuntu lab](../tests/local-lab/README.md) provides commands to build,
 transfer and run the acceptance bundle on an Ubuntu 24.04 VM. Its disposable
 container has a separate Docker daemon and uses synthetic gateways, credentials
