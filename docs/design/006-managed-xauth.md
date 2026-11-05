@@ -25,7 +25,8 @@ point selects them. The username comes from its protected credential mount rathe
 than a process argument. Password/PIN values are not added to the credential
 cache, preventing a repeated XAuth request from replaying them. A CHILD_SA sets
 a native XFRM output mark after ESP encryption. Managed IKEv1 scheduled reauthentication is
-disabled; CHILD rekeying with the current IKE SA remains enabled. The client
+disabled while preserving the original 36,600-second advertised IKE lifetime;
+CHILD rekeying with the current IKE SA remains enabled. The client
 supports XAUTH_PASSCODE through the PIN prompt.
 
 The lifecycle manager owns operation/challenge IDs and expiry. `connection ensure
