@@ -337,10 +337,14 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	r.Checks = append(r.Checks, accessCheck{"credentials", "credentials_present", r.CredentialsPresent}, accessCheck{"runtime_prerequisites", "images_and_compose", view.Runtime.PrerequisitesReady}, accessCheck{"deployment", string(view.Runtime.Health), view.Runtime.Health != operation.HealthOwnerConflict})
 	health := view.Runtime.Health
 	tunnelOK := view.Runtime.TunnelReady
-	serviceOK := view.Runtime.PrivateEndpointReady
+	serviceOK := !view.Runtime.PrivateEndpointConfigured || view.Runtime.PrivateEndpointReady
+	serviceCode := string(health)
+	if !view.Runtime.PrivateEndpointConfigured && !view.Runtime.PrivateEndpointReady {
+		serviceCode = "not_configured"
+	}
 	appOK := health == operation.HealthHealthy && view.Runtime.ApplicationID != ""
 	code := string(health)
-	r.Checks = append(r.Checks, accessCheck{"vpn", code, tunnelOK}, accessCheck{"private_health_endpoint", code, serviceOK}, accessCheck{"application", code, appOK})
+	r.Checks = append(r.Checks, accessCheck{"vpn", code, tunnelOK}, accessCheck{"private_health_endpoint", serviceCode, serviceOK}, accessCheck{"application", code, appOK})
 	r.VPNReady = tunnelOK && serviceOK && appOK && (r.Network == nil || r.Network.Verified)
 	if !r.VPNReady {
 		if len(r.Services) > 0 {

@@ -1,0 +1,15 @@
+#!/usr/bin/python3
+"""Fixed vpnc hook. Gateway-pushed shell, DNS and split routes are never used."""
+import importlib.machinery
+import importlib.util
+import sys
+
+loader = importlib.machinery.SourceFileLoader('gp_runtime', '/usr/local/bin/vpn-managed-globalprotect')
+spec = importlib.util.spec_from_loader(loader.name, loader)
+runtime = importlib.util.module_from_spec(spec)
+loader.exec_module(runtime)
+try:
+    runtime.hook()
+except (ValueError, KeyError, OSError, runtime.subprocess.SubprocessError):
+    # No exception text: environment and subprocess output may contain peer data.
+    sys.exit(1)

@@ -74,6 +74,60 @@ func TestProfileLifecycleOverRPC(t *testing.T) {
 		t.Fatal("delete", err)
 	}
 }
+
+func TestOptionalHealthImportAndUpdateOverRPCForEveryBackend(t *testing.T) {
+	config, ctx, _ := startTestServer(t)
+	conn, err := net.Dial("unix", config.Socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := rpcio.Connect(ctx, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	ca, err := os.ReadFile("../profile/testdata/ikev2-ca.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"example-l2tp.json", "example-xauth.json", "example-ikev2.json", "example-globalprotect.json"} {
+		t.Run(file, func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join("../../examples/profiles/v1", file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := profile.DecodeProfile(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p.Health = profile.TCPHealth{}
+			c := profile.Credentials{Username: secret.New("synthetic-user"), Password: secret.New("synthetic-password")}
+			switch p.Backend.Type {
+			case profile.L2TP, profile.XAuth:
+				c.PSK = secret.New("synthetic-shared")
+			default:
+				c.CACert = secret.New(string(ca))
+			}
+			encoded, err := (protocol.ProfileCreateParams{Profile: p, Credentials: c}).EncodeForTransport()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var snapshot profile.Snapshot
+			if err := client.Call(ctx, protocol.ProfileCreate, json.RawMessage(encoded), &snapshot); err != nil || snapshot.Profile.Health.Configured() || !snapshot.CredentialsPresent {
+				t.Fatal("optional import", err)
+			}
+			p.Health = profile.TCPHealth{Host: "192.0.2.10", Port: 22}
+			if err := client.Call(ctx, protocol.ProfileUpdate, protocol.ProfileUpdateParams{Profile: p, ExpectedRevision: 1}, &snapshot); err != nil || !snapshot.Profile.Health.Configured() {
+				t.Fatal("enable endpoint", err)
+			}
+			p.Health = profile.TCPHealth{}
+			snapshot = profile.Snapshot{}
+			if err := client.Call(ctx, protocol.ProfileUpdate, protocol.ProfileUpdateParams{Profile: p, ExpectedRevision: 2}, &snapshot); err != nil || snapshot.Profile.Health.Configured() {
+				t.Fatal("disable endpoint", err)
+			}
+		})
+	}
+}
 func TestDockerInactivityChecksOwnershipAndFailsClosed(t *testing.T) {
 	root, err := os.MkdirTemp("/tmp", "vpnmodo-docker-")
 	if err != nil {

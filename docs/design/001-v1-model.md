@@ -23,7 +23,10 @@ stores profile references, destination SSH settings and service-forward mappings
 Credentials are not copied back by inspection or registration.
 
 Profiles use `schema_version: 1`, a lowercase hyphenated name of 1–48 characters,
-a `backend` discriminated by `type`, and a TCP `health` endpoint. Examples are in
+a `backend` discriminated by `type`, and an optional TCP `health` endpoint.
+Omitting `health` skips only the private-service probe; tunnel, packet-isolation
+and application namespace checks remain mandatory. A supplied endpoint needs
+both `host` and `port`. Examples are in
 [`examples/profiles/v1`](../../examples/profiles/v1/); replace their documentation
 addresses before use.
 
@@ -32,8 +35,9 @@ addresses before use.
 | `l2tp-ipsec` | IPv4 address or ASCII DNS hostname | Optional IPv4 VPN DNS servers; a stable TCP endpoint checks readiness |
 | `ipsec-xauth` | IPv4 address | A hostname health target requires explicit IPv4 VPN DNS servers; otherwise use an IPv4 health target |
 | `ipsec-ikev2` | IPv4 address or ASCII DNS hostname | IPv4 virtual IP and explicit VPN DNS; hostname health checks require configured DNS |
+| `openconnect-globalprotect` | IPv4 address or ASCII DNS hostname | Optional VPN DNS; a supplied hostname health target requires configured DNS |
 
-All backends accept IKE/ESP proposal lists. An absent or empty list selects the
+The IPsec backends accept IKE/ESP proposal lists. An absent or empty list selects the
 backend defaults. L2TP `force_encapsulation` defaults to true. Proposal syntax is
 validated before connection; successful negotiation still depends on the gateway.
 

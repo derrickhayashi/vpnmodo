@@ -237,3 +237,35 @@ func TestProfileFilePreservesNetworkConfiguration(t *testing.T) {
 		t.Fatal("network settings lost")
 	}
 }
+
+func TestGlobalProtectCombinedProfileInput(t *testing.T) {
+	raw, err := os.ReadFile("../../examples/profiles/v1/example-globalprotect.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := os.ReadFile("../../internal/profile/testdata/ikev2-ca.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input map[string]any
+	if json.Unmarshal(raw, &input) != nil {
+		t.Fatal("invalid fixture")
+	}
+	input["credentials"] = map[string]string{"username": "synthetic-user", "password": "synthetic-password", "ca_cert": string(ca)}
+	path := filepath.Join(t.TempDir(), "input.json")
+	writeCombined(t, path, input)
+	p, err := readProfileFile(path)
+	if err != nil || p.Credentials == nil || p.Credentials.ValidateFor(profile.GlobalProtect) != nil {
+		t.Fatal("GlobalProtect import failed")
+	}
+	delete(input["credentials"].(map[string]string), "ca_cert")
+	writeCombined(t, path, input)
+	if _, err := readProfileFile(path); err == nil {
+		t.Fatal("missing CA accepted by default")
+	}
+	input["backend"].(map[string]any)["config"].(map[string]any)["insecure_skip_tls_verify"] = true
+	writeCombined(t, path, input)
+	if _, err := readProfileFile(path); err != nil {
+		t.Fatal("explicit insecure input refused")
+	}
+}

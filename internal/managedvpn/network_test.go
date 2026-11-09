@@ -127,7 +127,7 @@ func TestIPsecNetworkChecksAllRoutesAndLeavesTransportAlone(t *testing.T) {
 
 func TestMTUManifestForEveryBackend(t *testing.T) {
 	paths, err := filepath.Glob("../../examples/profiles/v1/*.json")
-	if err != nil || len(paths) != 3 {
+	if err != nil || len(paths) != 4 {
 		t.Fatal("backend fixtures", err)
 	}
 	for _, path := range paths {
@@ -156,5 +156,30 @@ func TestMTUManifestForEveryBackend(t *testing.T) {
 				t.Fatal("incorrect backend MTU", p.Backend.Type)
 			}
 		}
+	}
+}
+
+func TestGlobalProtectNetworkChecksTunnelRoutesInsteadOfIPsecTable(t *testing.T) {
+	a, f, p := setupGlobalProtect(t)
+	p.Network = &profile.NetworkConfig{MTU: 1300}
+	f.pppMTU = 1300
+	f.networkRoutes = "default dev vpn0 mtu 1300 advmss 1260"
+	c := container{ID: strings.Repeat("a", 64)}
+	c.State.Running = true
+	n := a.networkStatus(context.Background(), p, c)
+	if n == nil || !n.Verified || n.EffectiveMTU != 1300 || n.EffectiveMSS != 1260 {
+		t.Fatal("TUN network settings unverified", n)
+	}
+	if !strings.Contains(strings.Join(f.calls[len(f.calls)-1], " "), "route show table all dev vpn0") {
+		t.Fatal("outer transport inspected")
+	}
+	f.networkRoutes = "default dev vpn0 mtu 1300 advmss 1360"
+	if a.networkStatus(context.Background(), p, c).Verified {
+		t.Fatal("incorrect tunnel MSS accepted")
+	}
+	f.pppMTU = 1200
+	f.networkRoutes = "default dev vpn0 mtu 1200 advmss 1160"
+	if n := a.networkStatus(context.Background(), p, c); !n.Verified || n.EffectiveMTU != 1200 || n.EffectiveMSS != 1160 {
+		t.Fatal("lower negotiated TUN limit", n)
 	}
 }

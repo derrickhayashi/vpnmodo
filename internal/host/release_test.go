@@ -46,3 +46,20 @@ func TestIKEv2LocalBackendReceipt(t *testing.T) {
 		t.Fatal("mutable IKEv2 receipt accepted")
 	}
 }
+
+func TestGlobalProtectLocalBackendReceipt(t *testing.T) {
+	image := "sha256:" + strings.Repeat("c", 64)
+	images := map[string]string{"l2tp": image, "xauth": image, "ikev2": image, "globalprotect": image, "application": image}
+	if !validBackendImages(images) {
+		t.Fatal("GlobalProtect receipt refused")
+	}
+	images["globalprotect"] = "mutable:tag"
+	if validBackendImages(images) {
+		t.Fatal("mutable GlobalProtect image accepted")
+	}
+	images["globalprotect"] = image
+	images["foreign"] = image
+	if validBackendImages(images) {
+		t.Fatal("foreign image accepted")
+	}
+}

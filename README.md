@@ -24,6 +24,8 @@ Mac: vpnmodo CLI / OpenSSH
 Managed profiles support **L2TP/IPsec** with username/password and PSK,
 **IPsec/XAuth** with username/password, PSK and emailed MFA, and
 **IKEv2/EAP-MSCHAPv2** with username/password and a CA-verified server certificate.
+An experimental [GlobalProtect backend](docs/globalprotect.md) uses OpenConnect
+for direct gateway username/password login.
 
 The supported path is **Apple Silicon Mac → vpnmodo-managed Lima VM**. Setup
 creates Ubuntu, Docker and the controller. You do not need Docker Desktop or
@@ -89,9 +91,10 @@ Save **one** of the following JSON profiles as `work.json`. Replace the example
 server, DNS and health addresses with your VPN's approved settings. Fill in the
 VPN username and password, plus the pre-shared key for L2TP/XAuth or the CA
 certificate bundle for IKEv2. All three use a `credentials` object; registry access
-stays in the separate optional registry-auth file. `health` must identify a TCP
-service reachable through the VPN, such as a private SSH server; it is used to
-check tunnel readiness.
+stays in the separate optional registry-auth file. `health` is optional for every
+backend. Omit the entire object to connect using tunnel and packet-isolation
+checks alone. When provided, it must identify a reachable private TCP service,
+such as an SSH server, and that probe must succeed before access is ready.
 
 ### L2TP/IPsec
 
@@ -212,6 +215,15 @@ only this bundle and verifies the server certificate and expected identity.
 See the [IKEv2 guide](docs/ikev2.md) for CA limits, proposal policy, DNS,
 troubleshooting and current limitations.
 
+### GlobalProtect
+
+Use the [GlobalProtect guide](docs/globalprotect.md) and
+[example profile](examples/profiles/v1/example-globalprotect.json) for direct
+gateway login with OpenConnect. DNS and the private health endpoint are optional.
+TLS verification uses an explicit CA bundle by default; a profile can explicitly
+opt into accepting any server certificate. Browser SSO/MFA, portal discovery and
+HIP report generation are not integrated.
+
 ### Import your profile
 
 Then, on the **Mac**, import the settings and credentials together:
@@ -231,7 +243,7 @@ private and outside Git: it contains plaintext secrets. Setup and profile creati
 never prompt for credentials. The VM stores
 VPN credentials separately from its profile metadata in protected files, and SSH
 encrypts transport. Profile output and local references omit the secrets.
-Only XAuth prompts for a fresh MFA code when connecting; L2TP and IKEv2 use the
+Only XAuth prompts for a fresh MFA code when connecting; the other backends use the
 saved credentials without a prompt.
 See [profile maintenance](docs/onboarding.md) for updates and credential rotation.
 

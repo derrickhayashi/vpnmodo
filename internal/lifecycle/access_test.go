@@ -61,6 +61,29 @@ func TestRuntimeDoesNotStartOrResumeAuthentication(t *testing.T) {
 	}
 }
 
+func TestRuntimeWithoutHealthReportsTunnelAccessWithoutClaimingEndpointVerification(t *testing.T) {
+	ctx := context.Background()
+	adapter := newAdapter()
+	m := newManager(t, filepath.Join(t.TempDir(), "state"), adapter, Options{})
+	m.options.WithProfile = func(_ context.Context, name string, fn func(profile.Snapshot) error) error {
+		p := fixture(name)
+		p.Profile.Health = profile.TCPHealth{}
+		return fn(p)
+	}
+	op, err := m.Ensure(ctx, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState(t, m, op.ID, operation.Succeeded)
+	view, err := runtimeAfterWorker(m, ctx, "example")
+	if err != nil || !view.TunnelReady || view.PrivateEndpointConfigured || view.PrivateEndpointReady || len(view.ApplicationID) != 64 {
+		t.Fatal("optional endpoint runtime", view, err)
+	}
+	if starts, _, _ := adapter.counts("example"); starts != 1 {
+		t.Fatal("inspection restarted login")
+	}
+}
+
 func runtimeAfterWorker(m *Manager, ctx context.Context, name string) (operation.RuntimeView, error) {
 	deadline := time.Now().Add(time.Second)
 	for {

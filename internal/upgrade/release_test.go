@@ -96,6 +96,20 @@ func TestRedirectAuthAndScheme(t *testing.T) {
 	}
 }
 
+func TestGlobalProtectReleaseImages(t *testing.T) {
+	m := fixture([]byte("synthetic binary"))
+	for _, role := range []string{"ikev2", "globalprotect"} {
+		m.Runtime.Images[role] = "ghcr.io/" + Repository + "/" + role + "@sha256:" + strings.Repeat("c", 64)
+	}
+	if m.Validate("darwin", "arm64") != nil {
+		t.Fatal("GlobalProtect release refused")
+	}
+	m.Runtime.Images["globalprotect"] = "ghcr.io/" + Repository + "/globalprotect:mutable"
+	if m.Validate("darwin", "arm64") == nil {
+		t.Fatal("mutable GlobalProtect image accepted")
+	}
+}
+
 func TestIKEv2RuntimeImageRoleIsImmutableAndOptionalForOldReleases(t *testing.T) {
 	m := fixture([]byte("synthetic binary"))
 	if m.Validate("darwin", "arm64") != nil {

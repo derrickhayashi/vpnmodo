@@ -20,9 +20,10 @@ const (
 type BackendType string
 
 const (
-	L2TP  BackendType = "l2tp-ipsec"
-	XAuth BackendType = "ipsec-xauth"
-	IKEv2 BackendType = "ipsec-ikev2"
+	L2TP          BackendType = "l2tp-ipsec"
+	XAuth         BackendType = "ipsec-xauth"
+	IKEv2         BackendType = "ipsec-ikev2"
+	GlobalProtect BackendType = "openconnect-globalprotect"
 )
 
 var (
@@ -37,7 +38,7 @@ type Profile struct {
 	SchemaVersion int            `json:"schema_version"`
 	Name          string         `json:"name"`
 	Backend       Backend        `json:"backend"`
-	Health        TCPHealth      `json:"health"`
+	Health        TCPHealth      `json:"health,omitzero"`
 	Network       *NetworkConfig `json:"network,omitempty"`
 }
 
@@ -54,12 +55,28 @@ type TCPHealth struct {
 	Port int    `json:"port"`
 }
 
+// An omitted health field disables the probe. A supplied object must be a
+// complete endpoint, so malformed or empty input cannot silently disable it.
+func (h *TCPHealth) UnmarshalJSON(data []byte) error {
+	type wireHealth TCPHealth
+	var value wireHealth
+	if err := jsonstrict.Decode(data, &value, MaxProfileBytes); err != nil {
+		return err
+	}
+	if !validHost(value.Host) || value.Port < 1 || value.Port > 65535 {
+		return ErrProfile
+	}
+	*h = TCPHealth(value)
+	return nil
+}
+
 // Backend is a discriminated union. Exactly one config must match Type.
 type Backend struct {
-	Type  BackendType  `json:"type"`
-	L2TP  *L2TPConfig  `json:"-"`
-	XAuth *XAuthConfig `json:"-"`
-	IKEv2 *IKEv2Config `json:"-"`
+	Type          BackendType          `json:"type"`
+	L2TP          *L2TPConfig          `json:"-"`
+	XAuth         *XAuthConfig         `json:"-"`
+	IKEv2         *IKEv2Config         `json:"-"`
+	GlobalProtect *GlobalProtectConfig `json:"-"`
 }
 
 type L2TPConfig struct {
@@ -76,6 +93,10 @@ type XAuthConfig struct {
 	IKEProposals []string `json:"ike_proposals,omitempty" format:"proposal-list"`
 	ESPProposals []string `json:"esp_proposals,omitempty" format:"proposal-list"`
 }
+
+// Configured is true for any nonzero endpoint, including partial input that must
+// fail validation rather than silently disabling the private-service probe.
+func (h TCPHealth) Configured() bool { return h.Host != "" || h.Port != 0 }
 
 func ValidName(name string) bool {
 	return len(name) > 0 && len(name) <= 48 && namePattern.MatchString(name)
@@ -96,7 +117,10 @@ func (p Profile) Validate() error {
 	if p.SchemaVersion != ProfileVersion {
 		return ErrProfileVersion
 	}
-	if !ValidName(p.Name) || !validHost(p.Health.Host) || p.Health.Port < 1 || p.Health.Port > 65535 {
+	if !ValidName(p.Name) {
+		return ErrProfile
+	}
+	if p.Health.Configured() && (!validHost(p.Health.Host) || p.Health.Port < 1 || p.Health.Port > 65535) {
 		return ErrProfile
 	}
 	if p.Network != nil && (p.Network.MTU < 576 || p.Network.MTU > 1500) {
@@ -105,7 +129,13 @@ func (p Profile) Validate() error {
 	if err := p.Backend.Validate(); err != nil {
 		return err
 	}
+	if !p.Health.Configured() {
+		return nil
+	}
 	if p.Backend.Type == XAuth && len(p.Backend.XAuth.DNS) == 0 && !ipv4(p.Health.Host) {
+		return ErrProfile
+	}
+	if p.Backend.Type == GlobalProtect && len(p.Backend.GlobalProtect.DNS) == 0 && !ipv4(p.Health.Host) {
 		return ErrProfile
 	}
 	if p.Backend.Type == IKEv2 && len(p.Backend.IKEv2.DNS) == 0 && !ipv4(p.Health.Host) {
@@ -117,7 +147,7 @@ func (p Profile) Validate() error {
 func (b Backend) Validate() error {
 	switch b.Type {
 	case L2TP:
-		if b.L2TP == nil || b.XAuth != nil || b.IKEv2 != nil {
+		if b.L2TP == nil || b.XAuth != nil || b.IKEv2 != nil || b.GlobalProtect != nil {
 			return ErrProfile
 		}
 		c := b.L2TP
@@ -131,7 +161,7 @@ func (b Backend) Validate() error {
 		}
 		return validateProposals(c.IKEProposals, c.ESPProposals)
 	case XAuth:
-		if b.XAuth == nil || b.L2TP != nil || b.IKEv2 != nil {
+		if b.XAuth == nil || b.L2TP != nil || b.IKEv2 != nil || b.GlobalProtect != nil {
 			return ErrProfile
 		}
 		if !ipv4(b.XAuth.Server) || len(b.XAuth.DNS) > 8 {
@@ -144,10 +174,15 @@ func (b Backend) Validate() error {
 		}
 		return validateProposals(b.XAuth.IKEProposals, b.XAuth.ESPProposals)
 	case IKEv2:
-		if b.IKEv2 == nil || b.L2TP != nil || b.XAuth != nil {
+		if b.IKEv2 == nil || b.L2TP != nil || b.XAuth != nil || b.GlobalProtect != nil {
 			return ErrProfile
 		}
 		return b.IKEv2.validate()
+	case GlobalProtect:
+		if b.GlobalProtect == nil || b.L2TP != nil || b.XAuth != nil || b.IKEv2 != nil {
+			return ErrProfile
+		}
+		return b.GlobalProtect.validate()
 	default:
 		return ErrBackend
 	}
@@ -163,6 +198,9 @@ func (b Backend) MarshalJSON() ([]byte, error) {
 	}
 	if b.Type == IKEv2 {
 		config = b.IKEv2
+	}
+	if b.Type == GlobalProtect {
+		config = b.GlobalProtect
 	}
 	return json.Marshal(struct {
 		Type   BackendType `json:"type"`
@@ -193,6 +231,11 @@ func (b *Backend) UnmarshalJSON(data []byte) error {
 	case IKEv2:
 		result.IKEv2 = new(IKEv2Config)
 		if err := jsonstrict.Decode(wire.Config, result.IKEv2, MaxProfileBytes); err != nil {
+			return err
+		}
+	case GlobalProtect:
+		result.GlobalProtect = new(GlobalProtectConfig)
+		if err := jsonstrict.Decode(wire.Config, result.GlobalProtect, MaxProfileBytes); err != nil {
 			return err
 		}
 	default:

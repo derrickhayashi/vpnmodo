@@ -365,7 +365,7 @@ class PipelineTests(unittest.TestCase):
         registry = pipeline.runtime_manifest(self.bundle, VERSION, REVISION)
         with patch.object(pipeline.subprocess, 'run', side_effect=self.api.command) as command:
             pipeline.check_public_images(registry)
-        self.assertEqual(command.call_count, 5)
+        self.assertEqual(command.call_count, len(pipeline.ROLES))
         for call in command.call_args_list:
             args = call.args[0]
             self.assertEqual(args[:2], ['docker', '--config'])

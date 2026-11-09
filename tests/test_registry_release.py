@@ -104,6 +104,20 @@ class RegistryTests(unittest.TestCase):
             self.install()
         self.assertEqual(self.calls, [])
 
+    def test_globalprotect_release_validates_all_six_images(self):
+        for role, digit in [('ikev2', 'e'), ('globalprotect', 'f')]:
+            ref = PREFIX + role + '@sha256:' + digit * 64
+            self.refs[role] = ref
+            self.images[ref] = {'Id': 'sha256:' + digit * 64, 'Architecture': 'arm64', 'Os': 'linux'}
+        receipt = self.install()
+        self.assertEqual(receipt['backend_images']['globalprotect'], self.images[self.refs['globalprotect']]['Id'])
+        self.assertEqual(sum(c[0] == 'pull' for c in self.calls), 6)
+        self.calls.clear()
+        self.refs['globalprotect'] = PREFIX + 'globalprotect:mutable'
+        with self.assertRaises(loader.InstallError):
+            self.install()
+        self.assertEqual(self.calls, [])
+
     def test_wrong_architecture_or_controller_version_produces_no_receipt(self):
         self.release['arch'] = 'amd64'
         with self.assertRaisesRegex(loader.InstallError, 'architecture'):

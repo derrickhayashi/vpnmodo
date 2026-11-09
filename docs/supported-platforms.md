@@ -15,6 +15,7 @@ not establish compatibility with every gateway or authentication policy.
 | L2TP/IPsec | Username, password and PSK | IPv4 | Bounded controller recovery |
 | IPsec/XAuth | PSK/XAuth and emailed-code MFA | IPv4 | Fresh login requires an explicit command and a new code |
 | IKEv2 | EAP-MSCHAPv2 and CA-verified server certificate | IPv4 | Bounded controller recovery; permanent authentication failures stop retries |
+| GlobalProtect (experimental) | Direct gateway username/password; explicit CA trust or opt-in verification bypass | IPv4 | Bounded controller recovery; pre-tunnel failures stop retries |
 
 Older releases can omit the IKEv2 image; choose a complete release that includes
 it. Follow the [IKEv2 guide](ikev2.md) for trust, proposal and networking

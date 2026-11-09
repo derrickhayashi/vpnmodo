@@ -21,6 +21,8 @@ type Credentials struct {
 	CACert   secret.Value `json:"ca_cert,omitempty" secret:"true" format:"pem-ca-bundle"`
 }
 
+// Validate checks credential structure. Backend/profile boundaries below enforce
+// the authentication and trust requirements; password-only GP input is valid.
 func (c Credentials) Validate() error {
 	valid := func(value string) bool {
 		return value != "" && len(value) <= 4096 && utf8.ValidString(value) && !strings.ContainsAny(value, "\x00\r\n")
@@ -30,15 +32,14 @@ func (c Credentials) Validate() error {
 			return ErrCredentials
 		}
 	}
-	psk := c.PSK.Check(valid)
-	ca := c.CACert.Check(validCA)
-	if !psk && !ca || !c.PSK.Check(func(s string) bool { return s == "" || valid(s) }) || !c.CACert.Check(func(s string) bool { return s == "" || validCA(s) }) {
+	if !c.PSK.Check(func(s string) bool { return s == "" || valid(s) }) || !c.CACert.Check(func(s string) bool { return s == "" || validCA(s) }) {
 		return ErrCredentials
 	}
 	return nil
 }
 
-// ValidateFor enforces each backend's authentication contract at the vault boundary.
+// ValidateFor checks type-level credential requirements. Use ValidateForBackend
+// at profile/vault boundaries to include the config-dependent TLS policy.
 func (c Credentials) ValidateFor(kind BackendType) error {
 	if c.Validate() != nil {
 		return ErrCredentials
@@ -49,12 +50,28 @@ func (c Credentials) ValidateFor(kind BackendType) error {
 		if !c.PSK.Check(empty) || !c.CACert.Check(validCA) {
 			return ErrCredentials
 		}
+	case GlobalProtect:
+		if !c.PSK.Check(empty) {
+			return ErrCredentials
+		}
 	case L2TP, XAuth:
 		if c.PSK.Check(empty) || !c.CACert.Check(empty) {
 			return ErrCredentials
 		}
 	default:
 		return ErrBackend
+	}
+	return nil
+}
+
+// ValidateForBackend includes config-dependent trust policy. Every persisted or
+// imported profile must use this boundary rather than the type-only check.
+func (c Credentials) ValidateForBackend(b Backend) error {
+	if err := c.ValidateFor(b.Type); err != nil {
+		return err
+	}
+	if b.Type == GlobalProtect && (b.GlobalProtect == nil || !b.GlobalProtect.InsecureSkipTLSVerify && !c.CACert.Check(validCA)) {
+		return ErrCredentials
 	}
 	return nil
 }

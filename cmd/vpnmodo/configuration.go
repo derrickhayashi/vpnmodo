@@ -13,7 +13,7 @@ type profileFile struct {
 	SchemaVersion int                    `json:"schema_version"`
 	Name          string                 `json:"name"`
 	Backend       profile.Backend        `json:"backend"`
-	Health        profile.TCPHealth      `json:"health"`
+	Health        profile.TCPHealth      `json:"health,omitzero"`
 	Network       *profile.NetworkConfig `json:"network,omitempty"`
 	Credentials   *profile.Credentials   `json:"credentials,omitempty"`
 }
@@ -35,7 +35,7 @@ func readProfileFile(path string) (profileFile, error) {
 	if err := result.configuration().Validate(); err != nil {
 		return profileFile{}, err
 	}
-	if result.Credentials != nil && result.Credentials.ValidateFor(result.Backend.Type) != nil {
+	if result.Credentials != nil && result.Credentials.ValidateForBackend(result.Backend) != nil {
 		return profileFile{}, profile.ErrCredentials
 	}
 

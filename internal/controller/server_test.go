@@ -88,7 +88,7 @@ func TestDiscoveryAndStatusOverPrivateSocket(t *testing.T) {
 		t.Fatal("misleading status")
 	}
 	var backends []profile.BackendDescriptor
-	if err := client.Call(ctx, protocol.BackendList, struct{}{}, &backends); err != nil || len(backends) != 3 {
+	if err := client.Call(ctx, protocol.BackendList, struct{}{}, &backends); err != nil || len(backends) != 4 {
 		t.Fatal("backend discovery", err)
 	}
 	var descriptor profile.BackendDescriptor
