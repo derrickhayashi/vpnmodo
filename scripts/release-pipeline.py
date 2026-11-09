@@ -17,7 +17,7 @@ WORKFLOW = 'release.yml'
 VERSION = re.compile(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
 SHA = re.compile(r'[a-f0-9]{40}')
 DIGEST = re.compile(r'sha256:[a-f0-9]{64}')
-ROLES = {'controller', 'l2tp', 'xauth', 'ikev2', 'application'}
+ROLES = {'controller', 'l2tp', 'xauth', 'ikev2', 'globalprotect', 'application'}
 MAX_ASSET = 2 * 1024 * 1024 * 1024
 
 

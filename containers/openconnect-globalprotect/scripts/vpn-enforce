@@ -1,0 +1,35 @@
+#!/bin/sh
+# No application packet can use the outer interface, including existing flows.
+set -eu
+case "$VPN_SERVER" in ''|*[!0-9.]*) exit 1;; esac
+test "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" = 1
+test "$(cat /proc/sys/net/ipv6/conf/default/disable_ipv6)" = 1
+if [ "${1:-}" = check ]; then
+    (iptables -t filter -S; ip6tables -t filter -S) | sha256sum | cmp -s - /run/vpn/enforcement.sha256
+    exit $?
+fi
+iptables-restore <<RULES
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+-A INPUT -i lo -j ACCEPT
+-A OUTPUT -o lo -d 127.0.0.1/32 -j ACCEPT
+-A INPUT -p icmp --icmp-type fragmentation-needed -m conntrack --ctstate RELATED -j ACCEPT
+-A INPUT -i eth0 -s $VPN_SERVER -p tcp --sport 443 -m conntrack --ctstate ESTABLISHED -j ACCEPT
+-A INPUT -i eth0 -s $VPN_SERVER -p udp --sport 4501 -m conntrack --ctstate ESTABLISHED -j ACCEPT
+-A OUTPUT -o eth0 -d $VPN_SERVER -p tcp --dport 443 -m owner --uid-owner 0 -j ACCEPT
+-A OUTPUT -o eth0 -d $VPN_SERVER -p udp --dport 4501 -m owner --uid-owner 0 -j ACCEPT
+-A INPUT -i vpn0 -j ACCEPT
+-A OUTPUT -o vpn0 -j ACCEPT
+COMMIT
+RULES
+ip6tables-restore <<'RULES'
+*filter
+:INPUT DROP [0:0]
+:FORWARD DROP [0:0]
+:OUTPUT DROP [0:0]
+COMMIT
+RULES
+(iptables -t filter -S; ip6tables -t filter -S) | sha256sum > /run/vpn/enforcement.sha256
+vpn-enforce check

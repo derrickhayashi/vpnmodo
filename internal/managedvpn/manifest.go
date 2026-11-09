@@ -12,6 +12,7 @@ import (
 
 const backendLabel = "io.vpnmodo.backend"
 const revisionLabel = "io.vpnmodo.revision"
+const DefaultGlobalProtectImage = "vpnmodo-globalprotect:dev"
 const DefaultIKEv2Image = "vpnmodo-ikev2:dev"
 const DefaultXAuthImage = "vpnmodo-xauth:dev"
 const DefaultImage = "vpnmodo-l2tp:dev"
@@ -38,6 +39,9 @@ func manifest(d deployment, root string) ([]byte, error) {
 	c := profile.L2TPConfig{}
 	if d.Profile.Backend.Type == profile.L2TP {
 		c = profile.EffectiveL2TPConfig(*d.Profile.Backend.L2TP)
+	} else if d.Profile.Backend.Type == profile.GlobalProtect {
+		force := true
+		c = profile.L2TPConfig{Server: d.GatewayIPv4, DNS: d.Profile.Backend.GlobalProtect.DNS, ForceEncapsulation: &force}
 	} else if d.Profile.Backend.Type == profile.IKEv2 {
 		x := profile.EffectiveIKEv2Config(*d.Profile.Backend.IKEv2)
 		force := true
@@ -51,7 +55,11 @@ func manifest(d deployment, root string) ([]byte, error) {
 	if *c.ForceEncapsulation {
 		force = "yes"
 	}
-	env := map[string]string{"VPN_SERVER": c.Server, "VPN_HEALTH_HOST": d.Profile.Health.Host, "VPN_HEALTH_PORT": strconv.Itoa(d.Profile.Health.Port), "VPN_DNS": strings.Join(c.DNS, ","), "VPN_FORCE_ENCAPS": force, "VPN_IKE_PROPOSALS": strings.Join(c.IKEProposals, ","), "VPN_ESP_PROPOSALS": strings.Join(c.ESPProposals, ","), "VPN_DIAGNOSTIC_DIR": "/var/log/vpnmodo"}
+	env := map[string]string{"VPN_SERVER": c.Server, "VPN_DNS": strings.Join(c.DNS, ","), "VPN_FORCE_ENCAPS": force, "VPN_IKE_PROPOSALS": strings.Join(c.IKEProposals, ","), "VPN_ESP_PROPOSALS": strings.Join(c.ESPProposals, ","), "VPN_DIAGNOSTIC_DIR": "/var/log/vpnmodo"}
+	if d.Profile.Health.Configured() {
+		env["VPN_HEALTH_HOST"] = d.Profile.Health.Host
+		env["VPN_HEALTH_PORT"] = strconv.Itoa(d.Profile.Health.Port)
+	}
 	if d.Profile.Network != nil {
 		env["VPN_MTU"] = strconv.Itoa(d.Profile.Network.MTU)
 	}
@@ -60,6 +68,17 @@ func manifest(d deployment, root string) ([]byte, error) {
 		keys = []string{"username", "password", "ca_cert"}
 		x := d.Profile.Backend.IKEv2
 		env["VPN_SERVER_IDENTITY"], env["VPN_CLIENT_IDENTITY"], env["VPN_EAP_IDENTITY"] = x.ServerIdentity, x.ClientIdentity, x.EAPIdentity
+	}
+	if d.Profile.Backend.Type == profile.GlobalProtect {
+		keys = []string{"username", "password", "ca_cert"}
+		env["VPN_GATEWAY_HOST"] = d.Profile.Backend.GlobalProtect.Server
+		env["VPN_INSECURE_SKIP_TLS_VERIFY"] = strconv.FormatBool(d.Profile.Backend.GlobalProtect.InsecureSkipTLSVerify)
+		if d.Profile.Backend.GlobalProtect.InsecureSkipTLSVerify {
+			keys = []string{"username", "password"}
+		}
+		delete(env, "VPN_FORCE_ENCAPS")
+		delete(env, "VPN_IKE_PROPOSALS")
+		delete(env, "VPN_ESP_PROPOSALS")
 	}
 	secretNames := []string{}
 	secrets := map[string]any{}
@@ -75,7 +94,7 @@ func manifest(d deployment, root string) ([]byte, error) {
 	services := model["services"].(map[string]any)
 	diagnosticMount := map[string]any{"type": "bind", "source": filepath.Join(root, "diagnostics"), "target": "/var/log/vpnmodo", "bind": map[string]bool{"create_host_path": false}}
 	services["vpn"].(map[string]any)["volumes"] = []any{diagnosticMount}
-	if d.Profile.Backend.Type == profile.XAuth || d.Profile.Backend.Type == profile.IKEv2 {
+	if d.Profile.Backend.Type == profile.XAuth || d.Profile.Backend.Type == profile.IKEv2 || d.Profile.Backend.Type == profile.GlobalProtect {
 		services := model["services"].(map[string]any)
 		vpn := services["vpn"].(map[string]any)
 		delete(vpn, "devices")
@@ -94,6 +113,11 @@ func manifest(d deployment, root string) ([]byte, error) {
 	if d.Profile.Backend.Type == profile.IKEv2 {
 		services["vpn"].(map[string]any)["entrypoint"] = []string{"/usr/local/bin/vpn-managed-ikev2"}
 		services["vpn"].(map[string]any)["tmpfs"] = []string{"/run:rw,nosuid,nodev,mode=0755", "/tmp:rw,nosuid,nodev,noexec,mode=1777", "/etc/swanctl:rw,nosuid,nodev,noexec,mode=0700"}
+	}
+	if d.Profile.Backend.Type == profile.GlobalProtect {
+		vpn := services["vpn"].(map[string]any)
+		vpn["entrypoint"] = []string{"/usr/local/bin/vpn-managed-globalprotect"}
+		vpn["devices"] = []string{"/dev/net/tun:/dev/net/tun"}
 	}
 	// Compose interpolates dollar signs even in JSON. All manifest strings are data.
 	return json.Marshal(escape(model))

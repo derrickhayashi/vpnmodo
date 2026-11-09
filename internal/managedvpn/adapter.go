@@ -28,10 +28,10 @@ var namespacePattern = regexp.MustCompile(`^net:\[[0-9]+\]$`)
 var containerPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 type Adapter struct {
-	events                                 *eventlog.Store
-	root, image, xauth, ikev2, application string
-	store                                  *profilestore.Store
-	docker                                 Runner
+	events                                                *eventlog.Store
+	root, image, xauth, ikev2, globalprotect, application string
+	store                                                 *profilestore.Store
+	docker                                                Runner
 }
 
 func New(root, image, application string, store *profilestore.Store, docker Runner) (*Adapter, error) {
@@ -199,8 +199,10 @@ func (a *Adapter) Verify(ctx context.Context, p profile.Profile) error {
 	if n := a.networkStatus(ctx, p, cs["vpn"]); n != nil && !n.Verified {
 		return lifecycle.ErrNetworkSettings
 	}
-	if _, err = a.exec(ctx, cs["vpn"], "/usr/local/bin/vpn-servicecheck"); err != nil {
-		return ErrRuntime
+	if p.Health.Configured() {
+		if _, err = a.exec(ctx, cs["vpn"], "/usr/local/bin/vpn-servicecheck"); err != nil {
+			return ErrRuntime
+		}
 	}
 	return nil
 }
@@ -231,7 +233,7 @@ func (a *Adapter) Access(ctx context.Context, p profile.Profile) (operation.Heal
 		return operation.HealthUnavailable, "", nil
 	}
 	if !c.State.Running {
-		if (c.State.ExitCode == 0 || p.Backend.Type == profile.IKEv2 && c.State.ExitCode == 2) && !c.State.OOMKilled {
+		if (c.State.ExitCode == 0 || (p.Backend.Type == profile.IKEv2 || p.Backend.Type == profile.GlobalProtect) && c.State.ExitCode == 2) && !c.State.OOMKilled {
 			return operation.HealthStopped, "", nil
 		}
 		return operation.HealthTunnelDown, "", nil
@@ -250,8 +252,10 @@ func (a *Adapter) Access(ctx context.Context, p profile.Profile) (operation.Heal
 	if n := a.networkStatus(ctx, p, c); n != nil && !n.Verified {
 		return operation.HealthNetworkMismatch, "", nil
 	}
-	if _, err = a.exec(ctx, c, "/usr/local/bin/vpn-servicecheck"); err != nil {
-		return operation.HealthServiceUnavailable, "", nil
+	if p.Health.Configured() {
+		if _, err = a.exec(ctx, c, "/usr/local/bin/vpn-servicecheck"); err != nil {
+			return operation.HealthServiceUnavailable, "", nil
+		}
 	}
 	app := cs["application"]
 	if app.ID == "" {
@@ -358,9 +362,15 @@ func (a *Adapter) removeCredentials(p profile.Profile) error {
 func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, error) {
 	var out deployment
 	gateway := ""
-	if p.Backend.Type == profile.IKEv2 {
+	if p.Backend.Type == profile.IKEv2 || p.Backend.Type == profile.GlobalProtect {
 		var err error
-		gateway, err = a.resolveGateway(ctx, p.Backend.IKEv2.Server)
+		host, image, python := "", a.ikev2, "/opt/vici/bin/python3"
+		if p.Backend.Type == profile.IKEv2 {
+			host = p.Backend.IKEv2.Server
+		} else {
+			host, image, python = p.Backend.GlobalProtect.Server, a.globalprotect, "/usr/bin/python3"
+		}
+		gateway, err = a.resolveGatewayWith(ctx, host, image, python)
 		if err != nil {
 			return nil, err
 		}
@@ -382,9 +392,12 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 			return ErrRuntime
 		}
 		values := map[string]secret.Value{"username": c.Username, "password": c.Password, "psk": c.PSK}
-		if p.Backend.Type == profile.IKEv2 {
+		if p.Backend.Type == profile.IKEv2 || p.Backend.Type == profile.GlobalProtect {
 			delete(values, "psk")
 			values["ca_cert"] = c.CACert
+			if p.Backend.Type == profile.GlobalProtect && p.Backend.GlobalProtect.InsecureSkipTLSVerify {
+				delete(values, "ca_cert")
+			}
 		}
 		for key, value := range values {
 			if _, err := privatefile.Write(filepath.Join(dir, key), value.BytesForProtectedFile()); err != nil {
@@ -404,7 +417,10 @@ func (a *Adapter) prepare(ctx context.Context, p profile.Profile) (*deployment, 
 		if p.Backend.Type == profile.IKEv2 {
 			image = a.ikev2
 		}
-		if p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2 {
+		if p.Backend.Type == profile.GlobalProtect {
+			image = a.globalprotect
+		}
+		if p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2 || p.Backend.Type == profile.GlobalProtect {
 			if err := writeXAuthResolver(a.dir(p)); err != nil {
 				return err
 			}
@@ -492,6 +508,9 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 		if p.Backend.Type == profile.IKEv2 {
 			image = a.ikev2
 		}
+		if p.Backend.Type == profile.GlobalProtect {
+			image = a.globalprotect
+		}
 		for _, image := range []string{image, a.application} {
 			if _, err = a.docker.Run(ctx, "image", "inspect", image); err != nil {
 				return ErrRuntime
@@ -520,7 +539,7 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 		}
 		c := cs["vpn"]
 		if c.ID == "" || !c.State.Running {
-			if (p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2) && c.ID != "" && (c.State.ExitCode == 2 || c.State.ExitCode >= 20 && c.State.ExitCode <= 31) {
+			if (p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2 || p.Backend.Type == profile.GlobalProtect) && c.ID != "" && (c.State.ExitCode == 2 || c.State.ExitCode >= 20 && c.State.ExitCode <= 31) {
 				return lifecycle.ErrAuthentication
 			}
 			return ErrRuntime
@@ -562,7 +581,7 @@ func (a *Adapter) Connect(ctx context.Context, p profile.Profile, challenge func
 			}
 		}
 		if ok, err := a.tunnel(ctx, c); err != nil {
-			if p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2 {
+			if p.Backend.Type == profile.XAuth || p.Backend.Type == profile.IKEv2 || p.Backend.Type == profile.GlobalProtect {
 				_, latest, observeErr := a.owned(ctx, p)
 				stopped := latest["vpn"]
 				if observeErr == nil && stopped.ID == c.ID && !stopped.State.Running && (stopped.State.ExitCode == 2 || stopped.State.ExitCode >= 20 && stopped.State.ExitCode <= 31) {
@@ -625,7 +644,7 @@ func (a *Adapter) EnableXAuth(image string) error {
 	return nil
 }
 func (a *Adapter) Supports(b profile.BackendType) bool {
-	return b == profile.L2TP || b == profile.XAuth && a.xauth != "" || b == profile.IKEv2 && a.ikev2 != ""
+	return b == profile.L2TP || b == profile.XAuth && a.xauth != "" || b == profile.IKEv2 && a.ikev2 != "" || b == profile.GlobalProtect && a.globalprotect != ""
 }
 
 // Forget is called only under the inactive profile-deletion transaction. It does
@@ -666,7 +685,7 @@ func (a *Adapter) Forget(ctx context.Context, name string) error {
 	if err = a.removeCredentials(d.Profile); err != nil {
 		return err
 	}
-	if d.Profile.Backend.Type == profile.XAuth || d.Profile.Backend.Type == profile.IKEv2 {
+	if d.Profile.Backend.Type == profile.XAuth || d.Profile.Backend.Type == profile.IKEv2 || d.Profile.Backend.Type == profile.GlobalProtect {
 		path := filepath.Join(root, "xauth-resolv.conf")
 		if err := checkXAuthResolver(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ErrRuntime
@@ -730,6 +749,9 @@ func (a *Adapter) Prerequisites(ctx context.Context, p profile.Profile) bool {
 	if p.Backend.Type == profile.IKEv2 {
 		image = a.ikev2
 	}
+	if p.Backend.Type == profile.GlobalProtect {
+		image = a.globalprotect
+	}
 	for _, value := range []string{image, a.application} {
 		if _, err := a.docker.Run(ctx, "image", "inspect", value); err != nil {
 			return false
@@ -753,6 +775,10 @@ func (a *Adapter) EnableIKEv2(image string) error {
 // Resolve once before starting the protected namespace. DNS is never exempted
 // from its packet policy. A fresh controller-owned reconnect resolves again.
 func (a *Adapter) resolveGateway(ctx context.Context, host string) (string, error) {
+	return a.resolveGatewayWith(ctx, host, a.ikev2, "/opt/vici/bin/python3")
+}
+
+func (a *Adapter) resolveGatewayWith(ctx context.Context, host, image, python string) (string, error) {
 	if addr, err := netip.ParseAddr(host); err == nil && addr.Is4() {
 		return addr.String(), nil
 	}
@@ -775,7 +801,7 @@ func (a *Adapter) resolveGateway(ctx context.Context, host string) (string, erro
 	// The controller has network_mode:none. A disposable unprivileged resolver
 	// gets no vault/state mounts and never joins the VPN/application namespace.
 	code := "import socket,sys; print(socket.getaddrinfo(sys.stdin.read(),None,socket.AF_INET,socket.SOCK_DGRAM)[0][4][0])"
-	raw, err := runner.RunInput(ctx, []byte(host), "run", "--rm", "--interactive", "--name", name, "--log-driver", "none", "--network", "bridge", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--user", "65534:65534", "--entrypoint", "timeout", a.ikev2, "5", "/opt/vici/bin/python3", "-c", code)
+	raw, err := runner.RunInput(ctx, []byte(host), "run", "--rm", "--interactive", "--name", name, "--log-driver", "none", "--network", "bridge", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only", "--user", "65534:65534", "--entrypoint", "timeout", image, "5", python, "-c", code)
 	if err != nil {
 		return "", ErrRuntime
 	}
@@ -784,4 +810,16 @@ func (a *Adapter) resolveGateway(ctx context.Context, host string) (string, erro
 		return "", ErrRuntime
 	}
 	return addr.String(), nil
+}
+
+// EnableGlobalProtect selects the operator-provisioned OpenConnect image.
+func (a *Adapter) EnableGlobalProtect(image string) error {
+	if image == "" {
+		image = DefaultGlobalProtectImage
+	}
+	if !imagePattern.MatchString(image) {
+		return ErrRuntime
+	}
+	a.globalprotect = image
+	return nil
 }

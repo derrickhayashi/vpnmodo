@@ -14,7 +14,7 @@ const l2tpProfile = `{"schema_version":1,"name":"example","backend":{"type":"l2t
 
 func TestShippedProfileExamples(t *testing.T) {
 	paths, err := filepath.Glob("../../examples/profiles/v1/*.json")
-	if err != nil || len(paths) != 3 {
+	if err != nil || len(paths) != 4 {
 		t.Fatal("expected all v1 backend examples", err)
 	}
 	for _, path := range paths {

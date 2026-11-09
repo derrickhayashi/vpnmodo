@@ -31,7 +31,7 @@ type BackendDescriptor struct {
 func DescribeBackend(kind BackendType) (BackendDescriptor, error) {
 	d := BackendDescriptor{Type: kind, CredentialFields: fields(reflect.TypeFor[Credentials]())}
 	d.Capabilities.RequireFailClosed = true
-	if kind != IKEv2 {
+	if kind != IKEv2 && kind != GlobalProtect {
 		filtered := []Field{}
 		for _, f := range d.CredentialFields {
 			if f.Name != "ca_cert" {
@@ -44,12 +44,19 @@ func DescribeBackend(kind BackendType) (BackendDescriptor, error) {
 	case L2TP:
 		d.ConfigFields = fields(reflect.TypeFor[L2TPConfig]())
 		d.Capabilities.AutomaticRecovery = true
-	case IKEv2:
-		d.ConfigFields = fields(reflect.TypeFor[IKEv2Config]())
+	case IKEv2, GlobalProtect:
+		if kind == IKEv2 {
+			d.ConfigFields = fields(reflect.TypeFor[IKEv2Config]())
+		} else {
+			d.ConfigFields = fields(reflect.TypeFor[GlobalProtectConfig]())
+		}
 		d.CredentialFields = []Field{}
 		for _, f := range fields(reflect.TypeFor[Credentials]()) {
 			if f.Name != "psk" {
 				f.Required = true
+				if kind == GlobalProtect && f.Name == "ca_cert" {
+					f.Required = false
+				}
 				d.CredentialFields = append(d.CredentialFields, f)
 			}
 		}

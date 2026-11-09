@@ -60,17 +60,17 @@ func (m *Manager) Runtime(ctx context.Context, name string) (operation.RuntimeVi
 		if c.Desired != operation.Connected || health != operation.HealthHealthy {
 			id = ""
 		}
-		tunnel, endpoint := false, false
+		tunnel, verified := false, false
 		if health != operation.HealthOwnerConflict {
 			tunnel, err = m.options.Adapter.Observe(ctx, p.Profile)
 			if err != nil {
 				return err
 			}
 			if tunnel {
-				endpoint = m.options.Adapter.Verify(ctx, p.Profile) == nil
+				verified = m.options.Adapter.Verify(ctx, p.Profile) == nil
 			}
 		}
-		if !tunnel || !endpoint {
+		if !tunnel || !verified {
 			id = ""
 		}
 		prerequisites := false
@@ -79,7 +79,7 @@ func (m *Manager) Runtime(ctx context.Context, name string) (operation.RuntimeVi
 		}); ok {
 			prerequisites = checker.Prerequisites(ctx, p.Profile)
 		}
-		result = operation.RuntimeView{Connection: c, Health: health, ApplicationID: id, TunnelReady: tunnel, PrivateEndpointReady: endpoint, ProfileRevision: p.Revision, CredentialsPresent: p.CredentialsPresent, PrerequisitesReady: prerequisites}
+		result = operation.RuntimeView{Connection: c, Health: health, ApplicationID: id, TunnelReady: tunnel, PrivateEndpointConfigured: p.Profile.Health.Configured(), PrivateEndpointReady: p.Profile.Health.Configured() && verified, ProfileRevision: p.Revision, CredentialsPresent: p.CredentialsPresent, PrerequisitesReady: prerequisites}
 		if p.Profile.Network != nil {
 			result.Network = &operation.NetworkStatus{ConfiguredMTU: p.Profile.Network.MTU, DerivedMSS: p.Profile.Network.MSS(), Code: "network_settings_unverified"}
 			if checker, ok := m.options.Adapter.(interface {

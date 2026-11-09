@@ -25,21 +25,28 @@ func (a *Adapter) networkStatus(ctx context.Context, p profile.Profile, c contai
 	}
 	n := &operation.NetworkStatus{ConfiguredMTU: p.Network.MTU, DerivedMSS: p.Network.MSS(), Code: "network_settings_unverified"}
 	mtu := p.Network.MTU
+	device := ""
 	if p.Backend.Type == profile.L2TP {
-		data, err := a.exec(ctx, c, "ip", "-j", "link", "show", "dev", "ppp0")
+		device = "ppp0"
+	}
+	if p.Backend.Type == profile.GlobalProtect {
+		device = "vpn0"
+	}
+	if device != "" {
+		data, err := a.exec(ctx, c, "ip", "-j", "link", "show", "dev", device)
 		var links []struct {
 			MTU int `json:"mtu"`
 		}
 		if err != nil || json.Unmarshal(data, &links) != nil || len(links) != 1 || links[0].MTU < 576 || links[0].MTU > mtu {
 			return n
 		}
-		// PPP may negotiate a lower MTU. Linux derives advertised MSS from the
-		// interface MTU for every route without an explicit route metric.
+		// PPP/OpenConnect may select a lower MTU. PPP routes inherit it;
+		// GlobalProtect explicitly applies its effective limit and derived MSS.
 		mtu = links[0].MTU
 	}
 	args := []string{"ip", "-o", "-4", "route", "show", "table", "220"}
-	if p.Backend.Type == profile.L2TP {
-		args = []string{"ip", "-o", "-4", "route", "show", "table", "all", "dev", "ppp0"}
+	if device != "" {
+		args = []string{"ip", "-o", "-4", "route", "show", "table", "all", "dev", device}
 	}
 	data, err := a.exec(ctx, c, args...)
 	if err != nil {

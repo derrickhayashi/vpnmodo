@@ -6,6 +6,30 @@ with `vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"`.
 Keep this plaintext input file outside Git. To change an existing profile, use
 the [profile update workflow](onboarding.md#update-a-profile-or-rotate-credentials).
 
+## Optional private health endpoint
+
+All backends accept an optional top-level `health` object:
+
+```json
+"health": {"host": "192.0.2.10", "port": 22}
+```
+
+Omit the entire object when you only know the VPN gateway. Tunnel authentication,
+packet isolation, configured MTU and application namespace checks still apply.
+The controller skips the private TCP probe; readiness then means the VPN and
+application namespace are ready, without claiming private-service reachability.
+`doctor` reports the endpoint check as `not_configured`, and runtime JSON reports
+`private_endpoint_configured: false` and `private_endpoint_ready: false`.
+
+When `health` is present, supply both a valid host and a TCP port from 1–65535.
+Partial or invalid endpoints are rejected. An explicitly configured probe must
+succeed before the application is attached. For XAuth, IKEv2 and GlobalProtect,
+a hostname health target requires explicit VPN DNS; an IPv4 target does not.
+A service outage alone does not trigger a fresh VPN login.
+
+For direct GlobalProtect gateway connections, see the
+[OpenConnect backend guide](globalprotect.md).
+
 ## VPN packet size (MTU)
 
 Set an optional top-level `network` object in your private profile JSON when a
@@ -33,10 +57,12 @@ recreation. XAuth and IKEv2 apply MTU and advertised MSS to routes installed by
 strongSwan, including newly installed routes. The underlying gateway transport
 route is unaffected. L2TP configures PPP MTU/MRU so all routes through PPP inherit
 its limit and Linux derives MSS from it. If PPP negotiates a smaller MTU, status
-shows that smaller effective value.
+shows that smaller effective value. GlobalProtect applies the limit and derived
+MSS to its TUN interface and tunnel routes.
 
 Omitting `network` retains backend defaults: PPP MTU/MRU 1400 for L2TP, and no
-explicit route MTU/MSS override for XAuth or IKEv2. An empty object, `null`, zero,
+explicit route MTU/MSS override for XAuth or IKEv2. GlobalProtect defaults to an
+inner MTU of 1400. An empty object, `null`, zero,
 explicit MSS and destination lists are rejected.
 
 To change the setting, disconnect, edit the private input file, and use the

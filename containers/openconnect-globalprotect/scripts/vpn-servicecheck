@@ -1,0 +1,9 @@
+#!/bin/sh
+# A private service probe is optional; tunnel and packet policy checks are not.
+set -eu
+vpn-tunnelcheck
+if [ -z "${VPN_HEALTH_HOST:-}" ]; then
+    test -z "${VPN_HEALTH_PORT:-}"
+    exit $?
+fi
+exec nc -z -w 4 "$VPN_HEALTH_HOST" "${VPN_HEALTH_PORT:?VPN_HEALTH_PORT is required}"

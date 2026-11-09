@@ -150,7 +150,7 @@ def verify(bundle):
     if not isinstance(data, dict):
         raise InstallError('invalid registry release manifest')
     images = data.get('images')
-    if not isinstance(images, dict) or set(images) not in (ROLES, ROLES | {'ikev2'}):
+    if not isinstance(images, dict) or set(images) not in (ROLES, ROLES | {'ikev2'}, ROLES | {'ikev2', 'globalprotect'}):
         raise InstallError('release image set is incomplete')
     for role, image in images.items():
         for key in ('id', 'config_digest', 'manifest_digest'):
@@ -231,7 +231,7 @@ def install_registry(manifest):
         raise InstallError('registry release manifest is too large')
     data = json.loads(manifest.read_text())
     images = data.get('images')
-    if data.get('schema_version') != 1 or data.get('os') != 'linux' or data.get('arch') not in ('arm64', 'amd64') or not isinstance(images, dict) or set(images) not in (ROLES, ROLES | {'ikev2'}):
+    if data.get('schema_version') != 1 or data.get('os') != 'linux' or data.get('arch') not in ('arm64', 'amd64') or not isinstance(images, dict) or set(images) not in (ROLES, ROLES | {'ikev2'}, ROLES | {'ikev2', 'globalprotect'}):
         raise InstallError('invalid registry release manifest')
     if not isinstance(data.get('binary_version'), str) or not data['binary_version']:
         raise InstallError('missing registry release version')

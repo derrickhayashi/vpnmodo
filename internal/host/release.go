@@ -24,7 +24,7 @@ func validBackendImages(images map[string]string) bool {
 	if images == nil {
 		return true
 	}
-	if len(images) != 3 && len(images) != 4 {
+	if len(images) != 3 && len(images) != 4 && len(images) != 5 {
 		return false
 	}
 	for _, role := range []string{"l2tp", "xauth", "application"} {
@@ -32,7 +32,10 @@ func validBackendImages(images map[string]string) bool {
 			return false
 		}
 	}
-	if len(images) == 4 && !localImageID.MatchString(images["ikev2"]) {
+	if len(images) >= 4 && !localImageID.MatchString(images["ikev2"]) {
+		return false
+	}
+	if len(images) == 5 && !localImageID.MatchString(images["globalprotect"]) {
 		return false
 	}
 	return true

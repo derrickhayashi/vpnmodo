@@ -1,0 +1,275 @@
+#!/usr/bin/python3
+"""One bounded, noninteractive GlobalProtect gateway login via OpenConnect.
+
+The controller owns reconnects. Credentials and raw client output never enter
+arguments, Docker logs or diagnostics. Network policy precedes credential reads.
+"""
+import hashlib
+import ipaddress
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import socket
+import ssl
+import subprocess
+import sys
+import time
+
+RUN = Path('/run/vpn')
+STOP = False
+
+
+def command(*args):
+    return subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, check=True, timeout=4).stdout
+
+
+def diagnostic(reason):
+    try:
+        command('/usr/local/bin/vpn-diagnostic', reason)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def ipv4(value):
+    return str(ipaddress.IPv4Address(value))
+
+
+def hostname(value):
+    if not value or len(value) > 253:
+        raise ValueError('host')
+    if any(not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?', label)
+           for label in value.split('.')):
+        raise ValueError('host')
+    return value
+
+
+def credential(key, limit=4096):
+    with Path(os.environ['VPN_' + key.upper() + '_FILE']).open('rb') as stream:
+        value = stream.read(limit + 1)
+    if not value or len(value) > limit:
+        raise ValueError('credential')
+    if key != 'ca_cert' and any(c in value for c in (b'\x00', b'\r', b'\n')):
+        raise ValueError('credential')
+    return value
+
+
+def configured_mtu():
+    mtu = int(os.environ.get("VPN_MTU") or "1400")
+    if not 576 <= mtu <= 1500:
+        raise ValueError("mtu")
+    return mtu
+
+
+def configuration():
+    host = hostname(os.environ['VPN_GATEWAY_HOST'])
+    peer = ipv4(os.environ['VPN_SERVER'])
+    username = credential('username').decode('utf-8')
+    # Each option occupies one line; user values cannot become another option.
+    skip = os.environ.get('VPN_INSECURE_SKIP_TLS_VERIFY', 'false')
+    if skip not in ('true', 'false'):
+        raise ValueError('TLS policy')
+    if skip == 'true':
+        # Accept whichever certificate the pinned endpoint presents now. This
+        # is intentionally NOT a trusted fingerprint or persistent trust-on-
+        # first-use policy. OpenConnect itself has no general no-verify flag.
+        trust = ['servercert=' + unverified_peer_key(host, peer)]
+    else:
+        # The bundle has passed X.509 validation at the vault boundary.
+        (RUN / 'ca.crt').write_bytes(credential('ca_cert', 32768))
+        trust = ['cafile=' + str(RUN / 'ca.crt'), 'no-system-trust']
+    (RUN / 'client.conf').write_text('\n'.join([
+        'protocol=gp', 'usergroup=gateway', 'server=https://' + host,
+        'resolve=' + host + ':' + peer, 'user=' + username,
+        *trust,
+        'non-inter', 'passwd-on-stdin', 'no-external-auth', 'no-proxy',
+        'disable-ipv6', 'interface=vpn0', 'script=/usr/local/bin/vpn-gp-hook',
+        # VM/user-mode network stacks may advertise a 64-KiB outer MTU. GP
+        # gateways commonly omit MTU, so never derive the inner MTU from it.
+        'mtu=' + str(configured_mtu()),
+        # OpenConnect permits only a bounded transport retry; the disconnect
+        # hook invalidates readiness and the supervisor ends the attempt.
+        'reconnect-timeout=1', 'force-dpd=10',
+    ]) + '\n')
+    return credential('password') + b'\n'
+
+
+def unverified_peer_key(host, peer):
+    # Connect only to the already pinned peer, with bounded TLS negotiation and
+    # no application/login data. The original host is retained for SNI.
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    with socket.create_connection((peer, 443), timeout=5) as sock:
+        with context.wrap_socket(sock, server_hostname=host) as tls:
+            certificate = tls.getpeercert(binary_form=True)
+    if not certificate or len(certificate) > 65536:
+        raise ValueError('certificate')
+
+    def convert(data, *args):
+        return subprocess.run(['openssl', *args], input=data, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, check=True, timeout=4).stdout
+
+    # OpenConnect's SHA256 fingerprint hashes DER SubjectPublicKeyInfo, not the
+    # leaf certificate. Certificate/key bytes go through stdin, never argv.
+    public_key = convert(certificate, 'x509', '-inform', 'DER', '-pubkey', '-noout')
+    spki = convert(public_key, 'pkey', '-pubin', '-outform', 'DER')
+    return 'sha256:' + hashlib.sha256(spki).hexdigest()
+
+
+def dns_configuration():
+    addresses = os.environ.get('VPN_DNS', '').split(',')
+    addresses = [] if addresses == [''] else addresses
+    if len(addresses) > 8:
+        raise ValueError('dns')
+    return '\n'.join(['no-resolv', 'no-hosts', 'bind-interfaces', 'interface=lo',
+                      'listen-address=127.0.0.1', 'user=root', 'group=root',
+                      'cache-size=0', *['server=' + ipv4(a) + '@vpn0' for a in addresses]]) + '\n'
+
+
+def pin_gateway():
+    peer = ipv4(os.environ['VPN_SERVER'])
+    routes = json.loads(command('ip', '-j', '-4', 'route', 'show', 'default'))
+    if len(routes) != 1 or routes[0].get('dev') != 'eth0':
+        raise ValueError('route')
+    gateway = ipv4(routes[0]['gateway'])
+    command('ip', '-4', 'route', 'replace', peer + '/32', 'via', gateway, 'dev', 'eth0')
+
+
+def hook():
+    reason = os.environ['reason']
+    if reason == 'pre-init':
+        return
+    if reason in ('disconnect', 'attempt-reconnect', 'reconnect'):
+        # Do not silently adopt a replacement tunnel. The controller creates a
+        # fresh namespace and applies its own recovery limits after loss.
+        (RUN / 'connected').unlink(missing_ok=True)
+        (RUN / 'lost').touch(mode=0o600)
+        return
+    if reason != 'connect' or os.environ.get('TUNDEV') != 'vpn0' or (RUN / 'lost').exists():
+        raise ValueError('hook')
+    if ipv4(os.environ['VPNGATEWAY']) != ipv4(os.environ['VPN_SERVER']):
+        raise ValueError('gateway')
+    address = ipv4(os.environ['INTERNAL_IP4_ADDRESS'])
+    if ipaddress.IPv4Address(address).is_unspecified or ipaddress.IPv4Address(address).is_multicast or ipaddress.IPv4Address(address).is_loopback:
+        raise ValueError('address')
+    mtu = int(os.environ.get('INTERNAL_IP4_MTU') or str(configured_mtu()))
+    if not 576 <= mtu <= 65535:
+        raise ValueError('mtu')
+    mtu = min(mtu, configured_mtu())
+    command('/usr/local/bin/vpn-enforce', 'check')
+    command('ip', 'link', 'set', 'dev', 'vpn0', 'mtu', str(mtu), 'up')
+    command('ip', '-4', 'addr', 'replace', address + '/32', 'dev', 'vpn0')
+    command('ip', '-4', 'route', 'replace', 'default', 'dev', 'vpn0', 'mtu', str(mtu), 'advmss', str(mtu - 40))
+    (RUN / 'connected').write_text(address)
+
+
+def protected():
+    if (RUN / 'lost').exists() or not (RUN / 'connected').is_file():
+        return False
+    command('/usr/local/bin/vpn-enforce', 'check')
+    pid = int((RUN / 'client.pid').read_text())
+    if Path('/proc/' + str(pid) + '/comm').read_text().strip() != 'openconnect':
+        return False
+    address = ipv4((RUN / 'connected').read_text())
+    links = json.loads(command('ip', '-j', '-4', 'addr', 'show', 'dev', 'vpn0'))
+    if len(links) != 1 or 'UP' not in links[0].get('flags', []) or not any(
+            a.get('local') == address for a in links[0].get('addr_info', [])):
+        return False
+    routes = json.loads(command('ip', '-j', '-4', 'route', 'show', 'default'))
+    if len(routes) != 1 or routes[0].get('dev') != 'vpn0':
+        return False
+    outer = json.loads(command('ip', '-j', '-4', 'route', 'get', ipv4(os.environ['VPN_SERVER'])))
+    return len(outer) == 1 and outer[0].get('dev') == 'eth0'
+
+
+def stop(*_):
+    global STOP
+    STOP = True
+
+
+def terminate(child):
+    if child is None:
+        return
+    if child.poll() is None:
+        child.terminate()
+    try:
+        child.wait(timeout=0.5)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=0.5)
+
+
+def main():
+    os.umask(0o077)
+    RUN.mkdir(mode=0o700, exist_ok=True)
+    child = dns = None
+    established = False
+    try:
+        # No credentials are read or clients launched before enforcement.
+        command('/usr/local/bin/vpn-enforce')
+        pin_gateway()
+        (RUN / 'dnsmasq.conf').write_text(dns_configuration())
+        password = configuration()
+        dns = subprocess.Popen(['dnsmasq', '--keep-in-foreground', '--conf-file=' + str(RUN / 'dnsmasq.conf')],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        child = subprocess.Popen(['openconnect', '--config=' + str(RUN / 'client.conf')],
+                                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        (RUN / 'client.pid').write_text(str(child.pid))
+        try:
+            child.stdin.write(password)
+            child.stdin.close()
+        except BrokenPipeError:
+            pass
+        del password
+        deadline = time.monotonic() + 120
+        while not STOP:
+            if dns.poll() is not None:
+                diagnostic('support_process_exit')
+                return 1
+            if child.poll() is not None:
+                diagnostic('client_exit')
+                # Every pre-tunnel client exit stops automatic login retries;
+                # raw stderr is intentionally unavailable for classification.
+                return 1 if established else 2
+            if (RUN / 'lost').exists():
+                diagnostic('tunnel_state_lost')
+                return 1
+            if protected():
+                if not established:
+                    established = True
+                    (RUN / 'ready').touch(mode=0o600)
+                    diagnostic('established')
+            elif established:
+                diagnostic('tunnel_state_lost')
+                return 1
+            elif time.monotonic() >= deadline:
+                diagnostic('handshake_timeout')
+                return 2
+            time.sleep(0.2)
+        diagnostic('stopping')
+        return 0
+    finally:
+        (RUN / 'connected').unlink(missing_ok=True)
+        terminate(child)
+        terminate(dns)
+        # Runtime copies disappear even on a graceful stop. Mounted per-attempt
+        # credentials are removed by the controller's existing cleanup.
+        for name in ('client.conf', 'ca.crt', 'client.pid'):
+            (RUN / name).unlink(missing_ok=True)
+
+
+if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        if sys.argv[1:] == ['--check']:
+            sys.exit(0 if protected() else 1)
+        if sys.argv[1:]:
+            sys.exit(2)
+        sys.exit(main())
+    except (ValueError, KeyError, OSError, subprocess.SubprocessError):
+        diagnostic('client_exit')
+        sys.exit(2)

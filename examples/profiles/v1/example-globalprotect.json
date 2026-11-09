@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "example-globalprotect",
+  "backend": {
+    "type": "openconnect-globalprotect",
+    "config": {
+      "server": "gateway.example.test",
+      "dns": [
+        "198.51.100.53"
+      ]
+    }
+  }
+}

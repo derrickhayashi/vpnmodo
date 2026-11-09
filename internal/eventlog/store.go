@@ -56,7 +56,7 @@ func (e Event) valid() bool {
 	if e.ExitCode != nil && (*e.ExitCode < 0 || *e.ExitCode > 255) {
 		return false
 	}
-	if e.At.IsZero() || !profile.ValidName(e.Profile) || e.Backend != "" && e.Backend != profile.L2TP && e.Backend != profile.XAuth && e.Backend != profile.IKEv2 || e.OperationID != "" && !operation.ValidID(e.OperationID) || e.SourceID != "" && !sourcePattern.MatchString(e.SourceID) {
+	if e.At.IsZero() || !profile.ValidName(e.Profile) || e.Backend != "" && e.Backend != profile.L2TP && e.Backend != profile.XAuth && e.Backend != profile.IKEv2 && e.Backend != profile.GlobalProtect || e.OperationID != "" && !operation.ValidID(e.OperationID) || e.SourceID != "" && !sourcePattern.MatchString(e.SourceID) {
 		return false
 	}
 	if e.Operation != "" && !e.Operation.Valid() || e.Failure != "" && !e.Failure.Valid() || e.Health != "" && !e.Health.Valid() {
