@@ -281,7 +281,7 @@ func waitSetupReady(base context.Context, h host.Host, version string) error {
 			var status controller.Status
 			err = client.Call(attempt, protocol.SystemStatus, struct{}{}, &status)
 			client.Close()
-			if err == nil && status.StateReady && status.DockerReady && status.RuntimeEnabled && status.Version == version {
+			if err == nil && status.StateReady && status.DockerReady && status.RuntimeEnabled && (version == "" || status.Version == version) {
 				stop()
 				return nil
 			}

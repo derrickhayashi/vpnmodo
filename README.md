@@ -261,6 +261,9 @@ vpnmodo status work
 vpnmodo doctor work
 ```
 
+`up` starts the managed VM if it is stopped, waits for the controller, then
+connects the VPN. Run `vpnmodo setup` first if the environment has not been created.
+
 For XAuth, `up` asks for the newest emailed code for this attempt through a hidden
 prompt. L2TP and IKEv2 do not ask for an emailed code. An already healthy managed
 session is reused. XAuth will not silently start another MFA login after session loss.
@@ -348,7 +351,7 @@ vpnmodo down work
 
 | Command on the Mac | Purpose |
 | --- | --- |
-| `vpnmodo up work` | Ensure the VPN and start configured local service forwards |
+| `vpnmodo up work` | Start the VM if needed, ensure the VPN and start configured local service forwards |
 | `vpnmodo status work` | Inspect current VPN and service state |
 | `vpnmodo doctor work` | Probe VM, controller, VPN and configured services |
 | `vpnmodo logs work --since 24h` | Read persistent connection history and sanitized diagnostics |
