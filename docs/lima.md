@@ -30,6 +30,11 @@ vpnmodo profile create work --file "$HOME/vpnmodo-private/work.json"
 vpnmodo up work
 ```
 
+`vpnmodo up` starts an existing stopped VM automatically and waits for the
+controller before connecting. An already running VM is reused. `status`, `doctor`
+and `down` do not start a stopped VM. If the VM is missing, run `vpnmodo setup`
+to create it before connecting.
+
 The VPN JSON contains settings and username/password/PSK for either supported
 backend. Only XAuth connection MFA is prompted interactively.
 

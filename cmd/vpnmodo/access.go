@@ -222,6 +222,18 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 			return fail("named_service_not_configured")
 		}
 	}
+	started := false
+	if command == "up" {
+		progress := out
+		if *machine {
+			progress = io.Discard
+		}
+		started, err = startManagedVM(ctx, registry, h, progress)
+		if err != nil {
+			r.Checks = append(r.Checks, accessCheck{"vm", err.Error(), false})
+			return fail(err.Error())
+		}
+	}
 	probe, cancelProbe := context.WithTimeout(ctx, 15*time.Second)
 	err = host.Probe(probe, h)
 	cancelProbe()
@@ -239,6 +251,13 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	}
 	r.Checks = append(r.Checks, accessCheck{"vm_python", "ready", true})
 
+	if started {
+		// Docker and the existing controller may still be starting after boot.
+		if err := waitSetupReady(ctx, h, ""); err != nil {
+			r.Checks = append(r.Checks, accessCheck{"controller", "controller_unavailable", false})
+			return fail("controller_unavailable")
+		}
+	}
 	client, err := host.Connect(ctx, h)
 	if err != nil {
 		r.Checks = append(r.Checks, accessCheck{"controller", "controller_unavailable", false})
