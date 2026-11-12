@@ -92,6 +92,8 @@ func manifest(d deployment, root string) ([]byte, error) {
 		"application": map[string]any{"image": d.ApplicationImage, "labels": d.labels(), "network_mode": "service:vpn", "user": strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid()), "volumes": []any{map[string]any{"type": "bind", "source": filepath.Join(root, "resolv.conf"), "target": "/etc/resolv.conf", "read_only": true, "bind": map[string]bool{"create_host_path": false}}}, "restart": "no", "read_only": true, "cap_drop": []string{"ALL"}, "security_opt": []string{"no-new-privileges:true"}, "logging": map[string]any{"driver": "none"}, "command": []string{"sleep", "infinity"}},
 	}, "secrets": secrets, "networks": map[string]any{"default": map[string]any{"labels": d.labels()}}}
 	services := model["services"].(map[string]any)
+	// Reap orphaned watchdogs created by BusyBox timeout during inspections.
+	services["application"].(map[string]any)["init"] = true
 	diagnosticMount := map[string]any{"type": "bind", "source": filepath.Join(root, "diagnostics"), "target": "/var/log/vpnmodo", "bind": map[string]bool{"create_host_path": false}}
 	services["vpn"].(map[string]any)["volumes"] = []any{diagnosticMount}
 	if d.Profile.Backend.Type == profile.XAuth || d.Profile.Backend.Type == profile.IKEv2 || d.Profile.Backend.Type == profile.GlobalProtect {

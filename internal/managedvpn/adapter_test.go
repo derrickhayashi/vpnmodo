@@ -355,6 +355,9 @@ func TestManifestEscapesInterpolationAndConstrainsRuntime(t *testing.T) {
 	if model.Services["vpn"]["restart"] != "no" || model.Services["application"]["network_mode"] != "service:vpn" {
 		t.Fatal("competing recovery/namespace model")
 	}
+	if model.Services["application"]["init"] != true {
+		t.Fatal("application needs an init process to reap orphaned inspection watchdogs")
+	}
 	if _, ok := model.Services["vpn"]["ports"]; ok {
 		t.Fatal("unexpected published ports")
 	}
