@@ -127,7 +127,8 @@ before success. Terminal operations cannot restart; a retry creates a new ID.
 - Losing SSH or closing a watcher does not cancel an operation. Cancellation and
   disconnect are separate commands; use disconnect to end an established session.
 - An intentional disconnect prevents automatic recovery. A failed private TCP
-  check alone does not trigger new authentication.
+  check alone does not trigger background authentication. An explicit XAuth
+  ensure may replace an existing session that fails verification, with fresh MFA.
 - On controller restart, interrupted operations fail and their challenges expire.
   Established sessions are checked before reuse. Missing tunnels and interrupted
   MFA do not silently start another login.

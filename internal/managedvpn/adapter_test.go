@@ -26,6 +26,7 @@ type fakeDocker struct {
 	codeAccepted    bool
 	repeatChallenge bool
 	failApplication bool
+	serviceError    error
 	containers      map[string]container
 	calls           [][]string
 	tunnel, service bool
@@ -88,6 +89,9 @@ func (f *fakeDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 				return nil, commandError{1}
 			}
 		case "/usr/local/bin/vpn-servicecheck":
+			if f.serviceError != nil {
+				return nil, f.serviceError
+			}
 			if !f.service {
 				return nil, commandError{1}
 			}
@@ -143,6 +147,29 @@ func (f *fakeDocker) Run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	return nil, ErrRuntime
 }
+func TestVerifyClassifiesUnusableSessionWithoutMaskingRuntimeFailures(t *testing.T) {
+	a, f, _, p := setup(t)
+	ctx := context.Background()
+	if err := a.Connect(ctx, p, nil); err != nil {
+		t.Fatal(err)
+	}
+	f.tunnel = false
+	if err := a.Verify(ctx, p); !errors.Is(err, lifecycle.ErrSessionUnusable) {
+		t.Fatal("lost tunnel not classified", err)
+	}
+	f.tunnel = true
+	f.service = false
+	if err := a.Verify(ctx, p); !errors.Is(err, lifecycle.ErrSessionUnusable) {
+		t.Fatal("unreachable endpoint not classified", err)
+	}
+	for _, failure := range []error{commandError{125}, commandError{137}, ErrRuntime, context.Canceled} {
+		f.serviceError = failure
+		if err := a.Verify(ctx, p); errors.Is(err, lifecycle.ErrSessionUnusable) || err == nil {
+			t.Fatal("runtime failure authorized replacement", err)
+		}
+	}
+}
+
 func setup(t *testing.T) (*Adapter, *fakeDocker, *profilestore.Store, profile.Profile) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "state")

@@ -94,8 +94,17 @@ are outside this isolation boundary.
 ## Monitoring and recovery
 
 Health reporting separates private endpoint failures, namespace detachment and
-IPsec loss. Endpoint failure alone never starts another login. A healthy tunnel
+IPsec loss. Background endpoint failures never start another login. A healthy tunnel
 can repair only its application namespace without MFA. The application-only
 manifest pins the verified container ID and contains no VPN service to reconcile. On IPsec loss, the controller stops the application and reports authentication
-required. It does not begin a new PSK/password attempt in the background. An explicit ensure creates a fresh attempt/challenge.
+required. It does not begin a new PSK/password attempt in the background.
+An explicit ensure verifies an existing session before reusing it. If local
+IPsec state remains but the session fails its configured endpoint check, ensure
+removes the old application and VPN, then creates one fresh attempt/challenge.
+This also handles sessions left unusable by workstation sleep without waiting
+for dead-peer detection. A healthy session is preserved. Ownership, runtime and
+network-setting errors fail without replacing it. A failed fresh login or its
+verification is not retried within that operation. A private-service outage may
+therefore cause an explicit ensure to request fresh MFA once; it cannot cause
+background authentication.
 The kernel filter remains the protection while the controller is unavailable.

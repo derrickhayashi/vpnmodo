@@ -58,8 +58,11 @@ before a VPN container appears. An explicit successful disconnect allows edits.
 
 One gate per profile serializes external adapter actions. Different profiles can
 proceed independently. Concurrent ensure calls join an active ensure/recovery.
-A later ensure against an established tunnel verifies it without a new login.
-Private-endpoint verification failure alone never triggers a fresh login.
+A later ensure against an established tunnel verifies it before reuse. For
+XAuth, an explicit ensure replaces an existing session that fails its tunnel or
+configured endpoint check, then permits one fresh login with MFA. A failed new
+attempt is not retried. Other backends retain their existing reuse policy.
+Background private-endpoint verification never triggers a fresh login.
 
 Disconnect commits desired-disconnected intent, disables recovery, cancels older
 ensure/recovery and queues teardown behind its cleanup. Every worker update

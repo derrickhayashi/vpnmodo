@@ -47,6 +47,11 @@ stops require explicit user action to rearm. An explicit ensure resets the budge
 and may override cooldown. XAuth cannot opt into unattended authentication merely
 by implementing health probes.
 
+An explicit XAuth ensure also verifies a reused session. A failed tunnel or
+configured endpoint check permits one fresh login in that operation, with a new
+MFA challenge. This explicit replacement policy does not apply to background
+monitoring or recovery.
+
 For tunnel loss, the worker rechecks health after acquiring the gate, stops the
 application, tears down the failed tunnel, connects, verifies the private endpoint
 and repairs application attachment. A namespace-only failure stops/recreates the

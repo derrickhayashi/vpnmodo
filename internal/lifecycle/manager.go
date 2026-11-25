@@ -19,6 +19,7 @@ import (
 
 var (
 	ErrNetworkSettings = errors.New("VPN network settings could not be verified")
+	ErrSessionUnusable = errors.New("VPN session cannot reach its verification endpoint")
 	ErrUnavailable     = errors.New("connection backend unavailable")
 	ErrCredentials     = errors.New("credentials unavailable or invalid")
 	ErrNotFound        = errors.New("operation not found")

@@ -209,6 +209,55 @@ with socket.create_connection(('198.51.100.1',28080),timeout=10) as peer:
         assert children, "authenticated gateway CHILD_SA not installed"
         return children
 
+    def up_with_fresh_mfa(self, success=True):
+        import select
+        process = subprocess.Popen([*self.cli_args, "up", NAME, "--json"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        try:
+            assert select.select([process.stdout], [], [], 30)[0], "up did not publish an operation"
+            event = json.loads(process.stdout.readline())
+            assert event["type"] == "operation"
+            challenge = self.wait_operation(event["operation"]["id"], "awaiting_mfa")
+            self.cli("operation", "submit-mfa", challenge["id"], "--challenge", challenge["challenge"]["id"], "--code-stdin", "--json", data=b"9876543210")
+            output, _ = process.communicate(timeout=45)
+            assert (process.returncode == 0) == success, "up returned an unexpected result"
+            report = json.loads(output.splitlines()[-1])
+            assert report["type"] == "access"
+            if success:
+                assert report["vpn_ready"]
+            else:
+                assert report["error"] == "connection_operation_failed"
+                assert {"vpn", "private_health_endpoint", "application"} <= {check["layer"] for check in report["checks"]}
+            return challenge["id"]
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
+
+    def stale_session_recovery(self):
+        previous = self.ids()["vpn"]["Id"]
+        # Only this disposable gateway loses its kernel ESP states. Its IKE
+        # daemon and the client's local SAs remain alive, so DPD can still pass.
+        command(["docker", "exec", self.gateway, "ip", "xfrm", "state", "flush"])
+        command(["docker", "exec", previous, "vpn-tunnelcheck"])
+        assert command(["docker", "exec", previous, "vpn-servicecheck"], required=False).returncode != 0
+        command(["docker", "exec", previous, "vpn-tunnelcheck"])
+        self.up_with_fresh_mfa()
+        assert self.ids()["vpn"]["Id"] != previous
+        self.large_transfer("explicit up replaces stale local IPsec state")
+        # A persistent endpoint outage permits one explicit new login, then
+        # reports its failed checks rather than looping through MFA attempts.
+        rule = ["INPUT", "-p", "tcp", "--dport", "28080", "-j", "DROP"]
+        command(["docker", "exec", self.gateway, "iptables", "-I", *rule])
+        try:
+            failed = self.up_with_fresh_mfa(success=False)
+            connection = last_json(self.cli("connection", "status", NAME, "--json"))
+            assert connection["last_operation"] == failed and not connection["recovery_enabled"]
+            assert not self.ids(), "failed fresh session was not cleaned up"
+        finally:
+            command(["docker", "exec", self.gateway, "iptables", "-D", *rule])
+        self.authenticate()
+        print("PASS: stale XAuth session replaced by one up/MFA; persistent endpoint failure reports checks without login retry", flush=True)
+
     def close(self):
         if getattr(self, "services", None):
             self.services.close()
@@ -341,6 +390,9 @@ else: raise RuntimeError('workload IPv6 unexpectedly connected')
         assert not command(["docker", "exec", app, "cat", "/proc/net/if_inet6"]).stdout.strip()
         assert command(["docker", "exec", app, "sh", "-c", "echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6"], required=False).returncode != 0
         print("PASS: Docker DNS fallback and workload IPv6 bypass are blocked", flush=True)
+        lab.stale_session_recovery()
+        ids = lab.ids()
+        cid = ids["vpn"]["Id"]
         # A quiet interval longer than the old Expect login timeout must survive.
         command(["docker", "pause", "vpnmodo-controller"])
         try:
