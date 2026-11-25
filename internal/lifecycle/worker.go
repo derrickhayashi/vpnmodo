@@ -67,6 +67,16 @@ func (m *Manager) run(w *worker, entry *slot) {
 		return
 	}
 	established, err := m.options.Adapter.Observe(w.ctx, w.p)
+	if err == nil && established && w.p.Backend.Type == profile.XAuth {
+		// Local IKE/ESP state may survive sleep even when the session no longer
+		// passes traffic. An explicit ensure authorizes one fresh login, without
+		// waiting for DPD or retrying a failed authentication attempt.
+		err = m.options.Adapter.Verify(w.ctx, w.p)
+		if errors.Is(err, ErrSessionUnusable) && w.ctx.Err() == nil {
+			err = m.options.Adapter.Disconnect(w.ctx, w.p)
+			established = false
+		}
+	}
 	if err != nil {
 		m.fail(w, err, operation.Unknown)
 		return
@@ -108,6 +118,7 @@ func (m *Manager) run(w *worker, entry *slot) {
 		m.settleCancelled(w, observed)
 	}
 }
+
 func (m *Manager) cleanup(w *worker) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), m.options.CleanupTimeout)
 	defer cancel()

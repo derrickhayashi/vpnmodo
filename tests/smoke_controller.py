@@ -72,6 +72,7 @@ def main():
     legacy_created = False
     logfile = None
     lab = None
+    previous_path = os.environ["PATH"]
     try:
         client_key, server_key = directory / "client-key", directory / "server-key"
         for key in (client_key, server_key):
@@ -115,7 +116,7 @@ LogLevel VERBOSE
         else:
             raise RuntimeError("test SSH server did not start")
         ssh_config = directory / "ssh_config"
-        ssh_config.write_text(f"""Host test-vm
+        ssh_config.write_text(f"""Host test-vm lima-vpn-vm
   HostName 127.0.0.1
   Port {port}
   User {getpass.getuser()}
@@ -140,8 +141,22 @@ LogLevel VERBOSE
         legacy_created = True
         legacy_before = command(["docker", "inspect", legacy]).stdout
         registry.parent.mkdir(mode=0o700)
-        registry.write_text(json.dumps({"schema_version": 1, "hosts": [{"name": "vpn-vm", "ssh": "test-vm", "ssh_config": str(ssh_config), "sudo": False}]}))
+        registry.write_text(json.dumps({"schema_version": 1, "hosts": [{"name": "vpn-vm", "ssh": "lima-vpn-vm", "ssh_config": str(ssh_config), "sudo": True}]}))
         registry.chmod(0o600)
+        # Linux supplies real SSH and Docker. Model only Lima's running-VM
+        # discovery so the same managed up workflow runs without provisioning.
+        setup = registry.parent / "setup" / "vpn-vm"
+        setup.mkdir(mode=0o700, parents=True)
+        marker = setup / "lima.yaml"
+        marker.write_text("# synthetic running VM\n")
+        marker.chmod(0o600)
+        binary = directory / "bin"
+        binary.mkdir(mode=0o700)
+        lima = binary / "limactl"
+        instance = {"name": "vpn-vm", "status": "Running", "sshConfigFile": str(ssh_config)}
+        lima.write_text("#!/usr/bin/python3\nimport sys\nassert sys.argv[1:]==['list','--json']\nprint(" + repr(json.dumps(instance)) + ")\n")
+        lima.chmod(0o700)
+        os.environ["PATH"] = str(binary) + os.pathsep + previous_path
         ssh_base = ["ssh", "-F", str(ssh_config), "-T", "-o", "StrictHostKeyChecking=yes", "--", "test-vm"]
         bridge = ssh_base + ["docker --host unix:///var/run/docker.sock exec -i vpnmodo-controller /usr/local/bin/vpnmodo-controller bridge"]
 
@@ -184,7 +199,9 @@ LogLevel VERBOSE
             session.stdin.write(b'{"jsonrpc":"2.0","id":2,"method":"backend.list","params":{}}\n')
             session.stdin.flush()
             descriptors = json.loads(session.stdout.readline())["result"]
-            assert len(descriptors) == 2
+            assert {descriptor["type"] for descriptor in descriptors} == {
+                "l2tp-ipsec", "ipsec-xauth", "ipsec-ikev2", "openconnect-globalprotect"
+            }
             session.stdin.close()
             assert session.wait(timeout=10) == 0
         finally:
@@ -315,6 +332,7 @@ LogLevel VERBOSE
         if owner.is_file() and owner.read_text() == token:
             shutil.rmtree(data_root)
         shutil.rmtree(directory)
+        os.environ["PATH"] = previous_path
 
 
 if __name__ == "__main__":

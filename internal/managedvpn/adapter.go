@@ -194,13 +194,20 @@ func (a *Adapter) Verify(ctx context.Context, p profile.Profile) error {
 		return err
 	}
 	if ok, err := a.tunnel(ctx, cs["vpn"]); err != nil || !ok {
-		return ErrRuntime
+		if err != nil {
+			return err
+		}
+		return lifecycle.ErrSessionUnusable
 	}
 	if n := a.networkStatus(ctx, p, cs["vpn"]); n != nil && !n.Verified {
 		return lifecycle.ErrNetworkSettings
 	}
 	if p.Health.Configured() {
 		if _, err = a.exec(ctx, cs["vpn"], "/usr/local/bin/vpn-servicecheck"); err != nil {
+			var exit commandError
+			if errors.As(err, &exit) && exit.code == 1 {
+				return lifecycle.ErrSessionUnusable
+			}
 			return ErrRuntime
 		}
 	}

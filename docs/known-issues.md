@@ -50,6 +50,25 @@ previous operation ends, use `vpnmodo up work` and a fresh code to reconnect.
 Report recurring failures with the CLI/runtime versions and sanitized diagnostic
 codes. Omit credentials, codes and private endpoint details.
 
+## XAuth access fails after workstation sleep
+
+**Symptom:** after sleep and wake, `up` reports `running`, `verifying`, then
+`failed`, even though the VM and controller are available. Local IPsec state can
+remain present while the session no longer reaches the private endpoint; waiting
+after wake does not guarantee that this state will clear.
+
+`vpnmodo up work` verifies an existing XAuth session before reusing it. When the
+tunnel or configured endpoint check fails, it removes that session and starts
+one fresh login, requesting the new MFA code. A healthy session is preserved;
+background checks never start fresh XAuth authentication. If the private service
+itself is unavailable, the fresh attempt can still fail verification and is not
+automatically retried. Failures include the tunnel, endpoint and application
+checks in the command output.
+
+On older controllers, use `vpnmodo down work` followed by `vpnmodo up work` to
+discard the stale session explicitly. Update the CLI and controller through the
+normal [upgrade workflow](upgrading.md) to receive the corrected reuse behavior.
+
 ## L2TP startup failure
 
 Use status, doctor and logs to distinguish missing VM/kernel prerequisites,

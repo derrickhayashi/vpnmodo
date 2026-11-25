@@ -275,6 +275,7 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	}
 	r.Checks = append(r.Checks, accessCheck{"controller", "ready", true})
 	r.ControllerVersion = system.Version
+	operationFailed := false
 	if command == "up" || command == "down" {
 		method := protocol.ConnectionEnsure
 		if command == "down" {
@@ -287,6 +288,9 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 		r.OperationID = op.ID
 		// Machine up/down emit tagged operation events followed by an access report.
 		notify := func(v any) error {
+			if op, ok := v.(protocol.Operation); ok && op.State == operation.Failed {
+				operationFailed = true
+			}
 			if *machine {
 				return json.NewEncoder(out).Encode(struct {
 					Type      string `json:"type"`
@@ -300,7 +304,13 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 			return nil
 		}
 		if err = watchOperationPrompt(ctx, client, op.ID, notify, !*machine); err != nil {
-			return fail("connection_operation_incomplete")
+			if !operationFailed || command == "down" {
+				return fail("connection_operation_incomplete")
+			}
+			// A terminal backend failure still needs the same layered diagnosis as
+			// doctor. Transport/prompt failures may leave an active operation and
+			// must not be treated as permission to start services or another login.
+			r.Checks = append(r.Checks, accessCheck{"connection_operation", "failed", false})
 		}
 		if command == "down" {
 			if r.Error != "" {
@@ -365,6 +375,9 @@ func accessCommand(base context.Context, registry string, args []string, out io.
 	code := string(health)
 	r.Checks = append(r.Checks, accessCheck{"vpn", code, tunnelOK}, accessCheck{"private_health_endpoint", serviceCode, serviceOK}, accessCheck{"application", code, appOK})
 	r.VPNReady = tunnelOK && serviceOK && appOK && (r.Network == nil || r.Network.Verified)
+	if operationFailed {
+		return fail("connection_operation_failed")
+	}
 	if !r.VPNReady {
 		if len(r.Services) > 0 {
 			r.Outcome = "partial"

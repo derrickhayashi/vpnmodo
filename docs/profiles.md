@@ -25,7 +25,9 @@ When `health` is present, supply both a valid host and a TCP port from 1–65535
 Partial or invalid endpoints are rejected. An explicitly configured probe must
 succeed before the application is attached. For XAuth, IKEv2 and GlobalProtect,
 a hostname health target requires explicit VPN DNS; an IPv4 target does not.
-A service outage alone does not trigger a fresh VPN login.
+Background service checks never trigger a fresh VPN login. An explicit XAuth
+`up` replaces an existing session that fails verification and requests fresh MFA
+once. If the service itself is unavailable, that fresh attempt can still fail.
 
 For direct GlobalProtect gateway connections, see the
 [OpenConnect backend guide](globalprotect.md).
